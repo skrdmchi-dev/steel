@@ -1,0 +1,15 @@
+/target/
+*.exe
+*.vsix
+*.pdb
+*.zip
+projects/*_c/
+projects/*_cpp/
+projects/*_rs/
+projects/*_rust/
+projects/*_go/
+projects/*_py/
+projects/*_python/
+projects/*_js/
+projects/*_ts/
+projects/*_lua/
