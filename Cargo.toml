@@ -1,0 +1,18 @@
+[package]
+name = "steel-lang"
+version = "1.0.0"
+edition = "2021"
+license = "GPL-3.0"
+homepage = "https://steel-lang.pages.dev"
+repository = "https://github.com/skrdmchi-dev/steel"
+description = "Steel (.steel) - A scripting and compiled language written in Rust with multi-target compilation to C11, C++20, Rust, Go, Python 3, JavaScript, TypeScript, and Lua, plus an interpreter, bytecode VM, and REPL."
+
+[[bin]]
+name = "steel"
+path = "src/main.rs"
+
+[[bin]]
+name = "steel-setup"
+path = "src/setup.rs"
+
+[dependencies]
