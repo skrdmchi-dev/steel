@@ -44,3 +44,26 @@ pub fn render_diagnostic(file_path: &str, src: &str, err_msg: &str) -> String {
 
     out
 }
+
+fn extract_line_col(msg: &str) -> Option<(usize, usize)> {
+    let at_idx = msg.rfind(" at ")?;
+    let coord = &msg[at_idx + 4..];
+    let mut parts = coord.split(':');
+    let line: usize = parts.next()?.trim().parse().ok()?;
+    let col_part = parts.next()?;
+    let col_digits: String = col_part.chars().take_while(|c| c.is_ascii_digit()).collect();
+    let col: usize = col_digits.parse().ok()?;
+    Some((line, col))
+}
+
+fn find_closest_ident(src: &str, target: &str) -> Option<String> {
+    let mut best: Option<(usize, String)> = None;
+    for token in src.split(|c: char| !c.is_ascii_alphanumeric() && c != '_') {
+        if token.len() < 2 || token == target || token.chars().next()?.is_ascii_digit() {
+            continue;
+        }
+        let dist = levenshtein(target, token);
+        if dist <= 2 {
+            if best.as_ref().map(|(d, _)| dist < *d).unwrap_or(true) {
+                best = Some((dist, token.to_string()));
+            }
