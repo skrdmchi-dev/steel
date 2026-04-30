@@ -67,3 +67,28 @@ fn find_closest_ident(src: &str, target: &str) -> Option<String> {
             if best.as_ref().map(|(d, _)| dist < *d).unwrap_or(true) {
                 best = Some((dist, token.to_string()));
             }
+        }
+    }
+    best.map(|(_, s)| s)
+}
+
+fn levenshtein(a: &str, b: &str) -> usize {
+    let ac: Vec<char> = a.chars().collect();
+    let bc: Vec<char> = b.chars().collect();
+    let mut dp = vec![vec![0; bc.len() + 1]; ac.len() + 1];
+    for i in 0..=ac.len() {
+        dp[i][0] = i;
+    }
+    for j in 0..=bc.len() {
+        dp[0][j] = j;
+    }
+    for i in 1..=ac.len() {
+        for j in 1..=bc.len() {
+            let cost = if ac[i - 1] == bc[j - 1] { 0 } else { 1 };
+            dp[i][j] = (dp[i - 1][j] + 1)
+                .min(dp[i][j - 1] + 1)
+                .min(dp[i - 1][j - 1] + cost);
+        }
+    }
+    dp[ac.len()][bc.len()]
+}
