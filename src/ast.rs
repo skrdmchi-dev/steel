@@ -48,3 +48,28 @@ pub enum Expr {
         expr: Box<Expr>,
     },
     Ternary {
+        cond: Box<Expr>,
+        then_expr: Box<Expr>,
+        else_expr: Box<Expr>,
+    },
+    Call {
+        callee: Box<Expr>,
+        args: Vec<Expr>,
+    },
+    New {
+        class_name: String,
+        args: Vec<Expr>,
+    },
+    Index {
+        target: Box<Expr>,
+        index: Box<Expr>,
+    },
+    Member {
+        target: Box<Expr>,
+        field: String,
+    },
+    FnExpr {
+        params: Vec<(String, Option<Expr>)>,
+        body: Vec<Stmt>,
+    },
+    Range {
