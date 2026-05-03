@@ -73,3 +73,40 @@ pub enum TokenKind {
     LParen,    // (
     RParen,    // )
     LBrace,    // {
+    RBrace,    // }
+    LBracket,  // [
+    RBracket,  // ]
+    Comma,     // ,
+    Colon,     // :
+    Semicolon, // ;
+
+    Eof,
+}
+
+#[derive(Debug, Clone)]
+pub struct Token {
+    pub kind: TokenKind,
+    pub line: usize,
+    pub col: usize,
+}
+
+pub struct Lexer {
+    chars: Vec<char>,
+    pos: usize,
+    line: usize,
+    col: usize,
+}
+
+impl Lexer {
+    pub fn new(input: &str) -> Self {
+        Self {
+            chars: input.chars().collect(),
+            pos: 0,
+            line: 1,
+            col: 1,
+        }
+    }
+
+    fn peek(&self) -> Option<char> {
+        self.chars.get(self.pos).copied()
+    }
