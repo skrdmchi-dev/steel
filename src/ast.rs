@@ -98,3 +98,28 @@ pub enum Stmt {
     Import(String),
     Let {
         name: String,
+        is_const: bool,
+        value: Expr,
+    },
+    Assign {
+        target: AssignTarget,
+        value: Expr,
+    },
+    FnDecl {
+        name: String,
+        params: Vec<(String, Option<Expr>)>,
+        body: Vec<Stmt>,
+    },
+    ClassDecl {
+        name: String,
+        parent: Option<String>,
+        methods: Vec<ClassMethod>,
+    },
+    TryCatch {
+        try_body: Vec<Stmt>,
+        err_var: String,
+        catch_body: Vec<Stmt>,
+    },
+    Throw(Expr),
+    Test {
+        name: String,
