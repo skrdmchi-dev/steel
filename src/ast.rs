@@ -123,3 +123,30 @@ pub enum Stmt {
     Throw(Expr),
     Test {
         name: String,
+        body: Vec<Stmt>,
+    },
+    Defer(Box<Stmt>),
+    Return(Option<Expr>),
+    If {
+        cond: Expr,
+        then_branch: Vec<Stmt>,
+        else_branch: Option<Vec<Stmt>>,
+    },
+    While {
+        cond: Expr,
+        body: Vec<Stmt>,
+    },
+    For {
+        var: String,
+        iterable: Expr,
+        body: Vec<Stmt>,
+    },
+    Break,
+    Continue,
+    Expr(Expr),
+}
+
+#[derive(Debug, Clone)]
+pub struct Program {
+    pub statements: Vec<Stmt>,
+}
