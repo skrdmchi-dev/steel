@@ -73,3 +73,28 @@ pub enum Expr {
         body: Vec<Stmt>,
     },
     Range {
+        start: Box<Expr>,
+        end: Box<Expr>,
+    },
+    Spread(Box<Expr>),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum AssignTarget {
+    Ident(String),
+    Index { target: Expr, index: Expr },
+    Member { target: Expr, field: String },
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ClassMethod {
+    pub name: String,
+    pub params: Vec<(String, Option<Expr>)>,
+    pub body: Vec<Stmt>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum Stmt {
+    Import(String),
+    Let {
+        name: String,
