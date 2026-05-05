@@ -223,3 +223,40 @@ impl Lexer {
                         self.advance();
                     } else if c == '.'
                         && self.peek_next().map(|n| n.is_ascii_digit()).unwrap_or(false)
+                        && !num_str.contains('.')
+                    {
+                        num_str.push(c);
+                        self.advance();
+                    } else {
+                        break;
+                    }
+                }
+                let val: f64 = num_str
+                    .parse()
+                    .map_err(|_| format!("Invalid number '{}' at {}:{}", num_str, line, col))?;
+                tokens.push(Token {
+                    kind: TokenKind::Number(val),
+                    line,
+                    col,
+                });
+                continue;
+            }
+
+            if ch == '"' || ch == '\'' {
+                let quote = ch;
+                self.advance();
+                let mut s = String::new();
+                let mut closed = false;
+                while let Some(c) = self.advance() {
+                    if c == quote {
+                        closed = true;
+                        break;
+                    }
+                    if c == '\\' {
+                        if let Some(esc) = self.advance() {
+                            match esc {
+                                'n' => s.push('\n'),
+                                't' => s.push('\t'),
+                                'r' => s.push('\r'),
+                                '\\' => s.push('\\'),
+                                '"' => s.push('"'),
