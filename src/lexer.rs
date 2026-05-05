@@ -260,3 +260,41 @@ impl Lexer {
                                 'r' => s.push('\r'),
                                 '\\' => s.push('\\'),
                                 '"' => s.push('"'),
+                                '\'' => s.push('\''),
+                                '0' => s.push('\0'),
+                                other => {
+                                    s.push('\\');
+                                    s.push(other);
+                                }
+                            }
+                        }
+                    } else {
+                        s.push(c);
+                    }
+                }
+                if !closed {
+                    return Err(format!("Unterminated string starting at {}:{}", line, col));
+                }
+                tokens.push(Token {
+                    kind: TokenKind::String(s),
+                    line,
+                    col,
+                });
+                continue;
+            }
+
+            if ch.is_ascii_alphabetic() || ch == '_' {
+                let mut ident = String::new();
+                while let Some(c) = self.peek() {
+                    if c.is_ascii_alphanumeric() || c == '_' {
+                        ident.push(c);
+                        self.advance();
+                    } else {
+                        break;
+                    }
+                }
+                let kind = match ident.as_str() {
+                    "let" => TokenKind::Let,
+                    "const" => TokenKind::Const,
+                    "fn" => TokenKind::Fn,
+                    "return" => TokenKind::Return,
