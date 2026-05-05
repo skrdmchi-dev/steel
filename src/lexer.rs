@@ -185,3 +185,41 @@ impl Lexer {
                     tokens.push(Token {
                         kind: TokenKind::Number(val as f64),
                         line,
+                        col,
+                    });
+                    continue;
+                }
+                if ch == '0' && matches!(self.peek_next(), Some('b' | 'B')) {
+                    self.advance();
+                    self.advance();
+                    let mut bin = String::new();
+                    while let Some(c) = self.peek() {
+                        if c == '0' || c == '1' || c == '_' {
+                            if c != '_' {
+                                bin.push(c);
+                            }
+                            self.advance();
+                        } else {
+                            break;
+                        }
+                    }
+                    let val = i64::from_str_radix(&bin, 2).map_err(|_| {
+                        format!("Invalid binary literal '0b{}' at {}:{}", bin, line, col)
+                    })?;
+                    tokens.push(Token {
+                        kind: TokenKind::Number(val as f64),
+                        line,
+                        col,
+                    });
+                    continue;
+                }
+
+                let mut num_str = String::new();
+                while let Some(c) = self.peek() {
+                    if c.is_ascii_digit() || c == '_' {
+                        if c != '_' {
+                            num_str.push(c);
+                        }
+                        self.advance();
+                    } else if c == '.'
+                        && self.peek_next().map(|n| n.is_ascii_digit()).unwrap_or(false)
