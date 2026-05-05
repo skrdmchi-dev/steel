@@ -148,3 +148,40 @@ impl Lexer {
             }
             // Multi-line comment
             if ch == '/' && self.peek_next() == Some('*') {
+                self.advance();
+                self.advance();
+                while let Some(c) = self.peek() {
+                    if c == '*' && self.peek_next() == Some('/') {
+                        self.advance();
+                        self.advance();
+                        break;
+                    }
+                    self.advance();
+                }
+                continue;
+            }
+
+            let line = self.line;
+            let col = self.col;
+
+            // Numbers (decimal, hex 0x, binary 0b)
+            if ch.is_ascii_digit() {
+                if ch == '0' && matches!(self.peek_next(), Some('x' | 'X')) {
+                    self.advance();
+                    self.advance();
+                    let mut hex = String::new();
+                    while let Some(c) = self.peek() {
+                        if c.is_ascii_hexdigit() || c == '_' {
+                            if c != '_' {
+                                hex.push(c);
+                            }
+                            self.advance();
+                        } else {
+                            break;
+                        }
+                    }
+                    let val = i64::from_str_radix(&hex, 16)
+                        .map_err(|_| format!("Invalid hex literal '0x{}' at {}:{}", hex, line, col))?;
+                    tokens.push(Token {
+                        kind: TokenKind::Number(val as f64),
+                        line,
