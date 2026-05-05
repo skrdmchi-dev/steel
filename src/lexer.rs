@@ -110,3 +110,41 @@ impl Lexer {
     fn peek(&self) -> Option<char> {
         self.chars.get(self.pos).copied()
     }
+
+    fn peek_next(&self) -> Option<char> {
+        self.chars.get(self.pos + 1).copied()
+    }
+
+    fn advance(&mut self) -> Option<char> {
+        let ch = self.chars.get(self.pos).copied()?;
+        self.pos += 1;
+        if ch == '\n' {
+            self.line += 1;
+            self.col = 1;
+        } else {
+            self.col += 1;
+        }
+        Some(ch)
+    }
+
+    pub fn tokenize(&mut self) -> Result<Vec<Token>, String> {
+        let mut tokens = Vec::new();
+
+        while let Some(ch) = self.peek() {
+            if ch.is_whitespace() {
+                self.advance();
+                continue;
+            }
+
+            // Single-line comment
+            if ch == '/' && self.peek_next() == Some('/') {
+                while let Some(c) = self.peek() {
+                    if c == '\n' {
+                        break;
+                    }
+                    self.advance();
+                }
+                continue;
+            }
+            // Multi-line comment
+            if ch == '/' && self.peek_next() == Some('*') {
