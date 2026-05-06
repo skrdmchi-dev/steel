@@ -335,3 +335,41 @@ impl Lexer {
                         TokenKind::Plus
                     }
                 }
+                '-' => {
+                    if self.peek() == Some('=') {
+                        self.advance();
+                        TokenKind::MinusAssign
+                    } else if self.peek() == Some('>') {
+                        self.advance();
+                        TokenKind::ThinArrow
+                    } else {
+                        TokenKind::Minus
+                    }
+                }
+                '*' => {
+                    if self.peek() == Some('*') {
+                        self.advance();
+                        TokenKind::StarStar
+                    } else if self.peek() == Some('=') {
+                        self.advance();
+                        TokenKind::StarAssign
+                    } else {
+                        TokenKind::Star
+                    }
+                }
+                '/' => {
+                    if self.peek() == Some('=') {
+                        self.advance();
+                        TokenKind::SlashAssign
+                    } else {
+                        TokenKind::Slash
+                    }
+                }
+                '%' => {
+                    if self.peek() == Some('=') {
+                        self.advance();
+                        TokenKind::PercentAssign
+                    } else {
+                        TokenKind::Percent
+                    }
+                }
