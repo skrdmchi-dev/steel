@@ -298,3 +298,40 @@ impl Lexer {
                     "const" => TokenKind::Const,
                     "fn" => TokenKind::Fn,
                     "return" => TokenKind::Return,
+                    "if" => TokenKind::If,
+                    "else" => TokenKind::Else,
+                    "while" => TokenKind::While,
+                    "for" => TokenKind::For,
+                    "in" => TokenKind::In,
+                    "break" => TokenKind::Break,
+                    "continue" => TokenKind::Continue,
+                    "match" => TokenKind::Match,
+                    "class" => TokenKind::Class,
+                    "extends" => TokenKind::Extends,
+                    "new" => TokenKind::New,
+                    "try" => TokenKind::Try,
+                    "catch" => TokenKind::Catch,
+                    "throw" => TokenKind::Throw,
+                    "import" => TokenKind::Import,
+                    "test" => TokenKind::Test,
+                    "enum" => TokenKind::Enum,
+                    "defer" => TokenKind::Defer,
+                    "true" => TokenKind::True,
+                    "false" => TokenKind::False,
+                    "null" | "nil" => TokenKind::Null,
+                    _ => TokenKind::Ident(ident),
+                };
+                tokens.push(Token { kind, line, col });
+                continue;
+            }
+
+            self.advance();
+            let kind = match ch {
+                '+' => {
+                    if self.peek() == Some('=') {
+                        self.advance();
+                        TokenKind::PlusAssign
+                    } else {
+                        TokenKind::Plus
+                    }
+                }
