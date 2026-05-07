@@ -373,3 +373,40 @@ impl Lexer {
                         TokenKind::Percent
                     }
                 }
+                '=' => {
+                    if self.peek() == Some('=') {
+                        self.advance();
+                        TokenKind::Eq
+                    } else if self.peek() == Some('>') {
+                        self.advance();
+                        TokenKind::Arrow
+                    } else {
+                        TokenKind::Assign
+                    }
+                }
+                '!' => {
+                    if self.peek() == Some('=') {
+                        self.advance();
+                        TokenKind::Neq
+                    } else {
+                        TokenKind::Not
+                    }
+                }
+                '<' => {
+                    if self.peek() == Some('<') {
+                        self.advance();
+                        TokenKind::Shl
+                    } else if self.peek() == Some('=') {
+                        self.advance();
+                        TokenKind::Lte
+                    } else {
+                        TokenKind::Lt
+                    }
+                }
+                '>' => {
+                    if self.peek() == Some('>') {
+                        self.advance();
+                        TokenKind::Shr
+                    } else if self.peek() == Some('=') {
+                        self.advance();
+                        TokenKind::Gte
