@@ -410,3 +410,41 @@ impl Lexer {
                     } else if self.peek() == Some('=') {
                         self.advance();
                         TokenKind::Gte
+                    } else {
+                        TokenKind::Gt
+                    }
+                }
+                '&' => {
+                    if self.peek() == Some('&') {
+                        self.advance();
+                        TokenKind::And
+                    } else {
+                        TokenKind::BitAnd
+                    }
+                }
+                '|' => {
+                    if self.peek() == Some('|') {
+                        self.advance();
+                        TokenKind::Or
+                    } else if self.peek() == Some('>') {
+                        self.advance();
+                        TokenKind::Pipe
+                    } else {
+                        TokenKind::BitOr
+                    }
+                }
+                '^' => TokenKind::BitXor,
+                '~' => TokenKind::BitNot,
+                '?' => {
+                    if self.peek() == Some('?') {
+                        self.advance();
+                        TokenKind::NullCoalesce
+                    } else {
+                        TokenKind::Question
+                    }
+                }
+                '.' => {
+                    if self.peek() == Some('.') {
+                        self.advance();
+                        if self.peek() == Some('.') {
+                            self.advance();
