@@ -47,3 +47,53 @@ impl Parser {
             Err(format!(
                 "Expected {:?}, found {:?} at {}:{}",
                 expected, cur.kind, cur.line, cur.col
+            ))
+        }
+    }
+
+    fn expect_ident(&mut self) -> Result<String, String> {
+        let cur = self.current().clone();
+        if let TokenKind::Ident(name) = cur.kind {
+            self.advance();
+            Ok(name)
+        } else {
+            Err(format!(
+                "Expected identifier, found {:?} at {}:{}",
+                cur.kind, cur.line, cur.col
+            ))
+        }
+    }
+
+    pub fn parse_program(&mut self) -> Result<Program, String> {
+        let mut statements = Vec::new();
+        self.eat_semicolons();
+        while !matches!(self.peek_kind(), TokenKind::Eof) {
+            statements.append(&mut self.parse_stmt_multi()?);
+            self.eat_semicolons();
+        }
+        Ok(Program { statements })
+    }
+
+    fn parse_block(&mut self) -> Result<Vec<Stmt>, String> {
+        self.expect(TokenKind::LBrace)?;
+        let mut stmts = Vec::new();
+        self.eat_semicolons();
+        while !matches!(self.peek_kind(), TokenKind::RBrace | TokenKind::Eof) {
+            stmts.append(&mut self.parse_stmt_multi()?);
+            self.eat_semicolons();
+        }
+        self.expect(TokenKind::RBrace)?;
+        Ok(stmts)
+    }
+
+    fn parse_stmt_multi(&mut self) -> Result<Vec<Stmt>, String> {
+        // Destructuring let: `let [a, b] = expr` or `let {x, y} = expr`
+        if matches!(self.peek_kind(), TokenKind::Let | TokenKind::Const)
+            && matches!(
+                self.peek_next_kind(),
+                Some(TokenKind::LBracket | TokenKind::LBrace)
+            )
+        {
+            let is_const = matches!(self.advance().kind, TokenKind::Const);
+            let is_array = matches!(self.advance().kind, TokenKind::LBracket);
+            let close_tok = if is_array {
