@@ -448,3 +448,40 @@ impl Lexer {
                         self.advance();
                         if self.peek() == Some('.') {
                             self.advance();
+                            TokenKind::DotDotDot
+                        } else {
+                            TokenKind::DotDot
+                        }
+                    } else {
+                        TokenKind::Dot
+                    }
+                }
+                '(' => TokenKind::LParen,
+                ')' => TokenKind::RParen,
+                '{' => TokenKind::LBrace,
+                '}' => TokenKind::RBrace,
+                '[' => TokenKind::LBracket,
+                ']' => TokenKind::RBracket,
+                ',' => TokenKind::Comma,
+                ':' => TokenKind::Colon,
+                ';' => TokenKind::Semicolon,
+                other => {
+                    return Err(format!(
+                        "Unexpected character '{}' at {}:{}",
+                        other, line, col
+                    ))
+                }
+            };
+
+            tokens.push(Token { kind, line, col });
+        }
+
+        tokens.push(Token {
+            kind: TokenKind::Eof,
+            line: self.line,
+            col: self.col,
+        });
+
+        Ok(tokens)
+    }
+}
