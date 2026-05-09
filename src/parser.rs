@@ -146,3 +146,52 @@ impl Parser {
     }
 
     fn parse_stmt(&mut self) -> Result<Stmt, String> {
+        match self.peek_kind() {
+            TokenKind::Import => {
+                self.advance();
+                let cur = self.current().clone();
+                if let TokenKind::String(path) = cur.kind {
+                    self.advance();
+                    self.eat_semicolons();
+                    Ok(Stmt::Import(path))
+                } else {
+                    Err(format!(
+                        "Expected string path after 'import' at {}:{}",
+                        cur.line, cur.col
+                    ))
+                }
+            }
+            TokenKind::Let | TokenKind::Const => {
+                let is_const = matches!(self.advance().kind, TokenKind::Const);
+                let name = self.expect_ident()?;
+                // Optional type annotation: `let x: num = 5`
+                if matches!(self.peek_kind(), TokenKind::Colon) {
+                    self.advance();
+                    let _type_name = self.expect_ident()?;
+                }
+                let value = if matches!(self.peek_kind(), TokenKind::Assign) {
+                    self.advance();
+                    self.parse_expr()?
+                } else {
+                    Expr::Null
+                };
+                self.eat_semicolons();
+                Ok(Stmt::Let {
+                    name,
+                    is_const,
+                    value,
+                })
+            }
+            TokenKind::Fn => {
+                if matches!(self.peek_next_kind(), Some(TokenKind::Ident(_))) {
+                    self.advance();
+                    let name = self.expect_ident()?;
+                    let params = self.parse_param_list()?;
+                    // Optional return type annotation: `fn add(a: num, b: num) -> num { ... }`
+                    if matches!(self.peek_kind(), TokenKind::ThinArrow | TokenKind::Colon) {
+                        self.advance();
+                        let _ret_type = self.expect_ident()?;
+                    }
+                    let body = if matches!(self.peek_kind(), TokenKind::Assign) {
+                        self.advance();
+                        let expr = self.parse_expr()?;
