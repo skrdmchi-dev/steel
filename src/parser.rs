@@ -97,3 +97,52 @@ impl Parser {
             let is_const = matches!(self.advance().kind, TokenKind::Const);
             let is_array = matches!(self.advance().kind, TokenKind::LBracket);
             let close_tok = if is_array {
+                TokenKind::RBracket
+            } else {
+                TokenKind::RBrace
+            };
+            let mut names = Vec::new();
+            while !matches!(self.peek_kind(), TokenKind::RBracket | TokenKind::RBrace | TokenKind::Eof) {
+                names.push(self.expect_ident()?);
+                if matches!(self.peek_kind(), TokenKind::Comma) {
+                    self.advance();
+                } else {
+                    break;
+                }
+            }
+            self.expect(close_tok)?;
+            self.expect(TokenKind::Assign)?;
+            let rhs = self.parse_expr()?;
+            self.eat_semicolons();
+
+            let tmp = format!("__destruct_{}", self.pos);
+            let mut out = vec![Stmt::Let {
+                name: tmp.clone(),
+                is_const,
+                value: rhs,
+            }];
+            for (idx, name) in names.into_iter().enumerate() {
+                let val = if is_array {
+                    Expr::Index {
+                        target: Box::new(Expr::Ident(tmp.clone())),
+                        index: Box::new(Expr::Number(idx as f64)),
+                    }
+                } else {
+                    Expr::Member {
+                        target: Box::new(Expr::Ident(tmp.clone())),
+                        field: name.clone(),
+                    }
+                };
+                out.push(Stmt::Let {
+                    name,
+                    is_const,
+                    value: val,
+                });
+            }
+            return Ok(out);
+        }
+
+        Ok(vec![self.parse_stmt()?])
+    }
+
+    fn parse_stmt(&mut self) -> Result<Stmt, String> {
