@@ -343,3 +343,53 @@ impl Parser {
                 Ok(Stmt::Break)
             }
             TokenKind::Continue => {
+                self.advance();
+                self.eat_semicolons();
+                Ok(Stmt::Continue)
+            }
+            TokenKind::Match => self.parse_match_stmt(),
+            _ => {
+                let expr = self.parse_expr()?;
+                match self.peek_kind() {
+                    TokenKind::Assign
+                    | TokenKind::PlusAssign
+                    | TokenKind::MinusAssign
+                    | TokenKind::StarAssign
+                    | TokenKind::SlashAssign
+                    | TokenKind::PercentAssign => {
+                        let op_kind = self.advance().kind;
+                        let rhs = self.parse_expr()?;
+                        let target = Self::expr_to_assign_target(&expr)?;
+                        let value = match op_kind {
+                            TokenKind::Assign => rhs,
+                            TokenKind::PlusAssign => Expr::Binary {
+                                left: Box::new(expr),
+                                op: BinaryOp::Add,
+                                right: Box::new(rhs),
+                            },
+                            TokenKind::MinusAssign => Expr::Binary {
+                                left: Box::new(expr),
+                                op: BinaryOp::Sub,
+                                right: Box::new(rhs),
+                            },
+                            TokenKind::StarAssign => Expr::Binary {
+                                left: Box::new(expr),
+                                op: BinaryOp::Mul,
+                                right: Box::new(rhs),
+                            },
+                            TokenKind::SlashAssign => Expr::Binary {
+                                left: Box::new(expr),
+                                op: BinaryOp::Div,
+                                right: Box::new(rhs),
+                            },
+                            TokenKind::PercentAssign => Expr::Binary {
+                                left: Box::new(expr),
+                                op: BinaryOp::Mod,
+                                right: Box::new(rhs),
+                            },
+                            _ => unreachable!(),
+                        };
+                        self.eat_semicolons();
+                        Ok(Stmt::Assign { target, value })
+                    }
+                    _ => {
