@@ -393,3 +393,52 @@ impl Parser {
                         Ok(Stmt::Assign { target, value })
                     }
                     _ => {
+                        self.eat_semicolons();
+                        Ok(Stmt::Expr(expr))
+                    }
+                }
+            }
+        }
+    }
+
+    fn parse_class_decl(&mut self) -> Result<Stmt, String> {
+        self.expect(TokenKind::Class)?;
+        let name = self.expect_ident()?;
+        let parent = if matches!(self.peek_kind(), TokenKind::Extends | TokenKind::Colon) {
+            self.advance();
+            Some(self.expect_ident()?)
+        } else {
+            None
+        };
+        self.expect(TokenKind::LBrace)?;
+        self.eat_semicolons();
+        let mut methods = Vec::new();
+        while !matches!(self.peek_kind(), TokenKind::RBrace | TokenKind::Eof) {
+            if matches!(self.peek_kind(), TokenKind::Fn) {
+                self.advance();
+            }
+            let m_name = self.expect_ident()?;
+            let params = self.parse_param_list()?;
+            let body = if matches!(self.peek_kind(), TokenKind::Assign) {
+                self.advance();
+                let expr = self.parse_expr()?;
+                self.eat_semicolons();
+                vec![Stmt::Return(Some(expr))]
+            } else {
+                self.parse_block()?
+            };
+            self.eat_semicolons();
+            methods.push(ClassMethod {
+                name: m_name,
+                params,
+                body,
+            });
+        }
+        self.expect(TokenKind::RBrace)?;
+        Ok(Stmt::ClassDecl {
+            name,
+            parent,
+            methods,
+        })
+    }
+
