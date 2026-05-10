@@ -245,3 +245,52 @@ impl Parser {
                         self.advance();
                     }
                 }
+                self.expect(TokenKind::RBrace)?;
+                Ok(Stmt::Let {
+                    name,
+                    is_const: true,
+                    value: Expr::Map(entries),
+                })
+            }
+            TokenKind::Defer => {
+                self.advance();
+                let inner = if matches!(self.peek_kind(), TokenKind::LBrace) {
+                    let stmts = self.parse_block()?;
+                    Stmt::If {
+                        cond: Expr::Bool(true),
+                        then_branch: stmts,
+                        else_branch: None,
+                    }
+                } else {
+                    self.parse_stmt()?
+                };
+                Ok(Stmt::Defer(Box::new(inner)))
+            }
+            TokenKind::Class => self.parse_class_decl(),
+            TokenKind::Try => {
+                self.advance();
+                let try_body = self.parse_block()?;
+                self.expect(TokenKind::Catch)?;
+                let err_var = if matches!(self.peek_kind(), TokenKind::LParen) {
+                    self.advance();
+                    let v = self.expect_ident()?;
+                    self.expect(TokenKind::RParen)?;
+                    v
+                } else if matches!(self.peek_kind(), TokenKind::Ident(_)) {
+                    self.expect_ident()?
+                } else {
+                    "err".to_string()
+                };
+                let catch_body = self.parse_block()?;
+                Ok(Stmt::TryCatch {
+                    try_body,
+                    err_var,
+                    catch_body,
+                })
+            }
+            TokenKind::Throw => {
+                self.advance();
+                let expr = self.parse_expr()?;
+                self.eat_semicolons();
+                Ok(Stmt::Throw(expr))
+            }
