@@ -442,3 +442,52 @@ impl Parser {
         })
     }
 
+    fn expr_to_assign_target(expr: &Expr) -> Result<AssignTarget, String> {
+        match expr {
+            Expr::Ident(name) => Ok(AssignTarget::Ident(name.clone())),
+            Expr::Index { target, index } => Ok(AssignTarget::Index {
+                target: (**target).clone(),
+                index: (**index).clone(),
+            }),
+            Expr::Member { target, field } => Ok(AssignTarget::Member {
+                target: (**target).clone(),
+                field: field.clone(),
+            }),
+            _ => Err("Invalid assignment target".to_string()),
+        }
+    }
+
+    fn parse_if_stmt(&mut self) -> Result<Stmt, String> {
+        self.expect(TokenKind::If)?;
+        let cond = self.parse_expr()?;
+        let then_branch = self.parse_block()?;
+        let else_branch = if matches!(self.peek_kind(), TokenKind::Else) {
+            self.advance();
+            if matches!(self.peek_kind(), TokenKind::If) {
+                Some(vec![self.parse_if_stmt()?])
+            } else {
+                Some(self.parse_block()?)
+            }
+        } else {
+            None
+        };
+        Ok(Stmt::If {
+            cond,
+            then_branch,
+            else_branch,
+        })
+    }
+
+    fn parse_match_stmt(&mut self) -> Result<Stmt, String> {
+        self.expect(TokenKind::Match)?;
+        let subject = self.parse_expr()?;
+        self.expect(TokenKind::LBrace)?;
+        self.eat_semicolons();
+
+        let mut arms: Vec<(Option<Expr>, Vec<Stmt>)> = Vec::new();
+        while !matches!(self.peek_kind(), TokenKind::RBrace | TokenKind::Eof) {
+            let pat = if matches!(self.peek_kind(), TokenKind::Ident(s) if s == "_") {
+                self.advance();
+                None
+            } else {
+                Some(self.parse_expr()?)
