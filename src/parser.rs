@@ -294,3 +294,52 @@ impl Parser {
                 self.eat_semicolons();
                 Ok(Stmt::Throw(expr))
             }
+            TokenKind::Return => {
+                let tok = self.advance();
+                if matches!(
+                    self.peek_kind(),
+                    TokenKind::Semicolon | TokenKind::RBrace | TokenKind::Eof
+                ) || self.current().line > tok.line
+                {
+                    self.eat_semicolons();
+                    Ok(Stmt::Return(None))
+                } else {
+                    let expr = self.parse_expr()?;
+                    self.eat_semicolons();
+                    Ok(Stmt::Return(Some(expr)))
+                }
+            }
+            TokenKind::If => self.parse_if_stmt(),
+            TokenKind::While => {
+                self.advance();
+                let cond = self.parse_expr()?;
+                let body = self.parse_block()?;
+                Ok(Stmt::While { cond, body })
+            }
+            TokenKind::For => {
+                self.advance();
+                let has_paren = if matches!(self.peek_kind(), TokenKind::LParen) {
+                    self.advance();
+                    true
+                } else {
+                    false
+                };
+                let var = self.expect_ident()?;
+                self.expect(TokenKind::In)?;
+                let iterable = self.parse_expr()?;
+                if has_paren {
+                    self.expect(TokenKind::RParen)?;
+                }
+                let body = self.parse_block()?;
+                Ok(Stmt::For {
+                    var,
+                    iterable,
+                    body,
+                })
+            }
+            TokenKind::Break => {
+                self.advance();
+                self.eat_semicolons();
+                Ok(Stmt::Break)
+            }
+            TokenKind::Continue => {
