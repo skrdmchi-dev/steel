@@ -195,3 +195,53 @@ impl Parser {
                     let body = if matches!(self.peek_kind(), TokenKind::Assign) {
                         self.advance();
                         let expr = self.parse_expr()?;
+                        self.eat_semicolons();
+                        vec![Stmt::Return(Some(expr))]
+                    } else {
+                        self.parse_block()?
+                    };
+                    Ok(Stmt::FnDecl { name, params, body })
+                } else {
+                    let expr = self.parse_expr()?;
+                    self.eat_semicolons();
+                    Ok(Stmt::Expr(expr))
+                }
+            }
+            TokenKind::Test => {
+                self.advance();
+                let name = match &self.current().kind {
+                    TokenKind::String(s) | TokenKind::Ident(s) => {
+                        let n = s.clone();
+                        self.advance();
+                        n
+                    }
+                    _ => "unnamed_test".to_string(),
+                };
+                let body = self.parse_block()?;
+                Ok(Stmt::Test { name, body })
+            }
+            TokenKind::Enum => {
+                self.advance();
+                let name = self.expect_ident()?;
+                self.expect(TokenKind::LBrace)?;
+                let mut entries = Vec::new();
+                let mut next_val = 0.0;
+                while !matches!(self.peek_kind(), TokenKind::RBrace | TokenKind::Eof) {
+                    let variant = self.expect_ident()?;
+                    let val_expr = if matches!(self.peek_kind(), TokenKind::Assign) {
+                        self.advance();
+                        let e = self.parse_expr()?;
+                        if let Expr::Number(n) = e {
+                            next_val = n + 1.0;
+                        }
+                        e
+                    } else {
+                        let e = Expr::Number(next_val);
+                        next_val += 1.0;
+                        e
+                    };
+                    entries.push((variant, val_expr));
+                    if matches!(self.peek_kind(), TokenKind::Comma | TokenKind::Semicolon) {
+                        self.advance();
+                    }
+                }
