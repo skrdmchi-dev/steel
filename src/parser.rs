@@ -491,3 +491,53 @@ impl Parser {
                 None
             } else {
                 Some(self.parse_expr()?)
+            };
+            self.expect(TokenKind::Arrow)?;
+            let body = if matches!(self.peek_kind(), TokenKind::LBrace) {
+                self.parse_block()?
+            } else {
+                vec![self.parse_stmt()?]
+            };
+            if matches!(self.peek_kind(), TokenKind::Comma | TokenKind::Semicolon) {
+                self.advance();
+            }
+            arms.push((pat, body));
+        }
+        self.expect(TokenKind::RBrace)?;
+
+        let mut current_else: Option<Vec<Stmt>> = None;
+        for (pat, body) in arms.into_iter().rev() {
+            match pat {
+                None => {
+                    current_else = Some(body);
+                }
+                Some(p) => {
+                    let cond = Expr::Binary {
+                        left: Box::new(subject.clone()),
+                        op: BinaryOp::Eq,
+                        right: Box::new(p),
+                    };
+                    current_else = Some(vec![Stmt::If {
+                        cond,
+                        then_branch: body,
+                        else_branch: current_else,
+                    }]);
+                }
+            }
+        }
+
+        match current_else {
+            Some(mut stmts) if stmts.len() == 1 => Ok(stmts.remove(0)),
+            Some(stmts) => Ok(Stmt::If {
+                cond: Expr::Bool(true),
+                then_branch: stmts,
+                else_branch: None,
+            }),
+            None => Ok(Stmt::Expr(Expr::Null)),
+        }
+    }
+
+    fn parse_param_list(&mut self) -> Result<Vec<(String, Option<Expr>)>, String> {
+        self.expect(TokenKind::LParen)?;
+        let mut params = Vec::new();
+        while !matches!(self.peek_kind(), TokenKind::RParen | TokenKind::Eof) {
