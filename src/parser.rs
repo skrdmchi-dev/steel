@@ -689,3 +689,52 @@ impl Parser {
                 left: Box::new(left),
                 op: BinaryOp::BitAnd,
                 right: Box::new(right),
+            };
+        }
+        Ok(left)
+    }
+
+    fn parse_equality(&mut self) -> Result<Expr, String> {
+        let mut left = self.parse_comparison()?;
+        while matches!(self.peek_kind(), TokenKind::Eq | TokenKind::Neq) {
+            let op = match self.advance().kind {
+                TokenKind::Eq => BinaryOp::Eq,
+                TokenKind::Neq => BinaryOp::Neq,
+                _ => unreachable!(),
+            };
+            let right = self.parse_comparison()?;
+            left = Expr::Binary {
+                left: Box::new(left),
+                op,
+                right: Box::new(right),
+            };
+        }
+        Ok(left)
+    }
+
+    fn parse_comparison(&mut self) -> Result<Expr, String> {
+        let mut left = self.parse_range()?;
+        while matches!(
+            self.peek_kind(),
+            TokenKind::Lt | TokenKind::Gt | TokenKind::Lte | TokenKind::Gte
+        ) {
+            let op = match self.advance().kind {
+                TokenKind::Lt => BinaryOp::Lt,
+                TokenKind::Gt => BinaryOp::Gt,
+                TokenKind::Lte => BinaryOp::Lte,
+                TokenKind::Gte => BinaryOp::Gte,
+                _ => unreachable!(),
+            };
+            let right = self.parse_range()?;
+            left = Expr::Binary {
+                left: Box::new(left),
+                op,
+                right: Box::new(right),
+            };
+        }
+        Ok(left)
+    }
+
+    fn parse_range(&mut self) -> Result<Expr, String> {
+        let left = self.parse_shift()?;
+        if matches!(self.peek_kind(), TokenKind::DotDot) {
