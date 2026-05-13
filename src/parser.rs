@@ -590,3 +590,52 @@ impl Parser {
                 },
             };
         }
+        Ok(left)
+    }
+
+    fn parse_ternary(&mut self) -> Result<Expr, String> {
+        let cond = self.parse_null_coalesce()?;
+        if matches!(self.peek_kind(), TokenKind::Question) {
+            self.advance();
+            let then_expr = self.parse_expr()?;
+            self.expect(TokenKind::Colon)?;
+            let else_expr = self.parse_ternary()?;
+            Ok(Expr::Ternary {
+                cond: Box::new(cond),
+                then_expr: Box::new(then_expr),
+                else_expr: Box::new(else_expr),
+            })
+        } else {
+            Ok(cond)
+        }
+    }
+
+    fn parse_null_coalesce(&mut self) -> Result<Expr, String> {
+        let mut left = self.parse_or()?;
+        while matches!(self.peek_kind(), TokenKind::NullCoalesce) {
+            self.advance();
+            let right = self.parse_or()?;
+            left = Expr::Binary {
+                left: Box::new(left),
+                op: BinaryOp::NullCoalesce,
+                right: Box::new(right),
+            };
+        }
+        Ok(left)
+    }
+
+    fn parse_or(&mut self) -> Result<Expr, String> {
+        let mut left = self.parse_and()?;
+        while matches!(self.peek_kind(), TokenKind::Or) {
+            self.advance();
+            let right = self.parse_and()?;
+            left = Expr::Binary {
+                left: Box::new(left),
+                op: BinaryOp::Or,
+                right: Box::new(right),
+            };
+        }
+        Ok(left)
+    }
+
+    fn parse_and(&mut self) -> Result<Expr, String> {
