@@ -541,3 +541,52 @@ impl Parser {
         self.expect(TokenKind::LParen)?;
         let mut params = Vec::new();
         while !matches!(self.peek_kind(), TokenKind::RParen | TokenKind::Eof) {
+            if matches!(self.peek_kind(), TokenKind::DotDotDot) {
+                self.advance();
+            }
+            let name = self.expect_ident()?;
+            if matches!(self.peek_kind(), TokenKind::Colon) {
+                self.advance();
+                let _type_name = self.expect_ident()?;
+            }
+            let default = if matches!(self.peek_kind(), TokenKind::Assign) {
+                self.advance();
+                Some(self.parse_expr()?)
+            } else {
+                None
+            };
+            params.push((name, default));
+            if matches!(self.peek_kind(), TokenKind::Comma) {
+                self.advance();
+            } else {
+                break;
+            }
+        }
+        self.expect(TokenKind::RParen)?;
+        Ok(params)
+    }
+
+    pub fn parse_expr(&mut self) -> Result<Expr, String> {
+        self.parse_pipe()
+    }
+
+    fn parse_pipe(&mut self) -> Result<Expr, String> {
+        let mut left = self.parse_ternary()?;
+        while matches!(self.peek_kind(), TokenKind::Pipe) {
+            self.advance();
+            let right = self.parse_ternary()?;
+            left = match right {
+                Expr::Call { callee, mut args } => {
+                    let mut new_args = vec![left];
+                    new_args.append(&mut args);
+                    Expr::Call {
+                        callee,
+                        args: new_args,
+                    }
+                }
+                other => Expr::Call {
+                    callee: Box::new(other),
+                    args: vec![left],
+                },
+            };
+        }
