@@ -639,3 +639,53 @@ impl Parser {
     }
 
     fn parse_and(&mut self) -> Result<Expr, String> {
+        let mut left = self.parse_bitor()?;
+        while matches!(self.peek_kind(), TokenKind::And) {
+            self.advance();
+            let right = self.parse_bitor()?;
+            left = Expr::Binary {
+                left: Box::new(left),
+                op: BinaryOp::And,
+                right: Box::new(right),
+            };
+        }
+        Ok(left)
+    }
+
+    fn parse_bitor(&mut self) -> Result<Expr, String> {
+        let mut left = self.parse_bitxor()?;
+        while matches!(self.peek_kind(), TokenKind::BitOr) {
+            self.advance();
+            let right = self.parse_bitxor()?;
+            left = Expr::Binary {
+                left: Box::new(left),
+                op: BinaryOp::BitOr,
+                right: Box::new(right),
+            };
+        }
+        Ok(left)
+    }
+
+    fn parse_bitxor(&mut self) -> Result<Expr, String> {
+        let mut left = self.parse_bitand()?;
+        while matches!(self.peek_kind(), TokenKind::BitXor) {
+            self.advance();
+            let right = self.parse_bitand()?;
+            left = Expr::Binary {
+                left: Box::new(left),
+                op: BinaryOp::BitXor,
+                right: Box::new(right),
+            };
+        }
+        Ok(left)
+    }
+
+    fn parse_bitand(&mut self) -> Result<Expr, String> {
+        let mut left = self.parse_equality()?;
+        while matches!(self.peek_kind(), TokenKind::BitAnd) {
+            self.advance();
+            let right = self.parse_equality()?;
+            left = Expr::Binary {
+                left: Box::new(left),
+                op: BinaryOp::BitAnd,
+                right: Box::new(right),
