@@ -738,3 +738,52 @@ impl Parser {
     fn parse_range(&mut self) -> Result<Expr, String> {
         let left = self.parse_shift()?;
         if matches!(self.peek_kind(), TokenKind::DotDot) {
+            self.advance();
+            let right = self.parse_shift()?;
+            Ok(Expr::Range {
+                start: Box::new(left),
+                end: Box::new(right),
+            })
+        } else {
+            Ok(left)
+        }
+    }
+
+    fn parse_shift(&mut self) -> Result<Expr, String> {
+        let mut left = self.parse_term()?;
+        while matches!(self.peek_kind(), TokenKind::Shl | TokenKind::Shr) {
+            let op = match self.advance().kind {
+                TokenKind::Shl => BinaryOp::Shl,
+                TokenKind::Shr => BinaryOp::Shr,
+                _ => unreachable!(),
+            };
+            let right = self.parse_term()?;
+            left = Expr::Binary {
+                left: Box::new(left),
+                op,
+                right: Box::new(right),
+            };
+        }
+        Ok(left)
+    }
+
+    fn parse_term(&mut self) -> Result<Expr, String> {
+        let mut left = self.parse_factor()?;
+        while matches!(self.peek_kind(), TokenKind::Plus | TokenKind::Minus) {
+            let op = match self.advance().kind {
+                TokenKind::Plus => BinaryOp::Add,
+                TokenKind::Minus => BinaryOp::Sub,
+                _ => unreachable!(),
+            };
+            let right = self.parse_factor()?;
+            left = Expr::Binary {
+                left: Box::new(left),
+                op,
+                right: Box::new(right),
+            };
+        }
+        Ok(left)
+    }
+
+    fn parse_factor(&mut self) -> Result<Expr, String> {
+        let mut left = self.parse_power()?;
