@@ -787,3 +787,53 @@ impl Parser {
 
     fn parse_factor(&mut self) -> Result<Expr, String> {
         let mut left = self.parse_power()?;
+        while matches!(
+            self.peek_kind(),
+            TokenKind::Star | TokenKind::Slash | TokenKind::Percent
+        ) {
+            let op = match self.advance().kind {
+                TokenKind::Star => BinaryOp::Mul,
+                TokenKind::Slash => BinaryOp::Div,
+                TokenKind::Percent => BinaryOp::Mod,
+                _ => unreachable!(),
+            };
+            let right = self.parse_power()?;
+            left = Expr::Binary {
+                left: Box::new(left),
+                op,
+                right: Box::new(right),
+            };
+        }
+        Ok(left)
+    }
+
+    fn parse_power(&mut self) -> Result<Expr, String> {
+        let left = self.parse_unary()?;
+        if matches!(self.peek_kind(), TokenKind::StarStar) {
+            self.advance();
+            let right = self.parse_power()?;
+            Ok(Expr::Binary {
+                left: Box::new(left),
+                op: BinaryOp::Pow,
+                right: Box::new(right),
+            })
+        } else {
+            Ok(left)
+        }
+    }
+
+    fn parse_unary(&mut self) -> Result<Expr, String> {
+        match self.peek_kind() {
+            TokenKind::Minus => {
+                self.advance();
+                let expr = self.parse_unary()?;
+                Ok(Expr::Unary {
+                    op: UnaryOp::Neg,
+                    expr: Box::new(expr),
+                })
+            }
+            TokenKind::Not => {
+                self.advance();
+                let expr = self.parse_unary()?;
+                Ok(Expr::Unary {
+                    op: UnaryOp::Not,
