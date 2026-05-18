@@ -837,3 +837,52 @@ impl Parser {
                 let expr = self.parse_unary()?;
                 Ok(Expr::Unary {
                     op: UnaryOp::Not,
+                    expr: Box::new(expr),
+                })
+            }
+            TokenKind::BitNot => {
+                self.advance();
+                let expr = self.parse_unary()?;
+                Ok(Expr::Unary {
+                    op: UnaryOp::BitNot,
+                    expr: Box::new(expr),
+                })
+            }
+            _ => self.parse_postfix(),
+        }
+    }
+
+    fn parse_postfix(&mut self) -> Result<Expr, String> {
+        let mut expr = self.parse_primary()?;
+        loop {
+            match self.peek_kind() {
+                TokenKind::LParen => {
+                    self.advance();
+                    let mut args = Vec::new();
+                    while !matches!(self.peek_kind(), TokenKind::RParen | TokenKind::Eof) {
+                        args.push(self.parse_expr()?);
+                        if matches!(self.peek_kind(), TokenKind::Comma) {
+                            self.advance();
+                        } else {
+                            break;
+                        }
+                    }
+                    self.expect(TokenKind::RParen)?;
+                    expr = Expr::Call {
+                        callee: Box::new(expr),
+                        args,
+                    };
+                }
+                TokenKind::LBracket => {
+                    self.advance();
+                    let index = self.parse_expr()?;
+                    self.expect(TokenKind::RBracket)?;
+                    expr = Expr::Index {
+                        target: Box::new(expr),
+                        index: Box::new(index),
+                    };
+                }
+                TokenKind::Dot => {
+                    self.advance();
+                    let field = self.expect_ident()?;
+                    // If followed by `(`, check if it's a stdlib method chain (e.g., `s.upper()`, `arr.map(...)`)
