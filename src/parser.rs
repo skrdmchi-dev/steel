@@ -935,3 +935,53 @@ impl Parser {
                             target: Box::new(expr),
                             field,
                         };
+                    }
+                }
+                _ => break,
+            }
+        }
+        Ok(expr)
+    }
+
+    fn parse_primary(&mut self) -> Result<Expr, String> {
+        let tok = self.current().clone();
+        match tok.kind {
+            TokenKind::Number(n) => {
+                self.advance();
+                Ok(Expr::Number(n))
+            }
+            TokenKind::String(s) => {
+                self.advance();
+                Self::expand_interpolated_string(&s)
+            }
+            TokenKind::True => {
+                self.advance();
+                Ok(Expr::Bool(true))
+            }
+            TokenKind::False => {
+                self.advance();
+                Ok(Expr::Bool(false))
+            }
+            TokenKind::Null => {
+                self.advance();
+                Ok(Expr::Null)
+            }
+            TokenKind::New => {
+                self.advance();
+                let class_name = self.expect_ident()?;
+                self.expect(TokenKind::LParen)?;
+                let mut args = Vec::new();
+                while !matches!(self.peek_kind(), TokenKind::RParen | TokenKind::Eof) {
+                    args.push(self.parse_expr()?);
+                    if matches!(self.peek_kind(), TokenKind::Comma) {
+                        self.advance();
+                    } else {
+                        break;
+                    }
+                }
+                self.expect(TokenKind::RParen)?;
+                Ok(Expr::New { class_name, args })
+            }
+            TokenKind::Ident(name) => {
+                self.advance();
+                // Single-argument arrow lambda: `x => expr` or `x => { ... }`
