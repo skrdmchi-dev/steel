@@ -886,3 +886,52 @@ impl Parser {
                     self.advance();
                     let field = self.expect_ident()?;
                     // If followed by `(`, check if it's a stdlib method chain (e.g., `s.upper()`, `arr.map(...)`)
+                    if matches!(self.peek_kind(), TokenKind::LParen)
+                        && matches!(
+                            field.as_str(),
+                            "len"
+                                | "push"
+                                | "pop"
+                                | "keys"
+                                | "values"
+                                | "contains"
+                                | "slice"
+                                | "reverse"
+                                | "sort"
+                                | "map"
+                                | "filter"
+                                | "reduce"
+                                | "split"
+                                | "join"
+                                | "trim"
+                                | "upper"
+                                | "lower"
+                                | "replace"
+                                | "sum"
+                                | "avg"
+                                | "unique"
+                                | "flat"
+                                | "enumerate"
+                                | "zip"
+                        )
+                    {
+                        self.advance(); // consume '('
+                        let mut args = vec![expr];
+                        while !matches!(self.peek_kind(), TokenKind::RParen | TokenKind::Eof) {
+                            args.push(self.parse_expr()?);
+                            if matches!(self.peek_kind(), TokenKind::Comma) {
+                                self.advance();
+                            } else {
+                                break;
+                            }
+                        }
+                        self.expect(TokenKind::RParen)?;
+                        expr = Expr::Call {
+                            callee: Box::new(Expr::Ident(field)),
+                            args,
+                        };
+                    } else {
+                        expr = Expr::Member {
+                            target: Box::new(expr),
+                            field,
+                        };
