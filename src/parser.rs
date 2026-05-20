@@ -985,3 +985,52 @@ impl Parser {
             TokenKind::Ident(name) => {
                 self.advance();
                 // Single-argument arrow lambda: `x => expr` or `x => { ... }`
+                if matches!(self.peek_kind(), TokenKind::Arrow) {
+                    self.advance();
+                    let body = if matches!(self.peek_kind(), TokenKind::LBrace) {
+                        self.parse_block()?
+                    } else {
+                        vec![Stmt::Return(Some(self.parse_expr()?))]
+                    };
+                    return Ok(Expr::FnExpr {
+                        params: vec![(name, None)],
+                        body,
+                    });
+                }
+                Ok(Expr::Ident(name))
+            }
+            TokenKind::Fn => {
+                self.advance();
+                let params = self.parse_param_list()?;
+                let body = self.parse_block()?;
+                Ok(Expr::FnExpr { params, body })
+            }
+            TokenKind::LParen => {
+                // Check if `(a, b) => ...` or `() => ...` arrow function
+                if let Some((params, next_pos)) = self.try_parse_arrow_params() {
+                    self.pos = next_pos;
+                    self.expect(TokenKind::Arrow)?;
+                    let body = if matches!(self.peek_kind(), TokenKind::LBrace) {
+                        self.parse_block()?
+                    } else {
+                        vec![Stmt::Return(Some(self.parse_expr()?))]
+                    };
+                    return Ok(Expr::FnExpr { params, body });
+                }
+                self.advance();
+                let expr = self.parse_expr()?;
+                self.expect(TokenKind::RParen)?;
+                Ok(expr)
+            }
+            TokenKind::LBracket => {
+                self.advance();
+                let mut items = Vec::new();
+                while !matches!(self.peek_kind(), TokenKind::RBracket | TokenKind::Eof) {
+                    if matches!(self.peek_kind(), TokenKind::DotDotDot) {
+                        self.advance();
+                        items.push(Expr::Spread(Box::new(self.parse_expr()?)));
+                    } else {
+                        items.push(self.parse_expr()?);
+                    }
+                    if matches!(self.peek_kind(), TokenKind::Comma) {
+                        self.advance();
