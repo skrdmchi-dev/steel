@@ -1034,3 +1034,52 @@ impl Parser {
                     }
                     if matches!(self.peek_kind(), TokenKind::Comma) {
                         self.advance();
+                    } else {
+                        break;
+                    }
+                }
+                self.expect(TokenKind::RBracket)?;
+                Ok(Expr::Array(items))
+            }
+            TokenKind::LBrace => {
+                self.advance();
+                let mut entries = Vec::new();
+                while !matches!(self.peek_kind(), TokenKind::RBrace | TokenKind::Eof) {
+                    let key = match &self.current().kind {
+                        TokenKind::String(s) => {
+                            let k = s.clone();
+                            self.advance();
+                            k
+                        }
+                        TokenKind::Ident(s) => {
+                            let k = s.clone();
+                            self.advance();
+                            k
+                        }
+                        other => {
+                            return Err(format!(
+                                "Expected map key (string or identifier), found {:?} at {}:{}",
+                                other,
+                                self.current().line,
+                                self.current().col
+                            ))
+                        }
+                    };
+                    self.expect(TokenKind::Colon)?;
+                    let val = self.parse_expr()?;
+                    entries.push((key, val));
+                    if matches!(self.peek_kind(), TokenKind::Comma) {
+                        self.advance();
+                    } else {
+                        break;
+                    }
+                }
+                self.expect(TokenKind::RBrace)?;
+                Ok(Expr::Map(entries))
+            }
+            _ => Err(format!(
+                "Unexpected token {:?} at {}:{}",
+                tok.kind, tok.line, tok.col
+            )),
+        }
+    }
