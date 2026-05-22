@@ -1083,3 +1083,53 @@ impl Parser {
             )),
         }
     }
+
+    fn try_parse_arrow_params(&self) -> Option<(Vec<(String, Option<Expr>)>, usize)> {
+        let mut p = self.pos;
+        if !matches!(self.tokens.get(p)?.kind, TokenKind::LParen) {
+            return None;
+        }
+        p += 1;
+        let mut params = Vec::new();
+        while !matches!(self.tokens.get(p)?.kind, TokenKind::RParen) {
+            if let TokenKind::Ident(name) = &self.tokens.get(p)?.kind {
+                params.push((name.clone(), None));
+                p += 1;
+                if matches!(self.tokens.get(p)?.kind, TokenKind::Comma) {
+                    p += 1;
+                } else if !matches!(self.tokens.get(p)?.kind, TokenKind::RParen) {
+                    return None;
+                }
+            } else {
+                return None;
+            }
+        }
+        p += 1; // past ')'
+        if matches!(self.tokens.get(p)?.kind, TokenKind::Arrow) {
+            Some((params, p))
+        } else {
+            None
+        }
+    }
+
+    fn expand_interpolated_string(s: &str) -> Result<Expr, String> {
+        if !s.contains("${") {
+            return Ok(Expr::String(s.to_string()));
+        }
+
+        let mut parts: Vec<Expr> = Vec::new();
+        let chars: Vec<char> = s.chars().collect();
+        let mut i = 0;
+        let mut literal = String::new();
+
+        while i < chars.len() {
+            if chars[i] == '$' && i + 1 < chars.len() && chars[i + 1] == '{' {
+                if !literal.is_empty() {
+                    parts.push(Expr::String(literal.clone()));
+                    literal.clear();
+                }
+                i += 2;
+                let mut inner = String::new();
+                let mut depth = 1;
+                while i < chars.len() && depth > 0 {
+                    if chars[i] == '{' {
