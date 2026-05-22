@@ -1133,3 +1133,52 @@ impl Parser {
                 let mut depth = 1;
                 while i < chars.len() && depth > 0 {
                     if chars[i] == '{' {
+                        depth += 1;
+                    } else if chars[i] == '}' {
+                        depth -= 1;
+                        if depth == 0 {
+                            i += 1;
+                            break;
+                        }
+                    }
+                    inner.push(chars[i]);
+                    i += 1;
+                }
+                let mut sub_lexer = crate::lexer::Lexer::new(&inner);
+                let sub_tokens = sub_lexer.tokenize()?;
+                let mut sub_parser = Parser::new(sub_tokens);
+                let sub_expr = sub_parser.parse_expr()?;
+                parts.push(Expr::Call {
+                    callee: Box::new(Expr::Ident("str".to_string())),
+                    args: vec![sub_expr],
+                });
+            } else {
+                literal.push(chars[i]);
+                i += 1;
+            }
+        }
+        if !literal.is_empty() {
+            parts.push(Expr::String(literal));
+        }
+
+        if parts.is_empty() {
+            return Ok(Expr::String(String::new()));
+        }
+
+        let mut iter = parts.into_iter();
+        let first = iter.next().unwrap();
+        let first_str = match first {
+            Expr::String(_) => first,
+            other => Expr::Binary {
+                left: Box::new(Expr::String(String::new())),
+                op: BinaryOp::Add,
+                right: Box::new(other),
+            },
+        };
+        Ok(iter.fold(first_str, |acc, part| Expr::Binary {
+            left: Box::new(acc),
+            op: BinaryOp::Add,
+            right: Box::new(part),
+        }))
+    }
+}
