@@ -54,3 +54,60 @@ impl Value {
             Value::Bool(_) => "boolean",
             Value::Num(_) => "number",
             Value::Str(_) => "string",
+            Value::Arr(_) => "array",
+            Value::Map(_) => "map",
+            Value::Class { .. } => "class",
+            Value::Func { .. } | Value::BoundMethod { .. } | Value::NativeFn(_) => "function",
+        }
+    }
+}
+
+impl PartialEq for Value {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Value::Null, Value::Null) => true,
+            (Value::Bool(a), Value::Bool(b)) => a == b,
+            (Value::Num(a), Value::Num(b)) => a == b,
+            (Value::Str(a), Value::Str(b)) => a == b,
+            (Value::Arr(a), Value::Arr(b)) => *a.borrow() == *b.borrow(),
+            (Value::Map(a), Value::Map(b)) => *a.borrow() == *b.borrow(),
+            _ => false,
+        }
+    }
+}
+
+impl fmt::Display for Value {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Value::Null => write!(f, "null"),
+            Value::Bool(b) => write!(f, "{}", b),
+            Value::Num(n) => {
+                if n.fract() == 0.0 {
+                    write!(f, "{:.0}", n)
+                } else {
+                    write!(f, "{}", n)
+                }
+            }
+            Value::Str(s) => write!(f, "{}", s),
+            Value::Arr(a) => {
+                let items: Vec<String> = a.borrow().iter().map(|v| v.to_string()).collect();
+                write!(f, "[{}]", items.join(", "))
+            }
+            Value::Map(m) => {
+                let items: Vec<String> = m
+                    .borrow()
+                    .iter()
+                    .filter(|(k, _)| !k.starts_with("__"))
+                    .map(|(k, v)| format!("{}: {}", k, v))
+                    .collect();
+                write!(f, "{{{}}}", items.join(", "))
+            }
+            Value::Class { name, .. } => write!(f, "<class {}>", name),
+            Value::Func { .. } | Value::BoundMethod { .. } | Value::NativeFn(_) => {
+                write!(f, "<fn>")
+            }
+        }
+    }
+}
+
+#[derive(Clone)]
