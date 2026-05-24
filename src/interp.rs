@@ -111,3 +111,59 @@ impl fmt::Display for Value {
 }
 
 #[derive(Clone)]
+pub struct Env {
+    vars: BTreeMap<String, Value>,
+    parent: Option<Rc<RefCell<Env>>>,
+}
+
+impl Env {
+    pub fn new(parent: Option<Rc<RefCell<Env>>>) -> Self {
+        Self {
+            vars: BTreeMap::new(),
+            parent,
+        }
+    }
+
+    pub fn define(&mut self, name: String, val: Value) {
+        self.vars.insert(name, val);
+    }
+
+    pub fn get(&self, name: &str) -> Option<Value> {
+        if let Some(v) = self.vars.get(name) {
+            return Some(v.clone());
+        }
+        if let Some(p) = &self.parent {
+            return p.borrow().get(name);
+        }
+        None
+    }
+
+    fn exists_in_chain(&self, name: &str) -> bool {
+        if self.vars.contains_key(name) {
+            return true;
+        }
+        if let Some(p) = &self.parent {
+            return p.borrow().exists_in_chain(name);
+        }
+        false
+    }
+
+    pub fn assign(&mut self, name: &str, val: Value) -> Result<(), String> {
+        if self.vars.contains_key(name) {
+            self.vars.insert(name.to_string(), val);
+            return Ok(());
+        }
+        if let Some(p) = &self.parent {
+            if p.borrow().exists_in_chain(name) {
+                return p.borrow_mut().assign(name, val);
+            }
+        }
+        // Optional `let`: first assignment to a new variable creates it in the current scope!
+        self.vars.insert(name.to_string(), val);
+        Ok(())
+    }
+}
+
+enum Signal {
+    None,
+    Return(Value),
