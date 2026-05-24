@@ -167,3 +167,60 @@ impl Env {
 enum Signal {
     None,
     Return(Value),
+    Break,
+    Continue,
+}
+
+pub struct Interpreter {
+    pub global: Rc<RefCell<Env>>,
+}
+
+impl Interpreter {
+    pub fn new() -> Self {
+        let mut env = Env::new(None);
+
+        // --- Core I/O & Inspection ---
+        env.define(
+            "print".to_string(),
+            Value::NativeFn(|args| {
+                let out: Vec<String> = args.iter().map(|a| a.to_string()).collect();
+                println!("{}", out.join(" "));
+                Ok(Value::Null)
+            }),
+        );
+        env.define(
+            "println".to_string(),
+            Value::NativeFn(|args| {
+                let out: Vec<String> = args.iter().map(|a| a.to_string()).collect();
+                println!("{}", out.join(" "));
+                Ok(Value::Null)
+            }),
+        );
+        env.define(
+            "input".to_string(),
+            Value::NativeFn(|args| {
+                if let Some(prompt) = args.first() {
+                    print!("{}", prompt);
+                    let _ = io::stdout().flush();
+                }
+                let mut buf = String::new();
+                io::stdin()
+                    .read_line(&mut buf)
+                    .map_err(|e| format!("input error: {}", e))?;
+                Ok(Value::Str(buf.trim_end_matches(&['\r', '\n'][..]).to_string()))
+            }),
+        );
+        env.define(
+            "assert".to_string(),
+            Value::NativeFn(|args| {
+                let cond = args.first().map(|v| v.is_truthy()).unwrap_or(false);
+                if !cond {
+                    let msg = args
+                        .get(1)
+                        .map(|v| v.to_string())
+                        .unwrap_or_else(|| "Assertion failed".to_string());
+                    Err(msg)
+                } else {
+                    Ok(Value::Bool(true))
+                }
+            }),
