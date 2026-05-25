@@ -280,3 +280,60 @@ impl Interpreter {
             "len".to_string(),
             Value::NativeFn(|args| match args.first() {
                 Some(Value::Arr(a)) => Ok(Value::Num(a.borrow().len() as f64)),
+                Some(Value::Str(s)) => Ok(Value::Num(s.chars().count() as f64)),
+                Some(Value::Map(m)) => Ok(Value::Num(m.borrow().len() as f64)),
+                _ => Ok(Value::Num(0.0)),
+            }),
+        );
+        env.define(
+            "push".to_string(),
+            Value::NativeFn(|args| {
+                if let (Some(Value::Arr(a)), Some(v)) = (args.first(), args.get(1)) {
+                    a.borrow_mut().push(v.clone());
+                    Ok(Value::Arr(a.clone()))
+                } else {
+                    Err("push(array, value) expects an array and a value".to_string())
+                }
+            }),
+        );
+        env.define(
+            "pop".to_string(),
+            Value::NativeFn(|args| {
+                if let Some(Value::Arr(a)) = args.first() {
+                    Ok(a.borrow_mut().pop().unwrap_or(Value::Null))
+                } else {
+                    Err("pop(array) expects an array".to_string())
+                }
+            }),
+        );
+        env.define(
+            "keys".to_string(),
+            Value::NativeFn(|args| {
+                if let Some(Value::Map(m)) = args.first() {
+                    let ks: Vec<Value> = m
+                        .borrow()
+                        .keys()
+                        .filter(|k| !k.starts_with("__"))
+                        .map(|k| Value::Str(k.clone()))
+                        .collect();
+                    Ok(Value::Arr(Rc::new(RefCell::new(ks))))
+                } else {
+                    Err("keys(map) expects a map".to_string())
+                }
+            }),
+        );
+        env.define(
+            "values".to_string(),
+            Value::NativeFn(|args| {
+                if let Some(Value::Map(m)) = args.first() {
+                    let vs: Vec<Value> = m
+                        .borrow()
+                        .iter()
+                        .filter(|(k, _)| !k.starts_with("__"))
+                        .map(|(_, v)| v.clone())
+                        .collect();
+                    Ok(Value::Arr(Rc::new(RefCell::new(vs))))
+                } else {
+                    Err("values(map) expects a map".to_string())
+                }
+            }),
