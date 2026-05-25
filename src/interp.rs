@@ -224,3 +224,59 @@ impl Interpreter {
                     Ok(Value::Bool(true))
                 }
             }),
+        );
+        env.define(
+            "type".to_string(),
+            Value::NativeFn(|args| {
+                let t = args.first().map(|v| v.type_name()).unwrap_or("null");
+                Ok(Value::Str(t.to_string()))
+            }),
+        );
+        env.define(
+            "str".to_string(),
+            Value::NativeFn(|args| {
+                Ok(Value::Str(
+                    args.first().cloned().unwrap_or(Value::Null).to_string(),
+                ))
+            }),
+        );
+        env.define(
+            "num".to_string(),
+            Value::NativeFn(|args| match args.first() {
+                Some(Value::Num(n)) => Ok(Value::Num(*n)),
+                Some(Value::Str(s)) => s
+                    .trim()
+                    .parse::<f64>()
+                    .map(Value::Num)
+                    .map_err(|_| format!("Cannot convert '{}' to number", s)),
+                Some(Value::Bool(b)) => Ok(Value::Num(if *b { 1.0 } else { 0.0 })),
+                _ => Ok(Value::Num(0.0)),
+            }),
+        );
+        env.define(
+            "int".to_string(),
+            Value::NativeFn(|args| match args.first() {
+                Some(Value::Num(n)) => Ok(Value::Num(n.trunc())),
+                Some(Value::Str(s)) => s
+                    .trim()
+                    .parse::<f64>()
+                    .map(|n| Value::Num(n.trunc()))
+                    .map_err(|_| format!("Cannot convert '{}' to int", s)),
+                Some(Value::Bool(b)) => Ok(Value::Num(if *b { 1.0 } else { 0.0 })),
+                _ => Ok(Value::Num(0.0)),
+            }),
+        );
+        env.define(
+            "bool".to_string(),
+            Value::NativeFn(|args| {
+                Ok(Value::Bool(
+                    args.first().map(|v| v.is_truthy()).unwrap_or(false),
+                ))
+            }),
+        );
+
+        // --- Collections & Strings ---
+        env.define(
+            "len".to_string(),
+            Value::NativeFn(|args| match args.first() {
+                Some(Value::Arr(a)) => Ok(Value::Num(a.borrow().len() as f64)),
