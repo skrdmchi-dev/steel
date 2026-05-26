@@ -506,3 +506,59 @@ impl Interpreter {
                 Some(Value::Num(n)) => Ok(Value::Num(n.abs())),
                 _ => Err("abs(n) expects a number".to_string()),
             }),
+        );
+        env.define(
+            "floor".to_string(),
+            Value::NativeFn(|args| match args.first() {
+                Some(Value::Num(n)) => Ok(Value::Num(n.floor())),
+                _ => Err("floor(n) expects a number".to_string()),
+            }),
+        );
+        env.define(
+            "ceil".to_string(),
+            Value::NativeFn(|args| match args.first() {
+                Some(Value::Num(n)) => Ok(Value::Num(n.ceil())),
+                _ => Err("ceil(n) expects a number".to_string()),
+            }),
+        );
+        env.define(
+            "round".to_string(),
+            Value::NativeFn(|args| match args.first() {
+                Some(Value::Num(n)) => Ok(Value::Num(n.round())),
+                _ => Err("round(n) expects a number".to_string()),
+            }),
+        );
+        env.define(
+            "sqrt".to_string(),
+            Value::NativeFn(|args| match args.first() {
+                Some(Value::Num(n)) => Ok(Value::Num(n.sqrt())),
+                _ => Err("sqrt(n) expects a number".to_string()),
+            }),
+        );
+        env.define(
+            "pow".to_string(),
+            Value::NativeFn(|args| match (args.first(), args.get(1)) {
+                (Some(Value::Num(a)), Some(Value::Num(b))) => Ok(Value::Num(a.powf(*b))),
+                _ => Err("pow(a, b) expects two numbers".to_string()),
+            }),
+        );
+        env.define(
+            "min".to_string(),
+            Value::NativeFn(|args| match (args.first(), args.get(1)) {
+                (Some(Value::Num(a)), Some(Value::Num(b))) => Ok(Value::Num(a.min(*b))),
+                _ => Err("min(a, b) expects two numbers".to_string()),
+            }),
+        );
+        env.define(
+            "max".to_string(),
+            Value::NativeFn(|args| match (args.first(), args.get(1)) {
+                (Some(Value::Num(a)), Some(Value::Num(b))) => Ok(Value::Num(a.max(*b))),
+                _ => Err("max(a, b) expects two numbers".to_string()),
+            }),
+        );
+        env.define(
+            "sin".to_string(),
+            Value::NativeFn(|args| match args.first() {
+                Some(Value::Num(n)) => Ok(Value::Num(n.sin())),
+                _ => Err("sin(n) expects a number".to_string()),
+            }),
