@@ -337,3 +337,59 @@ impl Interpreter {
                     Err("values(map) expects a map".to_string())
                 }
             }),
+        );
+        env.define(
+            "contains".to_string(),
+            Value::NativeFn(|args| match (args.first(), args.get(1)) {
+                (Some(Value::Arr(a)), Some(needle)) => {
+                    Ok(Value::Bool(a.borrow().contains(needle)))
+                }
+                (Some(Value::Str(s)), Some(Value::Str(sub))) => {
+                    Ok(Value::Bool(s.contains(sub.as_str())))
+                }
+                (Some(Value::Map(m)), Some(Value::Str(k))) => {
+                    Ok(Value::Bool(m.borrow().contains_key(k)))
+                }
+                _ => Ok(Value::Bool(false)),
+            }),
+        );
+        env.define(
+            "range".to_string(),
+            Value::NativeFn(|args| match (args.first(), args.get(1), args.get(2)) {
+                (Some(Value::Num(a)), Some(Value::Num(b)), step_opt) => {
+                    let s = *a as i64;
+                    let e = *b as i64;
+                    let step = step_opt
+                        .and_then(|v| if let Value::Num(n) = v { Some(*n as i64) } else { None })
+                        .unwrap_or(1);
+                    if step == 0 {
+                        return Err("range step cannot be 0".to_string());
+                    }
+                    let mut v = Vec::new();
+                    let mut cur = s;
+                    if step > 0 {
+                        while cur < e {
+                            v.push(Value::Num(cur as f64));
+                            cur += step;
+                        }
+                    } else {
+                        while cur > e {
+                            v.push(Value::Num(cur as f64));
+                            cur += step;
+                        }
+                    }
+                    Ok(Value::Arr(Rc::new(RefCell::new(v))))
+                }
+                _ => Err("range(start, end, [step]) expects numbers".to_string()),
+            }),
+        );
+        env.define(
+            "split".to_string(),
+            Value::NativeFn(|args| match (args.first(), args.get(1)) {
+                (Some(Value::Str(s)), Some(Value::Str(sep))) => {
+                    let parts: Vec<Value> = if sep.is_empty() {
+                        s.chars().map(|c| Value::Str(c.to_string())).collect()
+                    } else {
+                        s.split(sep.as_str())
+                            .map(|p| Value::Str(p.to_string()))
+                            .collect()
