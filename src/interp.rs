@@ -449,3 +449,60 @@ impl Interpreter {
                         .and_then(|v| if let Value::Num(n) = v { Some(*n as usize) } else { None })
                         .unwrap_or(b.len())
                         .min(b.len());
+                    let sliced = if start <= end {
+                        b[start..end].to_vec()
+                    } else {
+                        vec![]
+                    };
+                    Ok(Value::Arr(Rc::new(RefCell::new(sliced))))
+                }
+                (Some(Value::Str(st)), Some(Value::Num(s)), end_opt) => {
+                    let chars: Vec<char> = st.chars().collect();
+                    let start = (*s as usize).min(chars.len());
+                    let end = end_opt
+                        .and_then(|v| if let Value::Num(n) = v { Some(*n as usize) } else { None })
+                        .unwrap_or(chars.len())
+                        .min(chars.len());
+                    let sliced: String = if start <= end {
+                        chars[start..end].iter().collect()
+                    } else {
+                        String::new()
+                    };
+                    Ok(Value::Str(sliced))
+                }
+                _ => Err("slice(arr_or_str, start, [end]) invalid arguments".to_string()),
+            }),
+        );
+        env.define(
+            "reverse".to_string(),
+            Value::NativeFn(|args| match args.first() {
+                Some(Value::Arr(a)) => {
+                    let mut v = a.borrow().clone();
+                    v.reverse();
+                    Ok(Value::Arr(Rc::new(RefCell::new(v))))
+                }
+                Some(Value::Str(s)) => Ok(Value::Str(s.chars().rev().collect())),
+                _ => Err("reverse(x) expects an array or string".to_string()),
+            }),
+        );
+        env.define(
+            "sort".to_string(),
+            Value::NativeFn(|args| match args.first() {
+                Some(Value::Arr(a)) => {
+                    let mut v = a.borrow().clone();
+                    v.sort_by(|x, y| x.to_string().cmp(&y.to_string()));
+                    Ok(Value::Arr(Rc::new(RefCell::new(v))))
+                }
+                _ => Err("sort(array) expects an array".to_string()),
+            }),
+        );
+
+        // --- Math Standard Library ---
+        env.define("PI".to_string(), Value::Num(std::f64::consts::PI));
+        env.define("E".to_string(), Value::Num(std::f64::consts::E));
+        env.define(
+            "abs".to_string(),
+            Value::NativeFn(|args| match args.first() {
+                Some(Value::Num(n)) => Ok(Value::Num(n.abs())),
+                _ => Err("abs(n) expects a number".to_string()),
+            }),
