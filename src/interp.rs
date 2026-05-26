@@ -393,3 +393,59 @@ impl Interpreter {
                         s.split(sep.as_str())
                             .map(|p| Value::Str(p.to_string()))
                             .collect()
+                    };
+                    Ok(Value::Arr(Rc::new(RefCell::new(parts))))
+                }
+                _ => Err("split(str, sep) expects two strings".to_string()),
+            }),
+        );
+        env.define(
+            "join".to_string(),
+            Value::NativeFn(|args| match (args.first(), args.get(1)) {
+                (Some(Value::Arr(a)), Some(Value::Str(sep))) => {
+                    let parts: Vec<String> = a.borrow().iter().map(|v| v.to_string()).collect();
+                    Ok(Value::Str(parts.join(sep)))
+                }
+                _ => Err("join(array, sep) expects an array and a string".to_string()),
+            }),
+        );
+        env.define(
+            "trim".to_string(),
+            Value::NativeFn(|args| match args.first() {
+                Some(Value::Str(s)) => Ok(Value::Str(s.trim().to_string())),
+                _ => Err("trim(str) expects a string".to_string()),
+            }),
+        );
+        env.define(
+            "upper".to_string(),
+            Value::NativeFn(|args| match args.first() {
+                Some(Value::Str(s)) => Ok(Value::Str(s.to_uppercase())),
+                _ => Err("upper(str) expects a string".to_string()),
+            }),
+        );
+        env.define(
+            "lower".to_string(),
+            Value::NativeFn(|args| match args.first() {
+                Some(Value::Str(s)) => Ok(Value::Str(s.to_lowercase())),
+                _ => Err("lower(str) expects a string".to_string()),
+            }),
+        );
+        env.define(
+            "replace".to_string(),
+            Value::NativeFn(|args| match (args.first(), args.get(1), args.get(2)) {
+                (Some(Value::Str(s)), Some(Value::Str(from)), Some(Value::Str(to))) => {
+                    Ok(Value::Str(s.replace(from.as_str(), to.as_str())))
+                }
+                _ => Err("replace(str, from, to) expects three strings".to_string()),
+            }),
+        );
+        env.define(
+            "slice".to_string(),
+            Value::NativeFn(|args| match (args.first(), args.get(1), args.get(2)) {
+                (Some(Value::Arr(a)), Some(Value::Num(s)), end_opt) => {
+                    let b = a.borrow();
+                    let start = (*s as usize).min(b.len());
+                    let end = end_opt
+                        .and_then(|v| if let Value::Num(n) = v { Some(*n as usize) } else { None })
+                        .unwrap_or(b.len())
+                        .min(b.len());
