@@ -619,3 +619,59 @@ impl Interpreter {
                     .map(|d| d.as_secs_f64())
                     .unwrap_or(0.0);
                 Ok(Value::Num(secs))
+            }),
+        );
+
+        // --- Extended Standard Library (JSON, OS, FS, Random, Hash, Collection Helpers) ---
+        env.define(
+            "json_stringify".to_string(),
+            Value::NativeFn(|args| {
+                let v = args.first().cloned().unwrap_or(Value::Null);
+                Ok(Value::Str(value_to_json(&v)))
+            }),
+        );
+        env.define(
+            "json_parse".to_string(),
+            Value::NativeFn(|args| match args.first() {
+                Some(Value::Str(s)) => parse_simple_json(s),
+                _ => Err("json_parse(str) expects a JSON string".to_string()),
+            }),
+        );
+        env.define(
+            "args".to_string(),
+            Value::NativeFn(|_| {
+                let cli_args: Vec<Value> =
+                    std::env::args().map(Value::Str).collect();
+                Ok(Value::Arr(Rc::new(RefCell::new(cli_args))))
+            }),
+        );
+        env.define(
+            "env".to_string(),
+            Value::NativeFn(|args| match args.first() {
+                Some(Value::Str(key)) => Ok(std::env::var(key)
+                    .map(Value::Str)
+                    .unwrap_or(Value::Null)),
+                _ => Err("env(key) expects a string".to_string()),
+            }),
+        );
+        env.define(
+            "set_env".to_string(),
+            Value::NativeFn(|args| match (args.first(), args.get(1)) {
+                (Some(Value::Str(k)), Some(v)) => {
+                    std::env::set_var(k, v.to_string());
+                    Ok(Value::Bool(true))
+                }
+                _ => Err("set_env(key, val) expects a string key and value".to_string()),
+            }),
+        );
+        env.define(
+            "cwd".to_string(),
+            Value::NativeFn(|_| {
+                let p = std::env::current_dir()
+                    .map(|d| d.to_string_lossy().to_string())
+                    .unwrap_or_else(|_| ".".to_string());
+                Ok(Value::Str(p))
+            }),
+        );
+        env.define(
+            "exec".to_string(),
