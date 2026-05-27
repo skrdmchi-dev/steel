@@ -732,3 +732,59 @@ impl Interpreter {
             "make_dir".to_string(),
             Value::NativeFn(|args| match args.first() {
                 Some(Value::Str(p)) => fs::create_dir_all(p)
+                    .map(|_| Value::Bool(true))
+                    .map_err(|e| format!("make_dir('{}') failed: {}", p, e)),
+                _ => Err("make_dir(path) expects a string path".to_string()),
+            }),
+        );
+        env.define(
+            "remove_file".to_string(),
+            Value::NativeFn(|args| match args.first() {
+                Some(Value::Str(p)) => fs::remove_file(p)
+                    .map(|_| Value::Bool(true))
+                    .map_err(|e| format!("remove_file('{}') failed: {}", p, e)),
+                _ => Err("remove_file(path) expects a string path".to_string()),
+            }),
+        );
+        env.define(
+            "append_file".to_string(),
+            Value::NativeFn(|args| match (args.first(), args.get(1)) {
+                (Some(Value::Str(p)), Some(content)) => {
+                    let mut f = fs::OpenOptions::new()
+                        .create(true)
+                        .append(true)
+                        .open(p)
+                        .map_err(|e| format!("append_file('{}') failed: {}", p, e))?;
+                    f.write_all(content.to_string().as_bytes())
+                        .map(|_| Value::Bool(true))
+                        .map_err(|e| format!("append_file write failed: {}", e))
+                }
+                _ => Err("append_file(path, content) expects path and content".to_string()),
+            }),
+        );
+        env.define(
+            "sleep".to_string(),
+            Value::NativeFn(|args| match args.first() {
+                Some(Value::Num(ms)) => {
+                    std::thread::sleep(std::time::Duration::from_millis(ms.max(0.0) as u64));
+                    Ok(Value::Null)
+                }
+                _ => Err("sleep(ms) expects milliseconds".to_string()),
+            }),
+        );
+        env.define(
+            "random".to_string(),
+            Value::NativeFn(|_| Ok(Value::Num(fast_rand_f64()))),
+        );
+        env.define(
+            "rand_int".to_string(),
+            Value::NativeFn(|args| match (args.first(), args.get(1)) {
+                (Some(Value::Num(a)), Some(Value::Num(b))) => {
+                    let low = *a as i64;
+                    let high = *b as i64;
+                    if high <= low {
+                        return Ok(Value::Num(low as f64));
+                    }
+                    let span = (high - low) as f64;
+                    let r = low + (fast_rand_f64() * span).floor() as i64;
+                    Ok(Value::Num(r as f64))
