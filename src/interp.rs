@@ -562,3 +562,60 @@ impl Interpreter {
                 Some(Value::Num(n)) => Ok(Value::Num(n.sin())),
                 _ => Err("sin(n) expects a number".to_string()),
             }),
+        );
+        env.define(
+            "cos".to_string(),
+            Value::NativeFn(|args| match args.first() {
+                Some(Value::Num(n)) => Ok(Value::Num(n.cos())),
+                _ => Err("cos(n) expects a number".to_string()),
+            }),
+        );
+        env.define(
+            "tan".to_string(),
+            Value::NativeFn(|args| match args.first() {
+                Some(Value::Num(n)) => Ok(Value::Num(n.tan())),
+                _ => Err("tan(n) expects a number".to_string()),
+            }),
+        );
+        env.define(
+            "starts_with".to_string(),
+            Value::NativeFn(|args| match (args.first(), args.get(1)) {
+                (Some(Value::Str(s)), Some(Value::Str(p))) => Ok(Value::Bool(s.starts_with(p.as_str()))),
+                _ => Ok(Value::Bool(false)),
+            }),
+        );
+        env.define(
+            "ends_with".to_string(),
+            Value::NativeFn(|args| match (args.first(), args.get(1)) {
+                (Some(Value::Str(s)), Some(Value::Str(p))) => Ok(Value::Bool(s.ends_with(p.as_str()))),
+                _ => Ok(Value::Bool(false)),
+            }),
+        );
+
+        // --- File I/O & Clock ---
+        env.define(
+            "read_file".to_string(),
+            Value::NativeFn(|args| match args.first() {
+                Some(Value::Str(path)) => fs::read_to_string(path)
+                    .map(Value::Str)
+                    .map_err(|e| format!("read_file('{}') failed: {}", path, e)),
+                _ => Err("read_file(path) expects a string path".to_string()),
+            }),
+        );
+        env.define(
+            "write_file".to_string(),
+            Value::NativeFn(|args| match (args.first(), args.get(1)) {
+                (Some(Value::Str(path)), Some(content)) => fs::write(path, content.to_string())
+                    .map(|_| Value::Bool(true))
+                    .map_err(|e| format!("write_file('{}') failed: {}", path, e)),
+                _ => Err("write_file(path, content) expects a path and content".to_string()),
+            }),
+        );
+        env.define(
+            "clock".to_string(),
+            Value::NativeFn(|_| {
+                let secs = SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .map(|d| d.as_secs_f64())
+                    .unwrap_or(0.0);
+                Ok(Value::Num(secs))
