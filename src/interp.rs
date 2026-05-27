@@ -675,3 +675,60 @@ impl Interpreter {
         );
         env.define(
             "exec".to_string(),
+            Value::NativeFn(|args| match args.first() {
+                Some(Value::Str(cmd)) => {
+                    let out = if cfg!(target_os = "windows") {
+                        std::process::Command::new("cmd")
+                            .args(["/C", cmd])
+                            .output()
+                    } else {
+                        std::process::Command::new("sh")
+                            .args(["-c", cmd])
+                            .output()
+                    }
+                    .map_err(|e| format!("exec('{}') failed: {}", cmd, e))?;
+                    Ok(Value::Str(
+                        String::from_utf8_lossy(&out.stdout).trim_end().to_string(),
+                    ))
+                }
+                _ => Err("exec(cmd) expects a command string".to_string()),
+            }),
+        );
+        env.define(
+            "exit".to_string(),
+            Value::NativeFn(|args| {
+                let code = args
+                    .first()
+                    .and_then(|v| if let Value::Num(n) = v { Some(*n as i32) } else { None })
+                    .unwrap_or(0);
+                std::process::exit(code);
+            }),
+        );
+        env.define(
+            "file_exists".to_string(),
+            Value::NativeFn(|args| match args.first() {
+                Some(Value::Str(p)) => Ok(Value::Bool(std::path::Path::new(p).exists())),
+                _ => Ok(Value::Bool(false)),
+            }),
+        );
+        env.define(
+            "list_dir".to_string(),
+            Value::NativeFn(|args| match args.first() {
+                Some(Value::Str(p)) => {
+                    let entries = fs::read_dir(p)
+                        .map_err(|e| format!("list_dir('{}') failed: {}", p, e))?;
+                    let mut list = Vec::new();
+                    for entry in entries.flatten() {
+                        list.push(Value::Str(
+                            entry.file_name().to_string_lossy().to_string(),
+                        ));
+                    }
+                    Ok(Value::Arr(Rc::new(RefCell::new(list))))
+                }
+                _ => Err("list_dir(path) expects a string path".to_string()),
+            }),
+        );
+        env.define(
+            "make_dir".to_string(),
+            Value::NativeFn(|args| match args.first() {
+                Some(Value::Str(p)) => fs::create_dir_all(p)
