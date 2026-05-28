@@ -788,3 +788,59 @@ impl Interpreter {
                     let span = (high - low) as f64;
                     let r = low + (fast_rand_f64() * span).floor() as i64;
                     Ok(Value::Num(r as f64))
+                }
+                _ => Err("rand_int(min, max) expects two numbers".to_string()),
+            }),
+        );
+        env.define(
+            "hash".to_string(),
+            Value::NativeFn(|args| {
+                let s = args.first().map(|v| v.to_string()).unwrap_or_default();
+                let mut h: u64 = 0xcbf2_9ce4_8422_2325;
+                for b in s.as_bytes() {
+                    h ^= *b as u64;
+                    h = h.wrapping_mul(0x0100_0000_01b3);
+                }
+                Ok(Value::Str(format!("{:016x}", h)))
+            }),
+        );
+        env.define(
+            "uuid".to_string(),
+            Value::NativeFn(|_| {
+                let a = (fast_rand_f64() * (u32::MAX as f64)) as u32;
+                let b = (fast_rand_f64() * (u16::MAX as f64)) as u16;
+                let c = 0x4000 | ((fast_rand_f64() * 4095.0) as u16);
+                let d = 0x8000 | ((fast_rand_f64() * 16383.0) as u16);
+                let e = (fast_rand_f64() * (u64::MAX as f64)) as u64 & 0xFFFF_FFFF_FFFF;
+                Ok(Value::Str(format!(
+                    "{:08x}-{:04x}-{:04x}-{:04x}-{:012x}",
+                    a, b, c, d, e
+                )))
+            }),
+        );
+        env.define(
+            "clamp".to_string(),
+            Value::NativeFn(|args| match (args.first(), args.get(1), args.get(2)) {
+                (Some(Value::Num(x)), Some(Value::Num(lo)), Some(Value::Num(hi))) => {
+                    Ok(Value::Num(x.max(*lo).min(*hi)))
+                }
+                _ => Err("clamp(x, min, max) expects three numbers".to_string()),
+            }),
+        );
+        env.define(
+            "atan2".to_string(),
+            Value::NativeFn(|args| match (args.first(), args.get(1)) {
+                (Some(Value::Num(y)), Some(Value::Num(x))) => Ok(Value::Num(y.atan2(*x))),
+                _ => Err("atan2(y, x) expects two numbers".to_string()),
+            }),
+        );
+        env.define(
+            "log".to_string(),
+            Value::NativeFn(|args| match args.first() {
+                Some(Value::Num(x)) => Ok(Value::Num(x.ln())),
+                _ => Err("log(x) expects a number".to_string()),
+            }),
+        );
+        env.define(
+            "exp".to_string(),
+            Value::NativeFn(|args| match args.first() {
