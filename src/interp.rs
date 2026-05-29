@@ -1014,3 +1014,59 @@ impl Interpreter {
                     let mut prefix = String::new();
                     let pad_chars: Vec<char> = pad.chars().collect();
                     for i in 0..need {
+                        prefix.push(pad_chars[i % pad_chars.len()]);
+                    }
+                    prefix.push_str(s);
+                    Ok(Value::Str(prefix))
+                }
+                _ => Err("pad_start(str, width, [pad]) expects a string and width".to_string()),
+            }),
+        );
+        env.define(
+            "pad_end".to_string(),
+            Value::NativeFn(|args| match (args.first(), args.get(1)) {
+                (Some(Value::Str(s)), Some(Value::Num(w))) => {
+                    let width = (*w as isize).max(0) as usize;
+                    let pad = args
+                        .get(2)
+                        .and_then(|v| if let Value::Str(p) = v { Some(p.clone()) } else { None })
+                        .unwrap_or_else(|| " ".to_string());
+                    let cur = s.chars().count();
+                    if cur >= width || pad.is_empty() {
+                        return Ok(Value::Str(s.clone()));
+                    }
+                    let need = width - cur;
+                    let mut out = s.clone();
+                    let pad_chars: Vec<char> = pad.chars().collect();
+                    for i in 0..need {
+                        out.push(pad_chars[i % pad_chars.len()]);
+                    }
+                    Ok(Value::Str(out))
+                }
+                _ => Err("pad_end(str, width, [pad]) expects a string and width".to_string()),
+            }),
+        );
+        env.define(
+            "char_code".to_string(),
+            Value::NativeFn(|args| match args.first() {
+                Some(Value::Str(s)) => Ok(Value::Num(
+                    s.chars().next().map(|c| c as u32 as f64).unwrap_or(0.0),
+                )),
+                _ => Ok(Value::Num(0.0)),
+            }),
+        );
+        env.define(
+            "from_char_code".to_string(),
+            Value::NativeFn(|args| match args.first() {
+                Some(Value::Num(n)) => {
+                    let c = char::from_u32((*n as i64).max(0) as u32).unwrap_or('\0');
+                    Ok(Value::Str(c.to_string()))
+                }
+                _ => Ok(Value::Str(String::new())),
+            }),
+        );
+        env.define(
+            "has_key".to_string(),
+            Value::NativeFn(|args| match (args.first(), args.get(1)) {
+                (Some(Value::Map(m)), Some(Value::Str(k))) => {
+                    Ok(Value::Bool(m.borrow().contains_key(k)))
