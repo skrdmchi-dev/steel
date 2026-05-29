@@ -957,3 +957,60 @@ impl Interpreter {
                         .zip(b.borrow().iter())
                         .map(|(x, y)| {
                             Value::Arr(Rc::new(RefCell::new(vec![x.clone(), y.clone()])))
+                        })
+                        .collect();
+                    Ok(Value::Arr(Rc::new(RefCell::new(out))))
+                }
+                _ => Err("zip(arr1, arr2) expects two arrays".to_string()),
+            }),
+        );
+        env.define(
+            "index_of".to_string(),
+            Value::NativeFn(|args| match (args.first(), args.get(1)) {
+                (Some(Value::Str(s)), Some(Value::Str(sub))) => {
+                    if let Some(byte_idx) = s.find(sub.as_str()) {
+                        let char_idx = s[..byte_idx].chars().count();
+                        Ok(Value::Num(char_idx as f64))
+                    } else {
+                        Ok(Value::Num(-1.0))
+                    }
+                }
+                (Some(Value::Arr(a)), Some(needle)) => {
+                    let b = a.borrow();
+                    for (i, v) in b.iter().enumerate() {
+                        if v == needle {
+                            return Ok(Value::Num(i as f64));
+                        }
+                    }
+                    Ok(Value::Num(-1.0))
+                }
+                _ => Ok(Value::Num(-1.0)),
+            }),
+        );
+        env.define(
+            "repeat".to_string(),
+            Value::NativeFn(|args| match (args.first(), args.get(1)) {
+                (Some(Value::Str(s)), Some(Value::Num(n))) => {
+                    let count = (*n as isize).max(0) as usize;
+                    Ok(Value::Str(s.repeat(count)))
+                }
+                _ => Err("repeat(str, count) expects a string and a number".to_string()),
+            }),
+        );
+        env.define(
+            "pad_start".to_string(),
+            Value::NativeFn(|args| match (args.first(), args.get(1)) {
+                (Some(Value::Str(s)), Some(Value::Num(w))) => {
+                    let width = (*w as isize).max(0) as usize;
+                    let pad = args
+                        .get(2)
+                        .and_then(|v| if let Value::Str(p) = v { Some(p.clone()) } else { None })
+                        .unwrap_or_else(|| " ".to_string());
+                    let cur = s.chars().count();
+                    if cur >= width || pad.is_empty() {
+                        return Ok(Value::Str(s.clone()));
+                    }
+                    let need = width - cur;
+                    let mut prefix = String::new();
+                    let pad_chars: Vec<char> = pad.chars().collect();
+                    for i in 0..need {
