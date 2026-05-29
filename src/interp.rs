@@ -901,3 +901,59 @@ impl Interpreter {
                 Some(Value::Arr(a)) => {
                     let mut out = Vec::new();
                     for v in a.borrow().iter() {
+                        if !out.contains(v) {
+                            out.push(v.clone());
+                        }
+                    }
+                    Ok(Value::Arr(Rc::new(RefCell::new(out))))
+                }
+                _ => Err("unique(array) expects an array".to_string()),
+            }),
+        );
+        env.define(
+            "flat".to_string(),
+            Value::NativeFn(|args| match args.first() {
+                Some(Value::Arr(a)) => {
+                    let mut out = Vec::new();
+                    for v in a.borrow().iter() {
+                        if let Value::Arr(inner) = v {
+                            out.extend(inner.borrow().iter().cloned());
+                        } else {
+                            out.push(v.clone());
+                        }
+                    }
+                    Ok(Value::Arr(Rc::new(RefCell::new(out))))
+                }
+                _ => Err("flat(array) expects an array".to_string()),
+            }),
+        );
+        env.define(
+            "enumerate".to_string(),
+            Value::NativeFn(|args| match args.first() {
+                Some(Value::Arr(a)) => {
+                    let out: Vec<Value> = a
+                        .borrow()
+                        .iter()
+                        .enumerate()
+                        .map(|(i, v)| {
+                            Value::Arr(Rc::new(RefCell::new(vec![
+                                Value::Num(i as f64),
+                                v.clone(),
+                            ])))
+                        })
+                        .collect();
+                    Ok(Value::Arr(Rc::new(RefCell::new(out))))
+                }
+                _ => Err("enumerate(array) expects an array".to_string()),
+            }),
+        );
+        env.define(
+            "zip".to_string(),
+            Value::NativeFn(|args| match (args.first(), args.get(1)) {
+                (Some(Value::Arr(a)), Some(Value::Arr(b))) => {
+                    let out: Vec<Value> = a
+                        .borrow()
+                        .iter()
+                        .zip(b.borrow().iter())
+                        .map(|(x, y)| {
+                            Value::Arr(Rc::new(RefCell::new(vec![x.clone(), y.clone()])))
