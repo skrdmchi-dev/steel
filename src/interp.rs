@@ -844,3 +844,60 @@ impl Interpreter {
         env.define(
             "exp".to_string(),
             Value::NativeFn(|args| match args.first() {
+                Some(Value::Num(x)) => Ok(Value::Num(x.exp())),
+                _ => Err("exp(x) expects a number".to_string()),
+            }),
+        );
+        env.define(
+            "sign".to_string(),
+            Value::NativeFn(|args| match args.first() {
+                Some(Value::Num(x)) => Ok(Value::Num(if *x > 0.0 {
+                    1.0
+                } else if *x < 0.0 {
+                    -1.0
+                } else {
+                    0.0
+                })),
+                _ => Err("sign(x) expects a number".to_string()),
+            }),
+        );
+        env.define(
+            "sum".to_string(),
+            Value::NativeFn(|args| match args.first() {
+                Some(Value::Arr(a)) => {
+                    let mut total = 0.0;
+                    for v in a.borrow().iter() {
+                        if let Value::Num(n) = v {
+                            total += *n;
+                        }
+                    }
+                    Ok(Value::Num(total))
+                }
+                _ => Err("sum(array) expects an array of numbers".to_string()),
+            }),
+        );
+        env.define(
+            "avg".to_string(),
+            Value::NativeFn(|args| match args.first() {
+                Some(Value::Arr(a)) => {
+                    let b = a.borrow();
+                    if b.is_empty() {
+                        return Ok(Value::Num(0.0));
+                    }
+                    let mut total = 0.0;
+                    for v in b.iter() {
+                        if let Value::Num(n) = v {
+                            total += *n;
+                        }
+                    }
+                    Ok(Value::Num(total / (b.len() as f64)))
+                }
+                _ => Err("avg(array) expects an array of numbers".to_string()),
+            }),
+        );
+        env.define(
+            "unique".to_string(),
+            Value::NativeFn(|args| match args.first() {
+                Some(Value::Arr(a)) => {
+                    let mut out = Vec::new();
+                    for v in a.borrow().iter() {
