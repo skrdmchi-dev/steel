@@ -1183,3 +1183,59 @@ impl Interpreter {
                             (Value::Map(m), Value::Str(k)) => {
                                 m.borrow_mut().insert(k, v);
                             }
+                            _ => return Err("Invalid index assignment target".to_string()),
+                        }
+                    }
+                    AssignTarget::Member { target, field } => {
+                        let t = self.eval_expr(target, env)?;
+                        if let Value::Map(m) = t {
+                            m.borrow_mut().insert(field.clone(), v);
+                        } else {
+                            return Err("Member assignment requires a map or class instance".to_string());
+                        }
+                    }
+                }
+                Ok(Signal::None)
+            }
+            Stmt::FnDecl { name, params, body } => {
+                let func = Value::Func {
+                    params: params.clone(),
+                    body: body.clone(),
+                    closure: env.clone(),
+                };
+                env.borrow_mut().define(name.clone(), func);
+                Ok(Signal::None)
+            }
+            Stmt::ClassDecl {
+                name,
+                parent,
+                methods,
+            } => {
+                let cls = Value::Class {
+                    name: name.clone(),
+                    parent: parent.clone(),
+                    methods: methods.clone(),
+                    closure: env.clone(),
+                };
+                env.borrow_mut().define(name.clone(), cls);
+                Ok(Signal::None)
+            }
+            Stmt::TryCatch {
+                try_body,
+                err_var,
+                catch_body,
+            } => match self.exec_block(try_body, env) {
+                Ok(sig) => Ok(sig),
+                Err(err_msg) => {
+                    let catch_env = Rc::new(RefCell::new(Env::new(Some(env.clone()))));
+                    catch_env
+                        .borrow_mut()
+                        .define(err_var.clone(), Value::Str(err_msg));
+                    self.exec_block(catch_body, &catch_env)
+                }
+            },
+            Stmt::Throw(expr) => {
+                let v = self.eval_expr(expr, env)?;
+                Err(v.to_string())
+            }
+            Stmt::Test { body, .. } => self.exec_block(body, env),
