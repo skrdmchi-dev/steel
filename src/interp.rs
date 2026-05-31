@@ -1070,3 +1070,59 @@ impl Interpreter {
             Value::NativeFn(|args| match (args.first(), args.get(1)) {
                 (Some(Value::Map(m)), Some(Value::Str(k))) => {
                     Ok(Value::Bool(m.borrow().contains_key(k)))
+                }
+                _ => Ok(Value::Bool(false)),
+            }),
+        );
+        env.define(
+            "delete_key".to_string(),
+            Value::NativeFn(|args| match (args.first(), args.get(1)) {
+                (Some(Value::Map(m)), Some(Value::Str(k))) => {
+                    Ok(Value::Bool(m.borrow_mut().remove(k).is_some()))
+                }
+                _ => Ok(Value::Bool(false)),
+            }),
+        );
+        env.define(
+            "concat".to_string(),
+            Value::NativeFn(|args| match (args.first(), args.get(1)) {
+                (Some(Value::Arr(a)), Some(Value::Arr(b))) => {
+                    let mut out = a.borrow().clone();
+                    out.extend(b.borrow().iter().cloned());
+                    Ok(Value::Arr(Rc::new(RefCell::new(out))))
+                }
+                _ => Err("concat(arr1, arr2) expects two arrays".to_string()),
+            }),
+        );
+
+        Self {
+            global: Rc::new(RefCell::new(env)),
+        }
+    }
+
+    pub fn run(&mut self, program: &Program) -> Result<Value, String> {
+        let mut last = Value::Null;
+        let global = self.global.clone();
+        for stmt in &program.statements {
+            if let Stmt::Expr(e) = stmt {
+                last = self.eval_expr(e, &global)?;
+            } else {
+                match self.exec_stmt(stmt, &global)? {
+                    Signal::Return(v) => return Ok(v),
+                    _ => {}
+                }
+            }
+        }
+        Ok(last)
+    }
+
+    fn exec_block(&mut self, stmts: &[Stmt], env: &Rc<RefCell<Env>>) -> Result<Signal, String> {
+        let block_env = Rc::new(RefCell::new(Env::new(Some(env.clone()))));
+        let mut deferred: Vec<Stmt> = Vec::new();
+        let mut result = Ok(Signal::None);
+        for st in stmts {
+            if let Stmt::Defer(d) = st {
+                deferred.push((**d).clone());
+                continue;
+            }
+            match self.exec_stmt(st, &block_env) {
