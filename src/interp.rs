@@ -1126,3 +1126,60 @@ impl Interpreter {
                 continue;
             }
             match self.exec_stmt(st, &block_env) {
+                Ok(Signal::None) => {}
+                other => {
+                    result = other;
+                    break;
+                }
+            }
+        }
+        for d in deferred.into_iter().rev() {
+            let _ = self.exec_stmt(&d, &block_env);
+        }
+        result
+    }
+
+    fn exec_stmt(&mut self, stmt: &Stmt, env: &Rc<RefCell<Env>>) -> Result<Signal, String> {
+        match stmt {
+            Stmt::Import(path) => {
+                let src = fs::read_to_string(path)
+                    .map_err(|e| format!("Failed to import '{}': {}", path, e))?;
+                let mut lexer = crate::lexer::Lexer::new(&src);
+                let tokens = lexer.tokenize()?;
+                let mut parser = crate::parser::Parser::new(tokens);
+                let prog = parser.parse_program()?;
+                for st in &prog.statements {
+                    self.exec_stmt(st, env)?;
+                }
+                Ok(Signal::None)
+            }
+            Stmt::Let { name, value, .. } => {
+                let v = self.eval_expr(value, env)?;
+                env.borrow_mut().define(name.clone(), v);
+                Ok(Signal::None)
+            }
+            Stmt::Assign { target, value } => {
+                let v = self.eval_expr(value, env)?;
+                match target {
+                    AssignTarget::Ident(name) => {
+                        env.borrow_mut().assign(name, v)?;
+                    }
+                    AssignTarget::Index { target, index } => {
+                        let t = self.eval_expr(target, env)?;
+                        let idx = self.eval_expr(index, env)?;
+                        match (t, idx) {
+                            (Value::Arr(a), Value::Num(n)) => {
+                                let mut b = a.borrow_mut();
+                                let mut i = n as isize;
+                                if i < 0 {
+                                    i += b.len() as isize;
+                                }
+                                if i >= 0 && (i as usize) < b.len() {
+                                    b[i as usize] = v;
+                                } else {
+                                    return Err(format!("Index {} out of bounds", n));
+                                }
+                            }
+                            (Value::Map(m), Value::Str(k)) => {
+                                m.borrow_mut().insert(k, v);
+                            }
