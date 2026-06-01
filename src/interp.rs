@@ -1239,3 +1239,60 @@ impl Interpreter {
                 Err(v.to_string())
             }
             Stmt::Test { body, .. } => self.exec_block(body, env),
+            Stmt::Defer(inner) => self.exec_stmt(inner, env),
+            Stmt::Return(expr) => {
+                let v = match expr {
+                    Some(e) => self.eval_expr(e, env)?,
+                    None => Value::Null,
+                };
+                Ok(Signal::Return(v))
+            }
+            Stmt::If {
+                cond,
+                then_branch,
+                else_branch,
+            } => {
+                if self.eval_expr(cond, env)?.is_truthy() {
+                    self.exec_block(then_branch, env)
+                } else if let Some(eb) = else_branch {
+                    self.exec_block(eb, env)
+                } else {
+                    Ok(Signal::None)
+                }
+            }
+            Stmt::While { cond, body } => {
+                while self.eval_expr(cond, env)?.is_truthy() {
+                    match self.exec_block(body, env)? {
+                        Signal::None | Signal::Continue => {}
+                        Signal::Break => break,
+                        Signal::Return(v) => return Ok(Signal::Return(v)),
+                    }
+                }
+                Ok(Signal::None)
+            }
+            Stmt::For {
+                var,
+                iterable,
+                body,
+            } => {
+                let it_val = self.eval_expr(iterable, env)?;
+                let items = match it_val {
+                    Value::Arr(a) => a.borrow().clone(),
+                    Value::Str(s) => s.chars().map(|c| Value::Str(c.to_string())).collect(),
+                    Value::Map(m) => m
+                        .borrow()
+                        .keys()
+                        .filter(|k| !k.starts_with("__"))
+                        .map(|k| Value::Str(k.clone()))
+                        .collect(),
+                    _ => return Err("for-in expects an array, range, map, or string".to_string()),
+                };
+                for item in items {
+                    let loop_env = Rc::new(RefCell::new(Env::new(Some(env.clone()))));
+                    loop_env.borrow_mut().define(var.clone(), item);
+                    for st in body {
+                        match self.exec_stmt(st, &loop_env)? {
+                            Signal::None => {}
+                            Signal::Continue => break,
+                            Signal::Break => return Ok(Signal::None),
+                            Signal::Return(v) => return Ok(Signal::Return(v)),
