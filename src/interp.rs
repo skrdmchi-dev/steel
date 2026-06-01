@@ -1296,3 +1296,59 @@ impl Interpreter {
                             Signal::Continue => break,
                             Signal::Break => return Ok(Signal::None),
                             Signal::Return(v) => return Ok(Signal::Return(v)),
+                        }
+                    }
+                }
+                Ok(Signal::None)
+            }
+            Stmt::Break => Ok(Signal::Break),
+            Stmt::Continue => Ok(Signal::Continue),
+            Stmt::Expr(e) => {
+                self.eval_expr(e, env)?;
+                Ok(Signal::None)
+            }
+        }
+    }
+
+    fn instantiate_class(
+        &mut self,
+        class_val: Value,
+        args: Vec<Value>,
+        env: &Rc<RefCell<Env>>,
+    ) -> Result<Value, String> {
+        if let Value::Class {
+            name,
+            parent,
+            methods,
+            closure,
+        } = class_val
+        {
+            let mut fields = BTreeMap::new();
+            fields.insert("__class".to_string(), Value::Str(name.clone()));
+
+            // Inherit ancestor methods from root down to direct parent so closer overrides win
+            let mut chain = Vec::new();
+            let mut cur_parent = parent.clone();
+            while let Some(pname) = cur_parent {
+                if let Some(Value::Class {
+                    parent: next_parent,
+                    methods: parent_methods,
+                    closure: parent_closure,
+                    ..
+                }) = env.borrow().get(&pname)
+                {
+                    chain.push((parent_methods, parent_closure));
+                    cur_parent = next_parent;
+                } else {
+                    break;
+                }
+            }
+            for (parent_methods, parent_closure) in chain.into_iter().rev() {
+                for m in parent_methods {
+                    fields.insert(
+                        m.name.clone(),
+                        Value::Func {
+                            params: m.params,
+                            body: m.body,
+                            closure: parent_closure.clone(),
+                        },
