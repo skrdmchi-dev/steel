@@ -1521,3 +1521,60 @@ impl Interpreter {
             Expr::Unary { op, expr } => {
                 let v = self.eval_expr(expr, env)?;
                 match op {
+                    UnaryOp::Neg => match v {
+                        Value::Num(n) => Ok(Value::Num(-n)),
+                        _ => Err("Unary '-' requires a number".to_string()),
+                    },
+                    UnaryOp::Not => Ok(Value::Bool(!v.is_truthy())),
+                    UnaryOp::BitNot => match v {
+                        Value::Num(n) => Ok(Value::Num((!(n as i64)) as f64)),
+                        _ => Err("Unary '~' requires a number".to_string()),
+                    },
+                }
+            }
+            Expr::Binary { left, op, right } => {
+                if matches!(op, BinaryOp::And) {
+                    let l = self.eval_expr(left, env)?;
+                    if !l.is_truthy() {
+                        return Ok(Value::Bool(false));
+                    }
+                    let r = self.eval_expr(right, env)?;
+                    return Ok(Value::Bool(r.is_truthy()));
+                }
+                if matches!(op, BinaryOp::Or) {
+                    let l = self.eval_expr(left, env)?;
+                    if l.is_truthy() {
+                        return Ok(Value::Bool(true));
+                    }
+                    let r = self.eval_expr(right, env)?;
+                    return Ok(Value::Bool(r.is_truthy()));
+                }
+                if matches!(op, BinaryOp::NullCoalesce) {
+                    let l = self.eval_expr(left, env)?;
+                    if !matches!(l, Value::Null) {
+                        return Ok(l);
+                    }
+                    return self.eval_expr(right, env);
+                }
+
+                let l = self.eval_expr(left, env)?;
+                let r = self.eval_expr(right, env)?;
+                match op {
+                    BinaryOp::Add => match (&l, &r) {
+                        (Value::Num(a), Value::Num(b)) => Ok(Value::Num(a + b)),
+                        (Value::Str(_), _) | (_, Value::Str(_)) => {
+                            Ok(Value::Str(format!("{}{}", l, r)))
+                        }
+                        (Value::Arr(a), Value::Arr(b)) => {
+                            let mut combined = a.borrow().clone();
+                            combined.extend(b.borrow().iter().cloned());
+                            Ok(Value::Arr(Rc::new(RefCell::new(combined))))
+                        }
+                        _ => Err(format!("Cannot add {} and {}", l.type_name(), r.type_name())),
+                    },
+                    BinaryOp::Sub => match (l, r) {
+                        (Value::Num(a), Value::Num(b)) => Ok(Value::Num(a - b)),
+                        _ => Err("'-' requires numbers".to_string()),
+                    },
+                    BinaryOp::Mul => match (l, r) {
+                        (Value::Num(a), Value::Num(b)) => Ok(Value::Num(a * b)),
