@@ -1465,3 +1465,59 @@ impl Interpreter {
                     if let Expr::Spread(inner) = it {
                         let v = self.eval_expr(inner, env)?;
                         if let Value::Arr(a) = v {
+                            vals.extend(a.borrow().iter().cloned());
+                        } else {
+                            vals.push(v);
+                        }
+                    } else {
+                        vals.push(self.eval_expr(it, env)?);
+                    }
+                }
+                Ok(Value::Arr(Rc::new(RefCell::new(vals))))
+            }
+            Expr::Spread(inner) => self.eval_expr(inner, env),
+            Expr::Map(entries) => {
+                let mut map = BTreeMap::new();
+                for (k, v) in entries {
+                    map.insert(k.clone(), self.eval_expr(v, env)?);
+                }
+                Ok(Value::Map(Rc::new(RefCell::new(map))))
+            }
+            Expr::New { class_name, args } => {
+                let cls = env
+                    .borrow()
+                    .get(class_name)
+                    .ok_or_else(|| format!("Undefined class '{}'", class_name))?;
+                let mut eval_args = Vec::new();
+                for a in args {
+                    eval_args.push(self.eval_expr(a, env)?);
+                }
+                self.instantiate_class(cls, eval_args, env)
+            }
+            Expr::Ternary {
+                cond,
+                then_expr,
+                else_expr,
+            } => {
+                if self.eval_expr(cond, env)?.is_truthy() {
+                    self.eval_expr(then_expr, env)
+                } else {
+                    self.eval_expr(else_expr, env)
+                }
+            }
+            Expr::Range { start, end } => {
+                let s = self.eval_expr(start, env)?;
+                let e = self.eval_expr(end, env)?;
+                match (s, e) {
+                    (Value::Num(a), Value::Num(b)) => {
+                        let v: Vec<Value> = ((a as i64)..(b as i64))
+                            .map(|i| Value::Num(i as f64))
+                            .collect();
+                        Ok(Value::Arr(Rc::new(RefCell::new(v))))
+                    }
+                    _ => Err("Range bounds '..' must be numbers".to_string()),
+                }
+            }
+            Expr::Unary { op, expr } => {
+                let v = self.eval_expr(expr, env)?;
+                match op {
