@@ -1352,3 +1352,60 @@ impl Interpreter {
                             body: m.body,
                             closure: parent_closure.clone(),
                         },
+                    );
+                }
+            }
+
+            for m in &methods {
+                fields.insert(
+                    m.name.clone(),
+                    Value::Func {
+                        params: m.params.clone(),
+                        body: m.body.clone(),
+                        closure: closure.clone(),
+                    },
+                );
+            }
+
+            let instance = Value::Map(Rc::new(RefCell::new(fields)));
+            // Run init() / constructor() if defined
+            let init_fn = if let Value::Map(m) = &instance {
+                let b = m.borrow();
+                b.get("init").or_else(|| b.get("constructor")).cloned()
+            } else {
+                None
+            };
+            if let Some(Value::Func {
+                params,
+                body,
+                closure: fn_closure,
+            }) = init_fn
+            {
+                self.call_user_fn(&params, &body, &fn_closure, Some(instance.clone()), args)?;
+            }
+            Ok(instance)
+        } else {
+            Err("Cannot instantiate non-class".to_string())
+        }
+    }
+
+    fn call_user_fn(
+        &mut self,
+        params: &[(String, Option<Expr>)],
+        body: &[Stmt],
+        closure: &Rc<RefCell<Env>>,
+        this_val: Option<Value>,
+        eval_args: Vec<Value>,
+    ) -> Result<Value, String> {
+        let call_env = Rc::new(RefCell::new(Env::new(Some(closure.clone()))));
+        if let Some(this_obj) = this_val {
+            call_env.borrow_mut().define("this".to_string(), this_obj.clone());
+            call_env.borrow_mut().define("self".to_string(), this_obj);
+        }
+        for (i, (p_name, default_expr)) in params.iter().enumerate() {
+            let val = match eval_args.get(i) {
+                Some(v) => v.clone(),
+                None => match default_expr {
+                    Some(def) => self.eval_expr(def, &call_env)?,
+                    None => Value::Null,
+                },
