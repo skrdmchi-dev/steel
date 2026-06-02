@@ -1409,3 +1409,59 @@ impl Interpreter {
                     Some(def) => self.eval_expr(def, &call_env)?,
                     None => Value::Null,
                 },
+            };
+            call_env.borrow_mut().define(p_name.clone(), val);
+        }
+        let mut deferred: Vec<Stmt> = Vec::new();
+        let mut ret_val = Value::Null;
+        for st in body {
+            if let Stmt::Defer(d) = st {
+                deferred.push((**d).clone());
+                continue;
+            }
+            if let Signal::Return(v) = self.exec_stmt(st, &call_env)? {
+                ret_val = v;
+                break;
+            }
+        }
+        for d in deferred.into_iter().rev() {
+            let _ = self.exec_stmt(&d, &call_env);
+        }
+        Ok(ret_val)
+    }
+
+    fn call_value(&mut self, func: Value, eval_args: Vec<Value>, env: &Rc<RefCell<Env>>) -> Result<Value, String> {
+        match func {
+            Value::NativeFn(f) => f(eval_args),
+            Value::Func {
+                params,
+                body,
+                closure,
+            } => self.call_user_fn(&params, &body, &closure, None, eval_args),
+            Value::BoundMethod {
+                receiver,
+                params,
+                body,
+                closure,
+            } => self.call_user_fn(&params, &body, &closure, Some(*receiver), eval_args),
+            Value::Class { .. } => self.instantiate_class(func, eval_args, env),
+            other => Err(format!("Cannot call non-function ({})", other.type_name())),
+        }
+    }
+
+    fn eval_expr(&mut self, expr: &Expr, env: &Rc<RefCell<Env>>) -> Result<Value, String> {
+        match expr {
+            Expr::Number(n) => Ok(Value::Num(*n)),
+            Expr::String(s) => Ok(Value::Str(s.clone())),
+            Expr::Bool(b) => Ok(Value::Bool(*b)),
+            Expr::Null => Ok(Value::Null),
+            Expr::Ident(name) => env
+                .borrow()
+                .get(name)
+                .ok_or_else(|| format!("Undefined variable '{}'", name)),
+            Expr::Array(items) => {
+                let mut vals = Vec::new();
+                for it in items {
+                    if let Expr::Spread(inner) = it {
+                        let v = self.eval_expr(inner, env)?;
+                        if let Value::Arr(a) = v {
