@@ -1578,3 +1578,59 @@ impl Interpreter {
                     },
                     BinaryOp::Mul => match (l, r) {
                         (Value::Num(a), Value::Num(b)) => Ok(Value::Num(a * b)),
+                        (Value::Str(s), Value::Num(n)) => {
+                            Ok(Value::Str(s.repeat(n.max(0.0) as usize)))
+                        }
+                        _ => Err("'*' requires numbers".to_string()),
+                    },
+                    BinaryOp::Pow => match (l, r) {
+                        (Value::Num(a), Value::Num(b)) => Ok(Value::Num(a.powf(b))),
+                        _ => Err("'**' requires numbers".to_string()),
+                    },
+                    BinaryOp::Div => match (l, r) {
+                        (Value::Num(_), Value::Num(b)) if b == 0.0 => {
+                            Err("Division by zero".to_string())
+                        }
+                        (Value::Num(a), Value::Num(b)) => Ok(Value::Num(a / b)),
+                        _ => Err("'/' requires numbers".to_string()),
+                    },
+                    BinaryOp::Mod => match (l, r) {
+                        (Value::Num(a), Value::Num(b)) => Ok(Value::Num(a % b)),
+                        _ => Err("'%' requires numbers".to_string()),
+                    },
+                    BinaryOp::BitAnd => match (l, r) {
+                        (Value::Num(a), Value::Num(b)) => {
+                            Ok(Value::Num(((a as i64) & (b as i64)) as f64))
+                        }
+                        _ => Err("'&' requires numbers".to_string()),
+                    },
+                    BinaryOp::BitOr => match (l, r) {
+                        (Value::Num(a), Value::Num(b)) => {
+                            Ok(Value::Num(((a as i64) | (b as i64)) as f64))
+                        }
+                        _ => Err("'|' requires numbers".to_string()),
+                    },
+                    BinaryOp::BitXor => match (l, r) {
+                        (Value::Num(a), Value::Num(b)) => {
+                            Ok(Value::Num(((a as i64) ^ (b as i64)) as f64))
+                        }
+                        _ => Err("'^' requires numbers".to_string()),
+                    },
+                    BinaryOp::Shl => match (l, r) {
+                        (Value::Num(a), Value::Num(b)) => {
+                            Ok(Value::Num(((a as i64) << (b as i64)) as f64))
+                        }
+                        _ => Err("'<<' requires numbers".to_string()),
+                    },
+                    BinaryOp::Shr => match (l, r) {
+                        (Value::Num(a), Value::Num(b)) => {
+                            Ok(Value::Num(((a as i64) >> (b as i64)) as f64))
+                        }
+                        _ => Err("'>>' requires numbers".to_string()),
+                    },
+                    BinaryOp::Eq => Ok(Value::Bool(l == r)),
+                    BinaryOp::Neq => Ok(Value::Bool(l != r)),
+                    BinaryOp::Lt => match (l, r) {
+                        (Value::Num(a), Value::Num(b)) => Ok(Value::Bool(a < b)),
+                        (Value::Str(a), Value::Str(b)) => Ok(Value::Bool(a < b)),
+                        _ => Err("'<' requires numbers or strings".to_string()),
