@@ -1804,3 +1804,59 @@ impl Interpreter {
         }
     }
 }
+
+fn fast_rand_f64() -> f64 {
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static SEED: AtomicU64 = AtomicU64::new(0);
+    let mut s = SEED.load(Ordering::Relaxed);
+    if s == 0 {
+        s = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_nanos() as u64)
+            .unwrap_or(0x1234_5678_9abc_def0);
+    }
+    s ^= s << 13;
+    s ^= s >> 7;
+    s ^= s << 17;
+    SEED.store(s, Ordering::Relaxed);
+    (s as f64) / (u64::MAX as f64)
+}
+
+fn value_to_json(v: &Value) -> String {
+    match v {
+        Value::Null => "null".to_string(),
+        Value::Bool(b) => b.to_string(),
+        Value::Num(n) => {
+            if n.fract() == 0.0 {
+                format!("{:.0}", n)
+            } else {
+                format!("{}", n)
+            }
+        }
+        Value::Str(s) => format!("{:?}", s),
+        Value::Arr(a) => {
+            let items: Vec<String> = a.borrow().iter().map(value_to_json).collect();
+            format!("[{}]", items.join(","))
+        }
+        Value::Map(m) => {
+            let items: Vec<String> = m
+                .borrow()
+                .iter()
+                .filter(|(k, _)| !k.starts_with("__"))
+                .map(|(k, val)| format!("{:?}:{}", k, value_to_json(val)))
+                .collect();
+            format!("{{{}}}", items.join(","))
+        }
+        _ => "\"<fn>\"".to_string(),
+    }
+}
+
+fn parse_simple_json(s: &str) -> Result<Value, String> {
+    let mut lexer = crate::lexer::Lexer::new(s);
+    let tokens = lexer.tokenize()?;
+    let mut parser = crate::parser::Parser::new(tokens);
+    let expr = parser.parse_expr()?;
+    let mut interp = Interpreter::new();
+    let global = interp.global.clone();
+    interp.eval_expr(&expr, &global)
+}
