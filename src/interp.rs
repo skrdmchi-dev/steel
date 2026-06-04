@@ -1691,3 +1691,59 @@ impl Interpreter {
                             } else {
                                 iter.next().unwrap_or(Value::Null)
                             };
+                            for it in iter {
+                                acc = self.call_value(fn_val.clone(), vec![acc, it], env)?;
+                            }
+                            return Ok(acc);
+                        }
+                    } else if name == "find" && args.len() == 2 {
+                        let arr_val = self.eval_expr(&args[0], env)?;
+                        let fn_val = self.eval_expr(&args[1], env)?;
+                        if let Value::Arr(a) = arr_val {
+                            let items = a.borrow().clone();
+                            for it in items {
+                                if self.call_value(fn_val.clone(), vec![it.clone()], env)?.is_truthy() {
+                                    return Ok(it);
+                                }
+                            }
+                            return Ok(Value::Null);
+                        }
+                    } else if name == "any" && args.len() == 2 {
+                        let arr_val = self.eval_expr(&args[0], env)?;
+                        let fn_val = self.eval_expr(&args[1], env)?;
+                        if let Value::Arr(a) = arr_val {
+                            let items = a.borrow().clone();
+                            for it in items {
+                                if self.call_value(fn_val.clone(), vec![it], env)?.is_truthy() {
+                                    return Ok(Value::Bool(true));
+                                }
+                            }
+                            return Ok(Value::Bool(false));
+                        }
+                    } else if name == "all" && args.len() == 2 {
+                        let arr_val = self.eval_expr(&args[0], env)?;
+                        let fn_val = self.eval_expr(&args[1], env)?;
+                        if let Value::Arr(a) = arr_val {
+                            let items = a.borrow().clone();
+                            for it in items {
+                                if !self.call_value(fn_val.clone(), vec![it], env)?.is_truthy() {
+                                    return Ok(Value::Bool(false));
+                                }
+                            }
+                            return Ok(Value::Bool(true));
+                        }
+                    }
+                }
+
+                let func = self.eval_expr(callee, env)?;
+                let mut eval_args = Vec::new();
+                for a in args {
+                    eval_args.push(self.eval_expr(a, env)?);
+                }
+                self.call_value(func, eval_args, env)
+            }
+            Expr::Index { target, index } => {
+                let t = self.eval_expr(target, env)?;
+                let idx = self.eval_expr(index, env)?;
+                match (t, idx) {
+                    (Value::Arr(a), Value::Num(n)) => {
