@@ -1,0 +1,12 @@
+// A small Steel program that calculates factorials.
+fn factorial(n: num) -> num {
+    if n <= 1 {
+        return 1
+    }
+    return n * factorial(n - 1)
+}
+
+print("Factorials:")
+for n in 1..9 {
+    print("${n}! =", factorial(n))
+}
