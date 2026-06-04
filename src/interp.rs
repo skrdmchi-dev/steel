@@ -1747,3 +1747,60 @@ impl Interpreter {
                 let idx = self.eval_expr(index, env)?;
                 match (t, idx) {
                     (Value::Arr(a), Value::Num(n)) => {
+                        let b = a.borrow();
+                        let i = if n < 0.0 {
+                            (b.len() as isize + n as isize) as usize
+                        } else {
+                            n as usize
+                        };
+                        Ok(b.get(i).cloned().unwrap_or(Value::Null))
+                    }
+                    (Value::Map(m), Value::Str(k)) => {
+                        Ok(m.borrow().get(&k).cloned().unwrap_or(Value::Null))
+                    }
+                    (Value::Str(s), Value::Num(n)) => Ok(s
+                        .chars()
+                        .nth(n as usize)
+                        .map(|c| Value::Str(c.to_string()))
+                        .unwrap_or(Value::Null)),
+                    _ => Ok(Value::Null),
+                }
+            }
+            Expr::Member { target, field } => {
+                let t = self.eval_expr(target, env)?;
+                match &t {
+                    Value::Map(m) => {
+                        let val = m.borrow().get(field).cloned().unwrap_or(Value::Null);
+                        if let Value::Func {
+                            params,
+                            body,
+                            closure,
+                        } = val
+                        {
+                            Ok(Value::BoundMethod {
+                                receiver: Box::new(t),
+                                params,
+                                body,
+                                closure,
+                            })
+                        } else {
+                            Ok(val)
+                        }
+                    }
+                    Value::Arr(a) if field == "length" || field == "len" => {
+                        Ok(Value::Num(a.borrow().len() as f64))
+                    }
+                    Value::Str(s) if field == "length" || field == "len" => {
+                        Ok(Value::Num(s.chars().count() as f64))
+                    }
+                    _ => Ok(Value::Null),
+                }
+            }
+            Expr::FnExpr { params, body } => Ok(Value::Func {
+                params: params.clone(),
+                body: body.clone(),
+                closure: env.clone(),
+            }),
+        }
+    }
+}
