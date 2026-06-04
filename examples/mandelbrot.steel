@@ -1,0 +1,86 @@
+// =========================================================================
+// Mandelbrot Fractal Renderer & Prime Sieve in Steel (.steel)
+// =========================================================================
+
+print("=======================================================")
+print("      STEEL FRACTAL & ALGORITHM ENGINE (v1.0)          ")
+print("=======================================================")
+
+// 1. ASCII Mandelbrot Set Explorer
+fn mandelbrot_char(cr, ci, max_iter) {
+    let zr = 0.0
+    let zi = 0.0
+    let iter = 0
+
+    while (zr * zr + zi * zi <= 4.0) && (iter < max_iter) {
+        let temp = zr * zr - zi * zi + cr
+        zi = 2.0 * zr * zi + ci
+        zr = temp
+        iter += 1
+    }
+
+    if iter == max_iter { return "@" }
+    if iter > 12 { return "#" }
+    if iter > 8  { return "*" }
+    if iter > 5  { return "+" }
+    if iter > 3  { return "." }
+    return " "
+}
+
+for y in 0..17 {
+    let ci = (y - 8.0) / 7.5
+    let row = ""
+    for x in 0..54 {
+        let cr = (x - 36.0) / 18.0
+        row = row + mandelbrot_char(cr, ci, 24)
+    }
+    print(row)
+}
+
+print("=======================================================")
+
+// 2. Prime Number Generator & Collatz Longest Chain Finder
+fn is_prime(n) {
+    if n < 2 { return false }
+    let d = 2
+    while d * d <= n {
+        if n % d == 0 { return false }
+        d += 1
+    }
+    return true
+}
+
+fn collatz_steps(n) {
+    let steps = 0
+    let cur = n
+    while cur > 1 {
+        if cur % 2 == 0 {
+            cur = cur / 2
+        } else {
+            cur = 3 * cur + 1
+        }
+        steps += 1
+    }
+    return steps
+}
+
+let prime_list = ""
+let prime_count = 0
+for candidate in 2..50 {
+    if is_prime(candidate) {
+        prime_list = prime_list + str(candidate) + " "
+        prime_count += 1
+    }
+}
+print("Primes under 50 (${prime_count} found):", prime_list)
+
+let best_num = 1
+let max_chain = 0
+for n in 1..100 {
+    let s = collatz_steps(n)
+    if s > max_chain {
+        max_chain = s
+        best_num = n
+    }
+}
+print("Longest Collatz chain under 100: start =", best_num, "(${max_chain} steps)")
