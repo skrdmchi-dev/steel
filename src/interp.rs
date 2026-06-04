@@ -1634,3 +1634,60 @@ impl Interpreter {
                         (Value::Num(a), Value::Num(b)) => Ok(Value::Bool(a < b)),
                         (Value::Str(a), Value::Str(b)) => Ok(Value::Bool(a < b)),
                         _ => Err("'<' requires numbers or strings".to_string()),
+                    },
+                    BinaryOp::Gt => match (l, r) {
+                        (Value::Num(a), Value::Num(b)) => Ok(Value::Bool(a > b)),
+                        (Value::Str(a), Value::Str(b)) => Ok(Value::Bool(a > b)),
+                        _ => Err("'>' requires numbers or strings".to_string()),
+                    },
+                    BinaryOp::Lte => match (l, r) {
+                        (Value::Num(a), Value::Num(b)) => Ok(Value::Bool(a <= b)),
+                        (Value::Str(a), Value::Str(b)) => Ok(Value::Bool(a <= b)),
+                        _ => Err("'<=' requires numbers or strings".to_string()),
+                    },
+                    BinaryOp::Gte => match (l, r) {
+                        (Value::Num(a), Value::Num(b)) => Ok(Value::Bool(a >= b)),
+                        (Value::Str(a), Value::Str(b)) => Ok(Value::Bool(a >= b)),
+                        _ => Err("'>=' requires numbers or strings".to_string()),
+                    },
+                    _ => unreachable!(),
+                }
+            }
+            Expr::Call { callee, args } => {
+                // Support built-in higher-order functions: map(arr, fn), filter(arr, fn), reduce(arr, fn, init)
+                if let Expr::Ident(name) = &**callee {
+                    if name == "map" && args.len() == 2 {
+                        let arr_val = self.eval_expr(&args[0], env)?;
+                        let fn_val = self.eval_expr(&args[1], env)?;
+                        if let Value::Arr(a) = arr_val {
+                            let items = a.borrow().clone();
+                            let mut out = Vec::new();
+                            for it in items {
+                                out.push(self.call_value(fn_val.clone(), vec![it], env)?);
+                            }
+                            return Ok(Value::Arr(Rc::new(RefCell::new(out))));
+                        }
+                    } else if name == "filter" && args.len() == 2 {
+                        let arr_val = self.eval_expr(&args[0], env)?;
+                        let fn_val = self.eval_expr(&args[1], env)?;
+                        if let Value::Arr(a) = arr_val {
+                            let items = a.borrow().clone();
+                            let mut out = Vec::new();
+                            for it in items {
+                                if self.call_value(fn_val.clone(), vec![it.clone()], env)?.is_truthy() {
+                                    out.push(it);
+                                }
+                            }
+                            return Ok(Value::Arr(Rc::new(RefCell::new(out))));
+                        }
+                    } else if name == "reduce" && args.len() >= 2 {
+                        let arr_val = self.eval_expr(&args[0], env)?;
+                        let fn_val = self.eval_expr(&args[1], env)?;
+                        if let Value::Arr(a) = arr_val {
+                            let items = a.borrow().clone();
+                            let mut iter = items.into_iter();
+                            let mut acc = if let Some(init_expr) = args.get(2) {
+                                self.eval_expr(init_expr, env)?
+                            } else {
+                                iter.next().unwrap_or(Value::Null)
+                            };
