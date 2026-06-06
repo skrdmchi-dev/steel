@@ -59,3 +59,33 @@ fn fmt_stmt(stmt: &Stmt, lvl: usize) -> String {
             name,
             parent,
             methods,
+        } => {
+            let ext = parent
+                .as_ref()
+                .map(|b| format!(" extends {}", b))
+                .unwrap_or_default();
+            let mut s = format!("{}class {}{} {{\n", p, name, ext);
+            for m in methods {
+                s.push_str(&format!(
+                    "{}    {}({}) {{\n",
+                    p,
+                    m.name,
+                    fmt_params(&m.params)
+                ));
+                for st in &m.body {
+                    s.push_str(&fmt_stmt(st, lvl + 2));
+                }
+                s.push_str(&format!("{}    }}\n", p));
+            }
+            s.push_str(&format!("{}}}\n", p));
+            s
+        }
+        Stmt::TryCatch {
+            try_body,
+            err_var,
+            catch_body,
+        } => {
+            let mut s = format!("{}try {{\n", p);
+            for st in try_body {
+                s.push_str(&fmt_stmt(st, lvl + 1));
+            }
