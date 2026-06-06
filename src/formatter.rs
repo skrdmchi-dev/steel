@@ -28,3 +28,34 @@ fn fmt_stmt(stmt: &Stmt, lvl: usize) -> String {
     match stmt {
         Stmt::Import(path) => format!("{}import \"{}\"\n", p, path),
         Stmt::Let {
+            name,
+            is_const,
+            value,
+        } => {
+            let kw = if *is_const { "const" } else { "let" };
+            format!("{}{} {} = {}\n", p, kw, name, fmt_expr(value))
+        }
+        Stmt::Assign { target, value } => {
+            let lhs = match target {
+                AssignTarget::Ident(n) => n.clone(),
+                AssignTarget::Index { target, index } => {
+                    format!("{}[{}]", fmt_expr(target), fmt_expr(index))
+                }
+                AssignTarget::Member { target, field } => {
+                    format!("{}.{}", fmt_expr(target), field)
+                }
+            };
+            format!("{}{} = {}\n", p, lhs, fmt_expr(value))
+        }
+        Stmt::FnDecl { name, params, body } => {
+            let mut s = format!("{}fn {}({}) {{\n", p, name, fmt_params(params));
+            for st in body {
+                s.push_str(&fmt_stmt(st, lvl + 1));
+            }
+            s.push_str(&format!("{}}}\n", p));
+            s
+        }
+        Stmt::ClassDecl {
+            name,
+            parent,
+            methods,
