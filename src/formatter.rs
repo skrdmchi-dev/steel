@@ -89,3 +89,34 @@ fn fmt_stmt(stmt: &Stmt, lvl: usize) -> String {
             for st in try_body {
                 s.push_str(&fmt_stmt(st, lvl + 1));
             }
+            s.push_str(&format!("{}}} catch ({}) {{\n", p, err_var));
+            for st in catch_body {
+                s.push_str(&fmt_stmt(st, lvl + 1));
+            }
+            s.push_str(&format!("{}}}\n", p));
+            s
+        }
+        Stmt::Throw(e) => format!("{}throw {}\n", p, fmt_expr(e)),
+        Stmt::Test { name, body } => {
+            let mut s = format!("{}test \"{}\" {{\n", p, name);
+            for st in body {
+                s.push_str(&fmt_stmt(st, lvl + 1));
+            }
+            s.push_str(&format!("{}}}\n", p));
+            s
+        }
+        Stmt::Defer(inner) => format!("{}defer {}", p, fmt_stmt(inner, 0)),
+        Stmt::Return(Some(e)) => format!("{}return {}\n", p, fmt_expr(e)),
+        Stmt::Return(None) => format!("{}return\n", p),
+        Stmt::If {
+            cond,
+            then_branch,
+            else_branch,
+        } => {
+            let mut s = format!("{}if {} {{\n", p, fmt_expr(cond));
+            for st in then_branch {
+                s.push_str(&fmt_stmt(st, lvl + 1));
+            }
+            if let Some(eb) = else_branch {
+                s.push_str(&format!("{}}} else {{\n", p));
+                for st in eb {
