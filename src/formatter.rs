@@ -120,3 +120,33 @@ fn fmt_stmt(stmt: &Stmt, lvl: usize) -> String {
             if let Some(eb) = else_branch {
                 s.push_str(&format!("{}}} else {{\n", p));
                 for st in eb {
+                    s.push_str(&fmt_stmt(st, lvl + 1));
+                }
+            }
+            s.push_str(&format!("{}}}\n", p));
+            s
+        }
+        Stmt::While { cond, body } => {
+            let mut s = format!("{}while {} {{\n", p, fmt_expr(cond));
+            for st in body {
+                s.push_str(&fmt_stmt(st, lvl + 1));
+            }
+            s.push_str(&format!("{}}}\n", p));
+            s
+        }
+        Stmt::For {
+            var,
+            iterable,
+            body,
+        } => {
+            let mut s = format!("{}for {} in {} {{\n", p, var, fmt_expr(iterable));
+            for st in body {
+                s.push_str(&fmt_stmt(st, lvl + 1));
+            }
+            s.push_str(&format!("{}}}\n", p));
+            s
+        }
+        Stmt::Break => format!("{}break\n", p),
+        Stmt::Continue => format!("{}continue\n", p),
+        Stmt::Expr(e) => format!("{}{}\n", p, fmt_expr(e)),
+    }
