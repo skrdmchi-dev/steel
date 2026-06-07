@@ -150,3 +150,33 @@ fn fmt_stmt(stmt: &Stmt, lvl: usize) -> String {
         Stmt::Continue => format!("{}continue\n", p),
         Stmt::Expr(e) => format!("{}{}\n", p, fmt_expr(e)),
     }
+}
+
+fn fmt_expr(expr: &Expr) -> String {
+    match expr {
+        Expr::Number(n) => {
+            if n.fract() == 0.0 {
+                format!("{:.0}", n)
+            } else {
+                format!("{}", n)
+            }
+        }
+        Expr::String(s) => format!("{:?}", s),
+        Expr::Bool(b) => b.to_string(),
+        Expr::Null => "null".to_string(),
+        Expr::Ident(n) => n.clone(),
+        Expr::Array(items) => {
+            let inner: Vec<String> = items.iter().map(fmt_expr).collect();
+            format!("[{}]", inner.join(", "))
+        }
+        Expr::Map(entries) => {
+            let inner: Vec<String> = entries
+                .iter()
+                .map(|(k, v)| format!("{}: {}", k, fmt_expr(v)))
+                .collect();
+            format!("{{ {} }}", inner.join(", "))
+        }
+        Expr::New { class_name, args } => {
+            let a: Vec<String> = args.iter().map(fmt_expr).collect();
+            format!("new {}({})", class_name, a.join(", "))
+        }
