@@ -180,3 +180,34 @@ fn fmt_expr(expr: &Expr) -> String {
             let a: Vec<String> = args.iter().map(fmt_expr).collect();
             format!("new {}({})", class_name, a.join(", "))
         }
+        Expr::Ternary {
+            cond,
+            then_expr,
+            else_expr,
+        } => format!(
+            "{} ? {} : {}",
+            fmt_expr(cond),
+            fmt_expr(then_expr),
+            fmt_expr(else_expr)
+        ),
+        Expr::Binary { left, op, right } => {
+            let op_s = match op {
+                BinaryOp::Add => "+",
+                BinaryOp::Sub => "-",
+                BinaryOp::Mul => "*",
+                BinaryOp::Pow => "**",
+                BinaryOp::Div => "/",
+                BinaryOp::Mod => "%",
+                BinaryOp::Eq => "==",
+                BinaryOp::Neq => "!=",
+                BinaryOp::Lt => "<",
+                BinaryOp::Gt => ">",
+                BinaryOp::Lte => "<=",
+                BinaryOp::Gte => ">=",
+                BinaryOp::And => "&&",
+                BinaryOp::Or => "||",
+                BinaryOp::BitAnd => "&",
+                BinaryOp::BitOr => "|",
+                BinaryOp::BitXor => "^",
+                BinaryOp::Shl => "<<",
+                BinaryOp::Shr => ">>",
