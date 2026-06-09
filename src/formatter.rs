@@ -211,3 +211,33 @@ fn fmt_expr(expr: &Expr) -> String {
                 BinaryOp::BitXor => "^",
                 BinaryOp::Shl => "<<",
                 BinaryOp::Shr => ">>",
+                BinaryOp::NullCoalesce => "??",
+            };
+            format!("({} {} {})", fmt_expr(left), op_s, fmt_expr(right))
+        }
+        Expr::Unary { op, expr: inner } => {
+            let op_s = match op {
+                UnaryOp::Neg => "-",
+                UnaryOp::Not => "!",
+                UnaryOp::BitNot => "~",
+            };
+            format!("{}{}", op_s, fmt_expr(inner))
+        }
+        Expr::Call { callee, args } => {
+            let a: Vec<String> = args.iter().map(fmt_expr).collect();
+            format!("{}({})", fmt_expr(callee), a.join(", "))
+        }
+        Expr::Index { target, index } => format!("{}[{}]", fmt_expr(target), fmt_expr(index)),
+        Expr::Member { target, field } => format!("{}.{}", fmt_expr(target), field),
+        Expr::FnExpr { params, body } => {
+            let mut s = format!("fn({}) {{\n", fmt_params(params));
+            for st in body {
+                s.push_str(&fmt_stmt(st, 1));
+            }
+            s.push('}');
+            s
+        }
+        Expr::Range { start, end } => format!("{}..{}", fmt_expr(start), fmt_expr(end)),
+        Expr::Spread(inner) => format!("...{}", fmt_expr(inner)),
+    }
+}
