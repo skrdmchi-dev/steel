@@ -94,3 +94,35 @@ impl BytecodeChunk {
         }
         out.push_str("=== Main Entry Chunk ===\n");
         for (idx, op) in self.ops.iter().enumerate() {
+            out.push_str(&format!("  {:04}  {}\n", idx, op));
+        }
+        out
+    }
+
+    /// Executes the compiled Stack VM Bytecode directly!
+    pub fn execute(&self, quiet: bool) -> Result<String, String> {
+        #[derive(Clone, Debug)]
+        enum VmVal {
+            Null,
+            Bool(bool),
+            Num(f64),
+            Str(String),
+            Arr(Vec<VmVal>),
+        }
+        impl VmVal {
+            fn as_num(&self) -> f64 {
+                match self {
+                    VmVal::Num(n) => *n,
+                    VmVal::Bool(true) => 1.0,
+                    _ => 0.0,
+                }
+            }
+            fn truthy(&self) -> bool {
+                match self {
+                    VmVal::Null => false,
+                    VmVal::Bool(b) => *b,
+                    VmVal::Num(n) => *n != 0.0,
+                    VmVal::Str(s) => !s.is_empty(),
+                    VmVal::Arr(a) => !a.is_empty(),
+                }
+            }
