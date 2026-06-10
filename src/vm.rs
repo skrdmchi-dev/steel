@@ -62,3 +62,35 @@ impl fmt::Display for Op {
             Op::MakeArray(n) => write!(f, "MAKE_ARRAY       {}", n),
             Op::MakeRange => write!(f, "MAKE_RANGE"),
             Op::GetIndex => write!(f, "GET_INDEX"),
+            Op::Call(argc) => write!(f, "CALL_FN          argc={}", argc),
+            Op::Print(argc) => write!(f, "BUILTIN_PRINT    argc={}", argc),
+            Op::Jump(addr) => write!(f, "JUMP             -> {:04}", addr),
+            Op::JumpIfFalse(addr) => write!(f, "JUMP_IF_FALSE    -> {:04}", addr),
+            Op::Pop => write!(f, "POP_TOP"),
+            Op::Return => write!(f, "RETURN_VALUE"),
+            Op::Halt => write!(f, "HALT"),
+        }
+    }
+}
+
+pub struct BytecodeChunk {
+    pub ops: Vec<Op>,
+    pub functions: BTreeMap<String, (Vec<String>, Vec<Op>)>,
+}
+
+impl BytecodeChunk {
+    pub fn disassemble(&self) -> String {
+        let mut out = String::new();
+        for (fn_name, (params, fn_ops)) in &self.functions {
+            out.push_str(&format!(
+                "=== Function: {}({}) ===\n",
+                fn_name,
+                params.join(", ")
+            ));
+            for (idx, op) in fn_ops.iter().enumerate() {
+                out.push_str(&format!("  {:04}  {}\n", idx, op));
+            }
+            out.push('\n');
+        }
+        out.push_str("=== Main Entry Chunk ===\n");
+        for (idx, op) in self.ops.iter().enumerate() {
