@@ -158,3 +158,35 @@ impl BytecodeChunk {
                 match &ops[pc] {
                     Op::LoadConstNum(n) => stack.push(VmVal::Num(*n)),
                     Op::LoadConstStr(s) => stack.push(VmVal::Str(s.clone())),
+                    Op::LoadConstBool(b) => stack.push(VmVal::Bool(*b)),
+                    Op::LoadNull => stack.push(VmVal::Null),
+                    Op::LoadVar(name) => {
+                        if let Some(v) = vars.get(name) {
+                            stack.push(v.clone());
+                        } else {
+                            stack.push(VmVal::Str(name.clone()));
+                        }
+                    }
+                    Op::StoreVar(name) => {
+                        let val = stack.pop().unwrap_or(VmVal::Null);
+                        vars.insert(name.clone(), val);
+                    }
+                    Op::Add => {
+                        let r = stack.pop().unwrap_or(VmVal::Null);
+                        let l = stack.pop().unwrap_or(VmVal::Null);
+                        match (&l, &r) {
+                            (VmVal::Str(_), _) | (_, VmVal::Str(_)) => {
+                                stack.push(VmVal::Str(format!("{}{}", l.display(), r.display())));
+                            }
+                            _ => stack.push(VmVal::Num(l.as_num() + r.as_num())),
+                        }
+                    }
+                    Op::Sub => {
+                        let r = stack.pop().unwrap_or(VmVal::Null);
+                        let l = stack.pop().unwrap_or(VmVal::Null);
+                        stack.push(VmVal::Num(l.as_num() - r.as_num()));
+                    }
+                    Op::Mul => {
+                        let r = stack.pop().unwrap_or(VmVal::Null);
+                        let l = stack.pop().unwrap_or(VmVal::Null);
+                        stack.push(VmVal::Num(l.as_num() * r.as_num()));
