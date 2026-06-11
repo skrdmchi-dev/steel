@@ -126,3 +126,35 @@ impl BytecodeChunk {
                     VmVal::Arr(a) => !a.is_empty(),
                 }
             }
+            fn display(&self) -> String {
+                match self {
+                    VmVal::Null => "null".to_string(),
+                    VmVal::Bool(b) => b.to_string(),
+                    VmVal::Num(n) => {
+                        if n.fract() == 0.0 {
+                            format!("{:.0}", n)
+                        } else {
+                            format!("{}", n)
+                        }
+                    }
+                    VmVal::Str(s) => s.clone(),
+                    VmVal::Arr(a) => {
+                        let inner: Vec<String> = a.iter().map(|x| x.display()).collect();
+                        format!("[{}]", inner.join(", "))
+                    }
+                }
+            }
+        }
+
+        fn run_ops(
+            ops: &[Op],
+            vars: &mut BTreeMap<String, VmVal>,
+            fns: &BTreeMap<String, (Vec<String>, Vec<Op>)>,
+            quiet: bool,
+        ) -> Result<VmVal, String> {
+            let mut stack: Vec<VmVal> = Vec::with_capacity(64);
+            let mut pc = 0;
+            while pc < ops.len() {
+                match &ops[pc] {
+                    Op::LoadConstNum(n) => stack.push(VmVal::Num(*n)),
+                    Op::LoadConstStr(s) => stack.push(VmVal::Str(s.clone())),
