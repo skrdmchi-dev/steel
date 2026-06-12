@@ -190,3 +190,35 @@ impl BytecodeChunk {
                         let r = stack.pop().unwrap_or(VmVal::Null);
                         let l = stack.pop().unwrap_or(VmVal::Null);
                         stack.push(VmVal::Num(l.as_num() * r.as_num()));
+                    }
+                    Op::Pow => {
+                        let r = stack.pop().unwrap_or(VmVal::Null);
+                        let l = stack.pop().unwrap_or(VmVal::Null);
+                        stack.push(VmVal::Num(l.as_num().powf(r.as_num())));
+                    }
+                    Op::Div => {
+                        let r = stack.pop().unwrap_or(VmVal::Null);
+                        let l = stack.pop().unwrap_or(VmVal::Null);
+                        stack.push(VmVal::Num(l.as_num() / r.as_num()));
+                    }
+                    Op::Mod => {
+                        let r = stack.pop().unwrap_or(VmVal::Null);
+                        let l = stack.pop().unwrap_or(VmVal::Null);
+                        stack.push(VmVal::Num(l.as_num() % r.as_num()));
+                    }
+                    Op::Eq => {
+                        let r = stack.pop().unwrap_or(VmVal::Null);
+                        let l = stack.pop().unwrap_or(VmVal::Null);
+                        stack.push(VmVal::Bool(l.display() == r.display()));
+                    }
+                    Op::Neq => {
+                        let r = stack.pop().unwrap_or(VmVal::Null);
+                        let l = stack.pop().unwrap_or(VmVal::Null);
+                        stack.push(VmVal::Bool(l.display() != r.display()));
+                    }
+                    Op::Lt => {
+                        let r = stack.pop().unwrap_or(VmVal::Null);
+                        let l = stack.pop().unwrap_or(VmVal::Null);
+                        stack.push(VmVal::Bool(l.as_num() < r.as_num()));
+                    }
+                    Op::Gt => {
