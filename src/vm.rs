@@ -222,3 +222,35 @@ impl BytecodeChunk {
                         stack.push(VmVal::Bool(l.as_num() < r.as_num()));
                     }
                     Op::Gt => {
+                        let r = stack.pop().unwrap_or(VmVal::Null);
+                        let l = stack.pop().unwrap_or(VmVal::Null);
+                        stack.push(VmVal::Bool(l.as_num() > r.as_num()));
+                    }
+                    Op::Lte => {
+                        let r = stack.pop().unwrap_or(VmVal::Null);
+                        let l = stack.pop().unwrap_or(VmVal::Null);
+                        stack.push(VmVal::Bool(l.as_num() <= r.as_num()));
+                    }
+                    Op::Gte => {
+                        let r = stack.pop().unwrap_or(VmVal::Null);
+                        let l = stack.pop().unwrap_or(VmVal::Null);
+                        stack.push(VmVal::Bool(l.as_num() >= r.as_num()));
+                    }
+                    Op::Neg => {
+                        let v = stack.pop().unwrap_or(VmVal::Null);
+                        stack.push(VmVal::Num(-v.as_num()));
+                    }
+                    Op::Not => {
+                        let v = stack.pop().unwrap_or(VmVal::Null);
+                        stack.push(VmVal::Bool(!v.truthy()));
+                    }
+                    Op::MakeArray(count) => {
+                        let start = stack.len().saturating_sub(*count);
+                        let items = stack.split_off(start);
+                        stack.push(VmVal::Arr(items));
+                    }
+                    Op::MakeRange => {
+                        let end = stack.pop().unwrap_or(VmVal::Null).as_num() as i64;
+                        let start = stack.pop().unwrap_or(VmVal::Null).as_num() as i64;
+                        let items = (start..end).map(|i| VmVal::Num(i as f64)).collect();
+                        stack.push(VmVal::Arr(items));
