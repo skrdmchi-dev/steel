@@ -349,3 +349,35 @@ fn compile_stmt(
     stmt: &Stmt,
     ops: &mut Vec<Op>,
     functions: &mut BTreeMap<String, (Vec<String>, Vec<Op>)>,
+) {
+    match stmt {
+        Stmt::Let { name, value, .. } => {
+            compile_expr(value, ops);
+            ops.push(Op::StoreVar(name.clone()));
+        }
+        Stmt::Assign {
+            target: AssignTarget::Ident(name),
+            value,
+        } => {
+            compile_expr(value, ops);
+            ops.push(Op::StoreVar(name.clone()));
+        }
+        Stmt::Return(expr) => {
+            match expr {
+                Some(e) => compile_expr(e, ops),
+                None => ops.push(Op::LoadNull),
+            }
+            ops.push(Op::Return);
+        }
+        Stmt::If {
+            cond,
+            then_branch,
+            else_branch,
+        } => {
+            compile_expr(cond, ops);
+            let jmp_false_idx = ops.len();
+            ops.push(Op::JumpIfFalse(0));
+            for st in then_branch {
+                compile_stmt(st, ops, functions);
+            }
+            if let Some(eb) = else_branch {
