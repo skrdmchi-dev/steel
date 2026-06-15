@@ -285,3 +285,35 @@ impl BytecodeChunk {
                             stack.push(VmVal::Null);
                         }
                     }
+                    Op::Print(argc) => {
+                        let start = stack.len().saturating_sub(*argc);
+                        let args = stack.split_off(start);
+                        if !quiet {
+                            let line: Vec<String> = args.iter().map(|a| a.display()).collect();
+                            println!("{}", line.join(" "));
+                        }
+                    }
+                    Op::Jump(addr) => {
+                        pc = *addr;
+                        continue;
+                    }
+                    Op::JumpIfFalse(addr) => {
+                        let cond = stack.pop().unwrap_or(VmVal::Null);
+                        if !cond.truthy() {
+                            pc = *addr;
+                            continue;
+                        }
+                    }
+                    Op::Pop => {
+                        stack.pop();
+                    }
+                    Op::Return => {
+                        return Ok(stack.pop().unwrap_or(VmVal::Null));
+                    }
+                    Op::Halt => break,
+                }
+                pc += 1;
+            }
+            Ok(stack.pop().unwrap_or(VmVal::Null))
+        }
+
