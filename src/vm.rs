@@ -254,3 +254,34 @@ impl BytecodeChunk {
                         let start = stack.pop().unwrap_or(VmVal::Null).as_num() as i64;
                         let items = (start..end).map(|i| VmVal::Num(i as f64)).collect();
                         stack.push(VmVal::Arr(items));
+                    }
+                    Op::GetIndex => {
+                        let idx = stack.pop().unwrap_or(VmVal::Null).as_num() as usize;
+                        let target = stack.pop().unwrap_or(VmVal::Null);
+                        if let VmVal::Arr(a) = target {
+                            stack.push(a.get(idx).cloned().unwrap_or(VmVal::Null));
+                        } else {
+                            stack.push(VmVal::Null);
+                        }
+                    }
+                    Op::Call(argc) => {
+                        let callee = stack.pop().unwrap_or(VmVal::Null).display();
+                        let start = stack.len().saturating_sub(*argc);
+                        let call_args = stack.split_off(start);
+                        if callee == "str" {
+                            let s = call_args.first().map(|a| a.display()).unwrap_or_default();
+                            stack.push(VmVal::Str(s));
+                        } else if let Some((params, fn_ops)) = fns.get(&callee) {
+                            let mut local = BTreeMap::new();
+                            for (i, p) in params.iter().enumerate() {
+                                local.insert(
+                                    p.clone(),
+                                    call_args.get(i).cloned().unwrap_or(VmVal::Null),
+                                );
+                            }
+                            let ret = run_ops(fn_ops, &mut local, fns, quiet)?;
+                            stack.push(ret);
+                        } else {
+                            stack.push(VmVal::Null);
+                        }
+                    }
