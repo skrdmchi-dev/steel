@@ -317,3 +317,35 @@ impl BytecodeChunk {
             Ok(stack.pop().unwrap_or(VmVal::Null))
         }
 
+        let mut globals = BTreeMap::new();
+        let res = run_ops(&self.ops, &mut globals, &self.functions, quiet)?;
+        Ok(res.display())
+    }
+}
+
+pub fn compile_program(program: &Program) -> BytecodeChunk {
+    let mut ops = Vec::new();
+    let mut functions = BTreeMap::new();
+
+    for stmt in &program.statements {
+        if let Stmt::FnDecl { name, params, body } = stmt {
+            let mut fn_ops = Vec::new();
+            for st in body {
+                compile_stmt(st, &mut fn_ops, &mut functions);
+            }
+            fn_ops.push(Op::LoadNull);
+            fn_ops.push(Op::Return);
+            let p_names = params.iter().map(|(p, _)| p.clone()).collect();
+            functions.insert(name.clone(), (p_names, fn_ops));
+        } else {
+            compile_stmt(stmt, &mut ops, &mut functions);
+        }
+    }
+    ops.push(Op::Halt);
+    BytecodeChunk { ops, functions }
+}
+
+fn compile_stmt(
+    stmt: &Stmt,
+    ops: &mut Vec<Op>,
+    functions: &mut BTreeMap<String, (Vec<String>, Vec<Op>)>,
