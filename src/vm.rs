@@ -381,3 +381,35 @@ fn compile_stmt(
                 compile_stmt(st, ops, functions);
             }
             if let Some(eb) = else_branch {
+                let jmp_end_idx = ops.len();
+                ops.push(Op::Jump(0));
+                let else_start = ops.len();
+                ops[jmp_false_idx] = Op::JumpIfFalse(else_start);
+                for st in eb {
+                    compile_stmt(st, ops, functions);
+                }
+                let end_addr = ops.len();
+                ops[jmp_end_idx] = Op::Jump(end_addr);
+            } else {
+                let end_addr = ops.len();
+                ops[jmp_false_idx] = Op::JumpIfFalse(end_addr);
+            }
+        }
+        Stmt::While { cond, body } => {
+            let loop_start = ops.len();
+            compile_expr(cond, ops);
+            let jmp_exit_idx = ops.len();
+            ops.push(Op::JumpIfFalse(0));
+            for st in body {
+                compile_stmt(st, ops, functions);
+            }
+            ops.push(Op::Jump(loop_start));
+            let loop_end = ops.len();
+            ops[jmp_exit_idx] = Op::JumpIfFalse(loop_end);
+        }
+        Stmt::For {
+            var,
+            iterable: Expr::Range { start, end },
+            body,
+        } => {
+            compile_expr(start, ops);
