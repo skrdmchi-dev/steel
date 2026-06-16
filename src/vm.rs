@@ -413,3 +413,35 @@ fn compile_stmt(
             body,
         } => {
             compile_expr(start, ops);
+            ops.push(Op::StoreVar(var.clone()));
+            let loop_start = ops.len();
+            ops.push(Op::LoadVar(var.clone()));
+            compile_expr(end, ops);
+            ops.push(Op::Lt);
+            let jmp_exit_idx = ops.len();
+            ops.push(Op::JumpIfFalse(0));
+            for st in body {
+                compile_stmt(st, ops, functions);
+            }
+            ops.push(Op::LoadVar(var.clone()));
+            ops.push(Op::LoadConstNum(1.0));
+            ops.push(Op::Add);
+            ops.push(Op::StoreVar(var.clone()));
+            ops.push(Op::Jump(loop_start));
+            let loop_end = ops.len();
+            ops[jmp_exit_idx] = Op::JumpIfFalse(loop_end);
+        }
+        Stmt::Expr(e) => {
+            if let Expr::Call { callee, args } = e {
+                if let Expr::Ident(name) = &**callee {
+                    if name == "print" || name == "println" {
+                        for a in args {
+                            compile_expr(a, ops);
+                        }
+                        ops.push(Op::Print(args.len()));
+                        return;
+                    }
+                }
+            }
+            compile_expr(e, ops);
+            ops.push(Op::Pop);
