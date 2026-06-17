@@ -1,0 +1,83 @@
+// =========================================================================
+// Steel (.steel) Complete Language Showcase
+// =========================================================================
+
+let lang = "Steel"
+let version = 1
+print("=== Welcome to ${lang} v${version}.0 ===")
+
+// 1. First-class Functions, Default Parameters & Recursion
+fn greet(user, title = "Developer") {
+    return "Hello, ${title} ${user}!"
+}
+print(greet("Ada"))
+print(greet("Linus", "Architect"))
+
+fn fib(n) {
+    if n <= 1 { return n }
+    return fib(n - 1) + fib(n - 2)
+}
+print("Fibonacci(10) =", fib(10))
+
+// 2. Arrow Functions (x => ..., (a, b) => ...), Pipe Operator (|>) & HOFs
+fn double(x) { return x * 2 }
+fn add_ten(x) { return x + 10 }
+fn square(x) { return x * x }
+
+let piped = 5 |> double |> add_ten |> square
+print("5 |> double |> add_ten |> square =", piped)
+
+let nums = [1, 2, 3, 4, 5, 6]
+let evens = filter(nums, x => x % 2 == 0)
+let squares = map(evens, x => x ** 2)
+let total = reduce(squares, (acc, x) => acc + x, 0)
+print("Evens:", evens, "| Squares:", squares, "| Sum:", total)
+
+// 3. Destructuring (Arrays & Maps), Ternary (?:), Null-Coalescing (??)
+let [first, second, third] = [100, 200, 300]
+let {role, level} = { role: "Compiler Engineer", level: 99 }
+print("Destructured:", first, second, third, "|", role, "Lv.", level)
+
+let nickname = null ?? "SteelCoder"
+let badge = level > 50 ? "Senior" : "Junior"
+print("User:", nickname, "| Badge:", badge)
+
+// 4. Bitwise & Hex/Binary Literals
+let mask = 0b1010 | 0b0101
+let hex_val = 0xFF & 0x0F
+print("Bitwise 0b1010 | 0b0101 =", mask, "| 0xFF & 0x0F =", hex_val)
+
+// 5. Classes, Constructors (init) & Methods
+class Counter {
+    init(start = 0) {
+        this.count = start
+    }
+    inc(step = 1) {
+        this.count += step
+        return this.count
+    }
+}
+
+let c = new Counter(10)
+print("Counter after +5:", c.inc(5))
+
+// 6. Error Handling (try / catch / throw)
+try {
+    throw "Custom error trigger"
+} catch (err) {
+    print("Caught expected error ->", err)
+}
+
+// 7. Standard Library (Math, Strings, Assertions)
+let words = split(trim("  rust,python,javascript,c,go,lua  "), ",")
+print("Targets (${len(words)}):", upper(join(words, " | ")))
+print("Math: sqrt(144) =", sqrt(144), "| 2 ** 8 =", 2 ** 8)
+assert(total == 56, "Total should be 56")
+
+// 8. Pattern Matching
+let score = 100
+match score {
+    50 => print("Halfway there!"),
+    100 => print("All Steel language checks passed!"),
+    _ => print("Keep going!")
+}
