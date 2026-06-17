@@ -445,3 +445,35 @@ fn compile_stmt(
             }
             compile_expr(e, ops);
             ops.push(Op::Pop);
+        }
+        _ => {}
+    }
+}
+
+fn compile_expr(expr: &Expr, ops: &mut Vec<Op>) {
+    match expr {
+        Expr::Number(n) => ops.push(Op::LoadConstNum(*n)),
+        Expr::String(s) => ops.push(Op::LoadConstStr(s.clone())),
+        Expr::Bool(b) => ops.push(Op::LoadConstBool(*b)),
+        Expr::Null => ops.push(Op::LoadNull),
+        Expr::Ident(name) => ops.push(Op::LoadVar(name.clone())),
+        Expr::Array(items) => {
+            for it in items {
+                compile_expr(it, ops);
+            }
+            ops.push(Op::MakeArray(items.len()));
+        }
+        Expr::Range { start, end } => {
+            compile_expr(start, ops);
+            compile_expr(end, ops);
+            ops.push(Op::MakeRange);
+        }
+        Expr::Index { target, index } => {
+            compile_expr(target, ops);
+            compile_expr(index, ops);
+            ops.push(Op::GetIndex);
+        }
+        Expr::Unary { op, expr: inner } => {
+            compile_expr(inner, ops);
+            match op {
+                UnaryOp::Neg => ops.push(Op::Neg),
