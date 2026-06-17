@@ -477,3 +477,35 @@ fn compile_expr(expr: &Expr, ops: &mut Vec<Op>) {
             compile_expr(inner, ops);
             match op {
                 UnaryOp::Neg => ops.push(Op::Neg),
+                UnaryOp::Not | UnaryOp::BitNot => ops.push(Op::Not),
+            }
+        }
+        Expr::Binary { left, op, right } => {
+            compile_expr(left, ops);
+            compile_expr(right, ops);
+            match op {
+                BinaryOp::Add => ops.push(Op::Add),
+                BinaryOp::Sub => ops.push(Op::Sub),
+                BinaryOp::Mul => ops.push(Op::Mul),
+                BinaryOp::Pow => ops.push(Op::Pow),
+                BinaryOp::Div => ops.push(Op::Div),
+                BinaryOp::Mod => ops.push(Op::Mod),
+                BinaryOp::Eq => ops.push(Op::Eq),
+                BinaryOp::Neq => ops.push(Op::Neq),
+                BinaryOp::Lt => ops.push(Op::Lt),
+                BinaryOp::Gt => ops.push(Op::Gt),
+                BinaryOp::Lte => ops.push(Op::Lte),
+                BinaryOp::Gte => ops.push(Op::Gte),
+                _ => ops.push(Op::Add),
+            }
+        }
+        Expr::Call { callee, args } => {
+            for a in args {
+                compile_expr(a, ops);
+            }
+            compile_expr(callee, ops);
+            ops.push(Op::Call(args.len()));
+        }
+        _ => ops.push(Op::LoadNull),
+    }
+}
