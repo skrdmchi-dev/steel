@@ -1,0 +1,78 @@
+// =========================================================================
+// Steel Built-in Test Suite (`steel test examples/tests.steel`)
+// =========================================================================
+
+fn add(a: num, b: num) -> num {
+    return a + b
+}
+
+class BankAccount {
+    init(owner: str, balance: num = 100) {
+        this.owner = owner
+        this.balance = balance
+    }
+    deposit(amount: num) {
+        this.balance += amount
+        return this.balance
+    }
+}
+
+test "arithmetic, pipes & power operator" {
+    let x: num = 2 ** 10
+    assert(x == 1024, "2 ** 10 should equal 1024")
+    let piped = 10 |> add(5) |> add(25)
+    assert(piped == 40, "Pipe result should equal 40")
+}
+
+test "arrays, destructuring & functional HOFs" {
+    let [a, b, c] = [10, 20, 30]
+    assert(a + b + c == 60, "Destructured sum should be 60")
+
+    let evens = filter([1, 2, 3, 4, 5, 6], n => n % 2 == 0)
+    assert(len(evens) == 3, "Should find 3 even numbers")
+}
+
+test "classes, methods & error handling" {
+    let acct = new BankAccount("Ada", 500)
+    assert(acct.deposit(250) == 750, "Balance should update to 750")
+
+    let caught = false
+    try {
+        throw "funds locked"
+    } catch (e) {
+        caught = true
+    }
+    assert(caught, "try/catch should recover from thrown error")
+}
+
+enum Status {
+    Pending = 1,
+    Active = 2,
+    Done = 3
+}
+
+test "enums, method chaining, spread, defer, JSON & extended stdlib" {
+    assert(Status.Active == 2, "Enum Status.Active should equal 2")
+
+    // Method-call chaining on strings and arrays
+    let cleaned = "  steel language  ".trim().upper()
+    assert(cleaned == "STEEL LANGUAGE", "Method chain trim().upper() should work")
+
+    let base = [2, 3]
+    let combined = [1, ...base, 4]
+    assert(combined.sum() == 10, "Spread array sum() should equal 10")
+    assert(combined.avg() == 2.5, "avg() should equal 2.5")
+
+    let chained = [1, 2, 3, 4].map(x => x * 10).filter(x => x >= 20)
+    assert(chained.len() == 3, "Chained map().filter() should keep 3 items")
+
+    // Built-in JSON serializer & parser
+    let payload = json_stringify({ lang: "Steel", targets: 8 })
+    let parsed = json_parse(payload)
+    assert(parsed.targets == 8, "JSON round-trip should preserve targets = 8")
+
+    // Hash & UUID
+    assert(len(hash("steel")) == 16, "64-bit hex hash should be 16 chars")
+    assert(len(uuid()) == 36, "UUID v4 should be 36 chars")
+}
+
