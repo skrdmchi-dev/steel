@@ -85,3 +85,47 @@ pub fn analyze_program(program: &Program) -> TypeReport {
         "keys", "values", "has_key", "delete_key", "concat", "contains", "index_of", "starts_with", "ends_with",
         "repeat", "pad_start", "pad_end", "char_code", "from_char_code",
         "range", "slice", "reverse", "sort", "map", "filter", "reduce", "find", "any", "all",
+        "sum", "avg", "unique", "flat", "enumerate", "zip", "split", "join", "trim",
+        "upper", "lower", "replace", "json_parse", "json_stringify", "args", "env", "set_env",
+        "cwd", "exec", "exit", "file_exists", "read_file", "write_file", "append_file",
+        "list_dir", "make_dir", "remove_file", "clock", "sleep", "random", "rand_int", "hash",
+        "uuid", "abs", "sqrt", "pow", "floor", "ceil", "round", "min", "max", "clamp", "sin",
+        "cos", "tan", "atan2", "log", "exp", "sign", "PI", "E", "this", "self",
+    ] {
+        symbols.remove(builtin);
+    }
+
+    TypeReport { symbols, errors }
+}
+
+fn unify(a: &InferredType, b: &InferredType) -> InferredType {
+    if a == b {
+        a.clone()
+    } else {
+        InferredType::Any
+    }
+}
+
+fn analyze_stmt(
+    stmt: &Stmt,
+    env: &mut BTreeMap<String, InferredType>,
+    errors: &mut Vec<String>,
+) {
+    match stmt {
+        Stmt::Let { name, value, .. } => {
+            check_expr_undefined(value, env, errors);
+            let t = infer_expr(value, env);
+            env.insert(name.clone(), t);
+        }
+        Stmt::Assign { target, value } => {
+            check_expr_undefined(value, env, errors);
+            let t = infer_expr(value, env);
+            if let AssignTarget::Ident(name) = target {
+                if let Some(InferredType::Func { .. }) = env.get(name) {
+                    errors.push(format!(
+                        "Cannot overwrite function '{}' without 'let' (use `let res = {}(...)`)",
+                        name, name
+                    ));
+                }
+                let merged = match env.get(name) {
+                    Some(prev) => unify(prev, &t),
