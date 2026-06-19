@@ -42,3 +42,46 @@ pub fn analyze_program(program: &Program) -> TypeReport {
 
     // Pre-seed all built-in standard library symbols
     for builtin in [
+        "print", "println", "input", "assert", "type", "str", "num", "int", "bool", "len", "push", "pop",
+        "keys", "values", "has_key", "delete_key", "concat", "contains", "index_of", "starts_with", "ends_with",
+        "repeat", "pad_start", "pad_end", "char_code", "from_char_code",
+        "range", "slice", "reverse", "sort", "map", "filter", "reduce", "find", "any", "all",
+        "sum", "avg", "unique", "flat", "enumerate", "zip", "split", "join", "trim",
+        "upper", "lower", "replace", "json_parse", "json_stringify", "args", "env", "set_env",
+        "cwd", "exec", "exit", "file_exists", "read_file", "write_file", "append_file",
+        "list_dir", "make_dir", "remove_file", "clock", "sleep", "random", "rand_int", "hash",
+        "uuid", "abs", "sqrt", "pow", "floor", "ceil", "round", "min", "max", "clamp", "sin",
+        "cos", "tan", "atan2", "log", "exp", "sign", "PI", "E", "this", "self",
+    ] {
+        symbols.insert(builtin.to_string(), InferredType::Any);
+    }
+
+    // Pre-register top-level functions and classes
+    for stmt in &program.statements {
+        match stmt {
+            Stmt::FnDecl { name, params, .. } => {
+                symbols.insert(
+                    name.clone(),
+                    InferredType::Func {
+                        params: params.len(),
+                        ret: Box::new(InferredType::Any),
+                    },
+                );
+            }
+            Stmt::ClassDecl { name, .. } => {
+                symbols.insert(name.clone(), InferredType::Class(name.clone()));
+            }
+            _ => {}
+        }
+    }
+
+    for stmt in &program.statements {
+        analyze_stmt(stmt, &mut symbols, &mut errors);
+    }
+
+    // Remove built-ins from the user symbol table report
+    for builtin in [
+        "print", "println", "input", "assert", "type", "str", "num", "int", "bool", "len", "push", "pop",
+        "keys", "values", "has_key", "delete_key", "concat", "contains", "index_of", "starts_with", "ends_with",
+        "repeat", "pad_start", "pad_end", "char_code", "from_char_code",
+        "range", "slice", "reverse", "sort", "map", "filter", "reduce", "find", "any", "all",
