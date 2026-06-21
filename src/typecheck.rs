@@ -129,3 +129,47 @@ fn analyze_stmt(
                 }
                 let merged = match env.get(name) {
                     Some(prev) => unify(prev, &t),
+                    None => t,
+                };
+                env.insert(name.clone(), merged);
+            }
+        }
+        Stmt::FnDecl { name, params, body } => {
+            let mut local = env.clone();
+            for (p, def) in params {
+                if let Some(d) = def {
+                    check_expr_undefined(d, &local, errors);
+                }
+                let dt = def
+                    .as_ref()
+                    .map(|e| infer_expr(e, &local))
+                    .unwrap_or(InferredType::Any);
+                local.insert(p.clone(), dt);
+            }
+            let mut ret_type = InferredType::Null;
+            let mut saw_return = false;
+            for st in body {
+                analyze_stmt(st, &mut local, errors);
+                if let Some(rt) = find_return_type(st, &local) {
+                    ret_type = if !saw_return {
+                        saw_return = true;
+                        rt
+                    } else {
+                        unify(&ret_type, &rt)
+                    };
+                }
+            }
+            env.insert(
+                name.clone(),
+                InferredType::Func {
+                    params: params.len(),
+                    ret: Box::new(ret_type),
+                },
+            );
+        }
+        Stmt::ClassDecl { name, methods, .. } => {
+            env.insert(name.clone(), InferredType::Class(name.clone()));
+            for m in methods {
+                let mut local = env.clone();
+                for (p, _) in &m.params {
+                    local.insert(p.clone(), InferredType::Any);
