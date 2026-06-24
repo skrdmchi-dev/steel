@@ -173,3 +173,46 @@ fn analyze_stmt(
                 let mut local = env.clone();
                 for (p, _) in &m.params {
                     local.insert(p.clone(), InferredType::Any);
+                }
+                for st in &m.body {
+                    analyze_stmt(st, &mut local, errors);
+                }
+            }
+        }
+        Stmt::For {
+            var,
+            iterable,
+            body,
+        } => {
+            check_expr_undefined(iterable, env, errors);
+            let elem_ty = match iterable {
+                Expr::Range { .. } => InferredType::Num,
+                _ => InferredType::Any,
+            };
+            env.insert(var.clone(), elem_ty);
+            for st in body {
+                analyze_stmt(st, env, errors);
+            }
+        }
+        Stmt::If {
+            cond,
+            then_branch,
+            else_branch,
+        } => {
+            check_expr_undefined(cond, env, errors);
+            for st in then_branch {
+                analyze_stmt(st, env, errors);
+            }
+            if let Some(eb) = else_branch {
+                for st in eb {
+                    analyze_stmt(st, env, errors);
+                }
+            }
+        }
+        Stmt::While { cond, body } => {
+            check_expr_undefined(cond, env, errors);
+            for st in body {
+                analyze_stmt(st, env, errors);
+            }
+        }
+        Stmt::Test { body, .. } => {
