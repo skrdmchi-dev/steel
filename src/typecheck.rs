@@ -216,3 +216,47 @@ fn analyze_stmt(
             }
         }
         Stmt::Test { body, .. } => {
+            let mut local = env.clone();
+            for st in body {
+                analyze_stmt(st, &mut local, errors);
+            }
+        }
+        Stmt::TryCatch {
+            try_body,
+            err_var,
+            catch_body,
+        } => {
+            for st in try_body {
+                analyze_stmt(st, env, errors);
+            }
+            env.insert(err_var.clone(), InferredType::Str);
+            for st in catch_body {
+                analyze_stmt(st, env, errors);
+            }
+        }
+        Stmt::Return(Some(e)) | Stmt::Throw(e) | Stmt::Expr(e) => {
+            check_expr_undefined(e, env, errors);
+        }
+        Stmt::Defer(inner) => analyze_stmt(inner, env, errors),
+        _ => {}
+    }
+}
+
+fn check_expr_undefined(
+    expr: &Expr,
+    env: &BTreeMap<String, InferredType>,
+    errors: &mut Vec<String>,
+) {
+    match expr {
+        Expr::Ident(name) => {
+            if !env.contains_key(name) {
+                errors.push(format!("Undefined variable '{}'", name));
+            }
+        }
+        Expr::Array(items) => {
+            for it in items {
+                check_expr_undefined(it, env, errors);
+            }
+        }
+        Expr::Map(entries) => {
+            for (_, v) in entries {
