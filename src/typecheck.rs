@@ -260,3 +260,47 @@ fn check_expr_undefined(
         }
         Expr::Map(entries) => {
             for (_, v) in entries {
+                check_expr_undefined(v, env, errors);
+            }
+        }
+        Expr::Binary { left, right, .. } | Expr::Range { start: left, end: right } => {
+            check_expr_undefined(left, env, errors);
+            check_expr_undefined(right, env, errors);
+        }
+        Expr::Unary { expr: inner, .. } | Expr::Spread(inner) => {
+            check_expr_undefined(inner, env, errors);
+        }
+        Expr::Ternary {
+            cond,
+            then_expr,
+            else_expr,
+        } => {
+            check_expr_undefined(cond, env, errors);
+            check_expr_undefined(then_expr, env, errors);
+            check_expr_undefined(else_expr, env, errors);
+        }
+        Expr::Call { callee, args } => {
+            check_expr_undefined(callee, env, errors);
+            for a in args {
+                check_expr_undefined(a, env, errors);
+            }
+        }
+        Expr::New { class_name, args } => {
+            if !env.contains_key(class_name) {
+                errors.push(format!("Undefined class '{}'", class_name));
+            }
+            for a in args {
+                check_expr_undefined(a, env, errors);
+            }
+        }
+        Expr::Index { target, index } => {
+            check_expr_undefined(target, env, errors);
+            check_expr_undefined(index, env, errors);
+        }
+        Expr::Member { target, .. } => {
+            check_expr_undefined(target, env, errors);
+        }
+        Expr::FnExpr { params, body } => {
+            let mut local = env.clone();
+            for (p, _) in params {
+                local.insert(p.clone(), InferredType::Any);
