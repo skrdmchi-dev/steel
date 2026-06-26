@@ -348,3 +348,46 @@ fn find_return_type(stmt: &Stmt, env: &BTreeMap<String, InferredType>) -> Option
         Stmt::While { body, .. } | Stmt::For { body, .. } => {
             for st in body {
                 if let Some(t) = find_return_type(st, env) {
+                    return Some(t);
+                }
+            }
+            None
+        }
+        _ => None,
+    }
+}
+
+pub fn infer_expr(expr: &Expr, env: &BTreeMap<String, InferredType>) -> InferredType {
+    match expr {
+        Expr::Number(_) => InferredType::Num,
+        Expr::String(_) => InferredType::Str,
+        Expr::Bool(_) => InferredType::Bool,
+        Expr::Null => InferredType::Null,
+        Expr::Array(_) | Expr::Range { .. } => InferredType::Array,
+        Expr::Map(_) => InferredType::Map,
+        Expr::New { class_name, .. } => InferredType::Class(class_name.clone()),
+        Expr::Ident(name) => env.get(name).cloned().unwrap_or(InferredType::Any),
+        Expr::FnExpr { params, .. } => InferredType::Func {
+            params: params.len(),
+            ret: Box::new(InferredType::Any),
+        },
+        Expr::Unary { op, .. } => match op {
+            UnaryOp::Neg | UnaryOp::BitNot => InferredType::Num,
+            UnaryOp::Not => InferredType::Bool,
+        },
+        Expr::Ternary {
+            then_expr,
+            else_expr,
+            ..
+        } => unify(&infer_expr(then_expr, env), &infer_expr(else_expr, env)),
+        Expr::Binary { left, op, right } => match op {
+            BinaryOp::Add => {
+                let lt = infer_expr(left, env);
+                let rt = infer_expr(right, env);
+                if lt == InferredType::Str || rt == InferredType::Str {
+                    InferredType::Str
+                } else if lt == InferredType::Num && rt == InferredType::Num {
+                    InferredType::Num
+                } else {
+                    InferredType::Any
+                }
