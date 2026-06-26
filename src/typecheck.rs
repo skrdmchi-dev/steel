@@ -304,3 +304,47 @@ fn check_expr_undefined(
             let mut local = env.clone();
             for (p, _) in params {
                 local.insert(p.clone(), InferredType::Any);
+            }
+            let mut dummy_errs = Vec::new();
+            for st in body {
+                analyze_stmt(st, &mut local, &mut dummy_errs);
+            }
+            errors.extend(dummy_errs);
+        }
+        _ => {}
+    }
+}
+
+fn find_return_type(stmt: &Stmt, env: &BTreeMap<String, InferredType>) -> Option<InferredType> {
+    match stmt {
+        Stmt::Return(Some(e)) => Some(infer_expr(e, env)),
+        Stmt::Return(None) => Some(InferredType::Null),
+        Stmt::If {
+            then_branch,
+            else_branch,
+            ..
+        } => {
+            let mut res: Option<InferredType> = None;
+            for st in then_branch {
+                if let Some(t) = find_return_type(st, env) {
+                    res = Some(match res {
+                        Some(prev) => unify(&prev, &t),
+                        None => t,
+                    });
+                }
+            }
+            if let Some(eb) = else_branch {
+                for st in eb {
+                    if let Some(t) = find_return_type(st, env) {
+                        res = Some(match res {
+                            Some(prev) => unify(&prev, &t),
+                            None => t,
+                        });
+                    }
+                }
+            }
+            res
+        }
+        Stmt::While { body, .. } | Stmt::For { body, .. } => {
+            for st in body {
+                if let Some(t) = find_return_type(st, env) {
