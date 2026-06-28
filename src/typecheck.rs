@@ -391,3 +391,47 @@ pub fn infer_expr(expr: &Expr, env: &BTreeMap<String, InferredType>) -> Inferred
                 } else {
                     InferredType::Any
                 }
+            }
+            BinaryOp::Sub
+            | BinaryOp::Mul
+            | BinaryOp::Pow
+            | BinaryOp::Div
+            | BinaryOp::Mod
+            | BinaryOp::BitAnd
+            | BinaryOp::BitOr
+            | BinaryOp::BitXor
+            | BinaryOp::Shl
+            | BinaryOp::Shr => InferredType::Num,
+            BinaryOp::Eq
+            | BinaryOp::Neq
+            | BinaryOp::Lt
+            | BinaryOp::Gt
+            | BinaryOp::Lte
+            | BinaryOp::Gte
+            | BinaryOp::And
+            | BinaryOp::Or => InferredType::Bool,
+            BinaryOp::NullCoalesce => unify(&infer_expr(left, env), &infer_expr(right, env)),
+        },
+        Expr::Call { callee, .. } => {
+            if let Expr::Ident(name) = &**callee {
+                match name.as_str() {
+                    "str" | "upper" | "lower" | "trim" | "join" | "replace" => {
+                        return InferredType::Str
+                    }
+                    "num" | "len" | "abs" | "sqrt" | "floor" | "ceil" | "round" | "sin" | "cos" | "tan"
+                    | "min" | "max" | "clock" => return InferredType::Num,
+                    "split" | "keys" | "values" | "range" | "map" | "filter" | "reverse"
+                    | "sort" => return InferredType::Array,
+                    "contains" | "assert" => return InferredType::Bool,
+                    _ => {
+                        if let Some(InferredType::Func { ret, .. }) = env.get(name) {
+                            return (**ret).clone();
+                        }
+                    }
+                }
+            }
+            InferredType::Any
+        }
+        _ => InferredType::Any,
+    }
+}
