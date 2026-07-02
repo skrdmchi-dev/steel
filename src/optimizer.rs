@@ -142,3 +142,75 @@ fn fill_defaults_stmt(stmt: Stmt, defs: &HashMap<String, Vec<Option<Expr>>>) -> 
         },
         Stmt::Assign { target, value } => {
             let t = match target {
+                AssignTarget::Ident(n) => AssignTarget::Ident(n),
+                AssignTarget::Index { target, index } => AssignTarget::Index {
+                    target: fill_defaults_expr(target, defs),
+                    index: fill_defaults_expr(index, defs),
+                },
+                AssignTarget::Member { target, field } => AssignTarget::Member {
+                    target: fill_defaults_expr(target, defs),
+                    field,
+                },
+            };
+            Stmt::Assign {
+                target: t,
+                value: fill_defaults_expr(value, defs),
+            }
+        }
+        Stmt::FnDecl { name, params, body } => Stmt::FnDecl {
+            name,
+            params,
+            body: body.into_iter().map(|s| fill_defaults_stmt(s, defs)).collect(),
+        },
+        Stmt::ClassDecl { name, parent, methods } => Stmt::ClassDecl {
+            name,
+            parent,
+            methods: methods
+                .into_iter()
+                .map(|m| ClassMethod {
+                    name: m.name,
+                    params: m.params,
+                    body: m.body.into_iter().map(|s| fill_defaults_stmt(s, defs)).collect(),
+                })
+                .collect(),
+        },
+        Stmt::TryCatch { try_body, err_var, catch_body } => Stmt::TryCatch {
+            try_body: try_body.into_iter().map(|s| fill_defaults_stmt(s, defs)).collect(),
+            err_var,
+            catch_body: catch_body.into_iter().map(|s| fill_defaults_stmt(s, defs)).collect(),
+        },
+        Stmt::Throw(e) => Stmt::Throw(fill_defaults_expr(e, defs)),
+        Stmt::Test { name, body } => Stmt::Test {
+            name,
+            body: body.into_iter().map(|s| fill_defaults_stmt(s, defs)).collect(),
+        },
+        Stmt::Defer(inner) => Stmt::Defer(Box::new(fill_defaults_stmt(*inner, defs))),
+        Stmt::Return(e) => Stmt::Return(e.map(|x| fill_defaults_expr(x, defs))),
+        Stmt::If { cond, then_branch, else_branch } => Stmt::If {
+            cond: fill_defaults_expr(cond, defs),
+            then_branch: then_branch.into_iter().map(|s| fill_defaults_stmt(s, defs)).collect(),
+            else_branch: else_branch.map(|eb| eb.into_iter().map(|s| fill_defaults_stmt(s, defs)).collect()),
+        },
+        Stmt::While { cond, body } => Stmt::While {
+            cond: fill_defaults_expr(cond, defs),
+            body: body.into_iter().map(|s| fill_defaults_stmt(s, defs)).collect(),
+        },
+        Stmt::For { var, iterable, body } => Stmt::For {
+            var,
+            iterable: fill_defaults_expr(iterable, defs),
+            body: body.into_iter().map(|s| fill_defaults_stmt(s, defs)).collect(),
+        },
+        Stmt::Expr(e) => Stmt::Expr(fill_defaults_expr(e, defs)),
+        other => other,
+    }
+}
+
+fn fill_defaults_expr(expr: Expr, defs: &HashMap<String, Vec<Option<Expr>>>) -> Expr {
+    match expr {
+        Expr::Call { callee, args } => {
+            let c = fill_defaults_expr(*callee, defs);
+            let mut new_args: Vec<Expr> = args.into_iter().map(|a| fill_defaults_expr(a, defs)).collect();
+            if let Expr::Ident(ref name) = c {
+                if let Some(param_defs) = defs.get(name) {
+                    while new_args.len() < param_defs.len() {
+                        let idx = new_args.len();
