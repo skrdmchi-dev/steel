@@ -70,3 +70,75 @@ fn promote_implicit_lets(stmts: Vec<Stmt>, scope: &mut HashSet<String>) -> Vec<S
             }
             Stmt::FnDecl { name, params, body } => {
                 scope.insert(name.clone());
+                let mut fn_scope = scope.clone();
+                for (p, _) in &params {
+                    fn_scope.insert(p.clone());
+                }
+                let new_body = promote_implicit_lets(body, &mut fn_scope);
+                out.push(Stmt::FnDecl { name, params, body: new_body });
+            }
+            Stmt::ClassDecl { name, parent, methods } => {
+                scope.insert(name.clone());
+                let new_methods = methods
+                    .into_iter()
+                    .map(|m| {
+                        let mut m_scope = scope.clone();
+                        m_scope.insert("this".to_string());
+                        m_scope.insert("self".to_string());
+                        for (p, _) in &m.params {
+                            m_scope.insert(p.clone());
+                        }
+                        let new_body = promote_implicit_lets(m.body, &mut m_scope);
+                        ClassMethod { name: m.name, params: m.params, body: new_body }
+                    })
+                    .collect();
+                out.push(Stmt::ClassDecl { name, parent, methods: new_methods });
+            }
+            Stmt::If { cond, then_branch, else_branch } => {
+                let mut t_scope = scope.clone();
+                let tb = promote_implicit_lets(then_branch, &mut t_scope);
+                let eb = else_branch.map(|b| {
+                    let mut e_scope = scope.clone();
+                    promote_implicit_lets(b, &mut e_scope)
+                });
+                out.push(Stmt::If { cond, then_branch: tb, else_branch: eb });
+            }
+            Stmt::While { cond, body } => {
+                let mut w_scope = scope.clone();
+                let nb = promote_implicit_lets(body, &mut w_scope);
+                out.push(Stmt::While { cond, body: nb });
+            }
+            Stmt::For { var, iterable, body } => {
+                let mut f_scope = scope.clone();
+                f_scope.insert(var.clone());
+                let nb = promote_implicit_lets(body, &mut f_scope);
+                out.push(Stmt::For { var, iterable, body: nb });
+            }
+            Stmt::TryCatch { try_body, err_var, catch_body } => {
+                let mut ts = scope.clone();
+                let tb = promote_implicit_lets(try_body, &mut ts);
+                let mut cs = scope.clone();
+                cs.insert(err_var.clone());
+                let cb = promote_implicit_lets(catch_body, &mut cs);
+                out.push(Stmt::TryCatch { try_body: tb, err_var, catch_body: cb });
+            }
+            Stmt::Test { name, body } => {
+                let mut ts = scope.clone();
+                let nb = promote_implicit_lets(body, &mut ts);
+                out.push(Stmt::Test { name, body: nb });
+            }
+            other => out.push(other),
+        }
+    }
+    out
+}
+
+fn fill_defaults_stmt(stmt: Stmt, defs: &HashMap<String, Vec<Option<Expr>>>) -> Stmt {
+    match stmt {
+        Stmt::Let { name, is_const, value } => Stmt::Let {
+            name,
+            is_const,
+            value: fill_defaults_expr(value, defs),
+        },
+        Stmt::Assign { target, value } => {
+            let t = match target {
