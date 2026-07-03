@@ -286,3 +286,75 @@ fn opt_stmt(stmt: &Stmt) -> Stmt {
                 },
                 AssignTarget::Member { target, field } => AssignTarget::Member {
                     target: opt_expr(target),
+                    field: field.clone(),
+                },
+            };
+            Stmt::Assign {
+                target: t,
+                value: opt_expr(value),
+            }
+        }
+        Stmt::FnDecl { name, params, body } => Stmt::FnDecl {
+            name: name.clone(),
+            params: params
+                .iter()
+                .map(|(n, d)| (n.clone(), d.as_ref().map(opt_expr)))
+                .collect(),
+            body: body.iter().map(opt_stmt).collect(),
+        },
+        Stmt::ClassDecl {
+            name,
+            parent,
+            methods,
+        } => Stmt::ClassDecl {
+            name: name.clone(),
+            parent: parent.clone(),
+            methods: methods
+                .iter()
+                .map(|m| ClassMethod {
+                    name: m.name.clone(),
+                    params: m
+                        .params
+                        .iter()
+                        .map(|(n, d)| (n.clone(), d.as_ref().map(opt_expr)))
+                        .collect(),
+                    body: m.body.iter().map(opt_stmt).collect(),
+                })
+                .collect(),
+        },
+        Stmt::TryCatch {
+            try_body,
+            err_var,
+            catch_body,
+        } => Stmt::TryCatch {
+            try_body: try_body.iter().map(opt_stmt).collect(),
+            err_var: err_var.clone(),
+            catch_body: catch_body.iter().map(opt_stmt).collect(),
+        },
+        Stmt::Throw(e) => Stmt::Throw(opt_expr(e)),
+        Stmt::Test { name, body } => Stmt::Test {
+            name: name.clone(),
+            body: body.iter().map(opt_stmt).collect(),
+        },
+        Stmt::Defer(inner) => Stmt::Defer(Box::new(opt_stmt(inner))),
+        Stmt::Return(e) => Stmt::Return(e.as_ref().map(opt_expr)),
+        Stmt::If {
+            cond,
+            then_branch,
+            else_branch,
+        } => Stmt::If {
+            cond: opt_expr(cond),
+            then_branch: then_branch.iter().map(opt_stmt).collect(),
+            else_branch: else_branch
+                .as_ref()
+                .map(|eb| eb.iter().map(opt_stmt).collect()),
+        },
+        Stmt::While { cond, body } => Stmt::While {
+            cond: opt_expr(cond),
+            body: body.iter().map(opt_stmt).collect(),
+        },
+        Stmt::For {
+            var,
+            iterable,
+            body,
+        } => Stmt::For {
