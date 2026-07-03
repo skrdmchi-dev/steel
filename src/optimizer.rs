@@ -214,3 +214,75 @@ fn fill_defaults_expr(expr: Expr, defs: &HashMap<String, Vec<Option<Expr>>>) -> 
                 if let Some(param_defs) = defs.get(name) {
                     while new_args.len() < param_defs.len() {
                         let idx = new_args.len();
+                        let def_val = param_defs[idx].clone().unwrap_or(Expr::Null);
+                        new_args.push(def_val);
+                    }
+                }
+            }
+            Expr::Call { callee: Box::new(c), args: new_args }
+        }
+        Expr::New { class_name, args } => {
+            let mut new_args: Vec<Expr> = args.into_iter().map(|a| fill_defaults_expr(a, defs)).collect();
+            if let Some(param_defs) = defs.get(&class_name) {
+                while new_args.len() < param_defs.len() {
+                    let idx = new_args.len();
+                    let def_val = param_defs[idx].clone().unwrap_or(Expr::Null);
+                    new_args.push(def_val);
+                }
+            }
+            Expr::New { class_name, args: new_args }
+        }
+        Expr::Array(items) => Expr::Array(items.into_iter().map(|e| fill_defaults_expr(e, defs)).collect()),
+        Expr::Map(entries) => Expr::Map(entries.into_iter().map(|(k, v)| (k, fill_defaults_expr(v, defs))).collect()),
+        Expr::Binary { left, op, right } => Expr::Binary {
+            left: Box::new(fill_defaults_expr(*left, defs)),
+            op,
+            right: Box::new(fill_defaults_expr(*right, defs)),
+        },
+        Expr::Unary { op, expr } => Expr::Unary { op, expr: Box::new(fill_defaults_expr(*expr, defs)) },
+        Expr::Ternary { cond, then_expr, else_expr } => Expr::Ternary {
+            cond: Box::new(fill_defaults_expr(*cond, defs)),
+            then_expr: Box::new(fill_defaults_expr(*then_expr, defs)),
+            else_expr: Box::new(fill_defaults_expr(*else_expr, defs)),
+        },
+        Expr::Index { target, index } => Expr::Index {
+            target: Box::new(fill_defaults_expr(*target, defs)),
+            index: Box::new(fill_defaults_expr(*index, defs)),
+        },
+        Expr::Member { target, field } => Expr::Member {
+            target: Box::new(fill_defaults_expr(*target, defs)),
+            field,
+        },
+        Expr::Range { start, end } => Expr::Range {
+            start: Box::new(fill_defaults_expr(*start, defs)),
+            end: Box::new(fill_defaults_expr(*end, defs)),
+        },
+        Expr::Spread(inner) => Expr::Spread(Box::new(fill_defaults_expr(*inner, defs))),
+        Expr::FnExpr { params, body } => Expr::FnExpr {
+            params,
+            body: body.into_iter().map(|s| fill_defaults_stmt(s, defs)).collect(),
+        },
+        other => other,
+    }
+}
+
+fn opt_stmt(stmt: &Stmt) -> Stmt {
+    match stmt {
+        Stmt::Let {
+            name,
+            is_const,
+            value,
+        } => Stmt::Let {
+            name: name.clone(),
+            is_const: *is_const,
+            value: opt_expr(value),
+        },
+        Stmt::Assign { target, value } => {
+            let t = match target {
+                AssignTarget::Ident(n) => AssignTarget::Ident(n.clone()),
+                AssignTarget::Index { target, index } => AssignTarget::Index {
+                    target: opt_expr(target),
+                    index: opt_expr(index),
+                },
+                AssignTarget::Member { target, field } => AssignTarget::Member {
+                    target: opt_expr(target),
