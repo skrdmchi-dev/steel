@@ -358,3 +358,75 @@ fn opt_stmt(stmt: &Stmt) -> Stmt {
             iterable,
             body,
         } => Stmt::For {
+            var: var.clone(),
+            iterable: opt_expr(iterable),
+            body: body.iter().map(opt_stmt).collect(),
+        },
+        Stmt::Expr(e) => Stmt::Expr(opt_expr(e)),
+        other => other.clone(),
+    }
+}
+
+pub fn opt_expr(expr: &Expr) -> Expr {
+    match expr {
+        Expr::Array(items) => Expr::Array(items.iter().map(opt_expr).collect()),
+        Expr::Map(entries) => Expr::Map(
+            entries
+                .iter()
+                .map(|(k, v)| (k.clone(), opt_expr(v)))
+                .collect(),
+        ),
+        Expr::Spread(inner) => Expr::Spread(Box::new(opt_expr(inner))),
+        Expr::Range { start, end } => Expr::Range {
+            start: Box::new(opt_expr(start)),
+            end: Box::new(opt_expr(end)),
+        },
+        Expr::Unary { op, expr: inner } => {
+            let e = opt_expr(inner);
+            match (op, &e) {
+                (UnaryOp::Neg, Expr::Number(n)) => Expr::Number(-n),
+                (UnaryOp::Not, Expr::Bool(b)) => Expr::Bool(!b),
+                (UnaryOp::BitNot, Expr::Number(n)) => Expr::Number((!(*n as i64)) as f64),
+                _ => Expr::Unary {
+                    op: op.clone(),
+                    expr: Box::new(e),
+                },
+            }
+        }
+        Expr::Ternary {
+            cond,
+            then_expr,
+            else_expr,
+        } => {
+            let c = opt_expr(cond);
+            let t = opt_expr(then_expr);
+            let e = opt_expr(else_expr);
+            if let Expr::Bool(b) = c {
+                if b { t } else { e }
+            } else {
+                Expr::Ternary {
+                    cond: Box::new(c),
+                    then_expr: Box::new(t),
+                    else_expr: Box::new(e),
+                }
+            }
+        }
+        Expr::Binary { left, op, right } => {
+            let l = opt_expr(left);
+            let r = opt_expr(right);
+            match (&l, op, &r) {
+                (Expr::Number(a), BinaryOp::Add, Expr::Number(b)) => Expr::Number(a + b),
+                (Expr::Number(a), BinaryOp::Sub, Expr::Number(b)) => Expr::Number(a - b),
+                (Expr::Number(a), BinaryOp::Mul, Expr::Number(b)) => Expr::Number(a * b),
+                (Expr::Number(a), BinaryOp::Pow, Expr::Number(b)) => Expr::Number(a.powf(*b)),
+                (Expr::Number(a), BinaryOp::Div, Expr::Number(b)) if *b != 0.0 => {
+                    Expr::Number(a / b)
+                }
+                (Expr::Number(a), BinaryOp::Mod, Expr::Number(b)) if *b != 0.0 => {
+                    Expr::Number(a % b)
+                }
+                (Expr::Number(a), BinaryOp::BitAnd, Expr::Number(b)) => {
+                    Expr::Number(((*a as i64) & (*b as i64)) as f64)
+                }
+                (Expr::Number(a), BinaryOp::BitOr, Expr::Number(b)) => {
+                    Expr::Number(((*a as i64) | (*b as i64)) as f64)
