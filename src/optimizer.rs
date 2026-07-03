@@ -430,3 +430,76 @@ pub fn opt_expr(expr: &Expr) -> Expr {
                 }
                 (Expr::Number(a), BinaryOp::BitOr, Expr::Number(b)) => {
                     Expr::Number(((*a as i64) | (*b as i64)) as f64)
+                }
+                (Expr::Number(a), BinaryOp::BitXor, Expr::Number(b)) => {
+                    Expr::Number(((*a as i64) ^ (*b as i64)) as f64)
+                }
+                (Expr::Number(a), BinaryOp::Shl, Expr::Number(b)) => {
+                    Expr::Number(((*a as i64) << (*b as i64)) as f64)
+                }
+                (Expr::Number(a), BinaryOp::Shr, Expr::Number(b)) => {
+                    Expr::Number(((*a as i64) >> (*b as i64)) as f64)
+                }
+                (Expr::String(a), BinaryOp::Add, Expr::String(b)) => {
+                    Expr::String(format!("{}{}", a, b))
+                }
+                (Expr::Bool(a), BinaryOp::And, Expr::Bool(b)) => Expr::Bool(*a && *b),
+                (Expr::Bool(a), BinaryOp::Or, Expr::Bool(b)) => Expr::Bool(*a || *b),
+                (Expr::Null, BinaryOp::NullCoalesce, _) => r,
+                (Expr::Number(_) | Expr::String(_) | Expr::Bool(_), BinaryOp::NullCoalesce, _) => l,
+                _ => Expr::Binary {
+                    left: Box::new(l),
+                    op: op.clone(),
+                    right: Box::new(r),
+                },
+            }
+        }
+        Expr::Call { callee, args } => Expr::Call {
+            callee: Box::new(opt_expr(callee)),
+            args: args.iter().map(opt_expr).collect(),
+        },
+        Expr::New { class_name, args } => Expr::New {
+            class_name: class_name.clone(),
+            args: args.iter().map(opt_expr).collect(),
+        },
+        Expr::Index { target, index } => Expr::Index {
+            target: Box::new(opt_expr(target)),
+            index: Box::new(opt_expr(index)),
+        },
+        Expr::Member { target, field } => Expr::Member {
+            target: Box::new(opt_expr(target)),
+            field: field.clone(),
+        },
+        Expr::FnExpr { params, body } => Expr::FnExpr {
+            params: params
+                .iter()
+                .map(|(n, d)| (n.clone(), d.as_ref().map(opt_expr)))
+                .collect(),
+            body: body.iter().map(opt_stmt).collect(),
+        },
+        other => other.clone(),
+    }
+}
+
+fn flatten_class_inheritance(stmts: &mut [Stmt]) {
+    let mut class_methods: HashMap<String, Vec<ClassMethod>> = HashMap::new();
+    let mut parents: HashMap<String, String> = HashMap::new();
+    for st in stmts.iter() {
+        if let Stmt::ClassDecl {
+            name,
+            parent,
+            methods,
+        } = st
+        {
+            class_methods.insert(name.clone(), methods.clone());
+            if let Some(p) = parent {
+                parents.insert(name.clone(), p.clone());
+            }
+        }
+    }
+    if parents.is_empty() {
+        return;
+    }
+    for st in stmts.iter_mut() {
+        if let Stmt::ClassDecl {
+            name,
