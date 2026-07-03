@@ -503,3 +503,75 @@ fn flatten_class_inheritance(stmts: &mut [Stmt]) {
     for st in stmts.iter_mut() {
         if let Stmt::ClassDecl {
             name,
+            parent,
+            methods,
+        } = st
+        {
+            if parent.is_none() {
+                continue;
+            }
+            let mut chain = Vec::new();
+            let mut cur = parents.get(name).cloned();
+            let mut visited = HashSet::new();
+            visited.insert(name.clone());
+            while let Some(p) = cur {
+                if !visited.insert(p.clone()) {
+                    break;
+                }
+                chain.push(p.clone());
+                cur = parents.get(&p).cloned();
+            }
+            let mut existing: HashSet<String> = methods.iter().map(|m| m.name.clone()).collect();
+            let mut inherited = Vec::new();
+            for ancestor in &chain {
+                if let Some(anc_methods) = class_methods.get(ancestor) {
+                    for m in anc_methods {
+                        if !existing.contains(&m.name) {
+                            existing.insert(m.name.clone());
+                            inherited.push(m.clone());
+                        }
+                    }
+                }
+            }
+            inherited.append(methods);
+            *methods = inherited;
+            *parent = None;
+        }
+    }
+}
+
+fn collect_local_decls(stmts: &[Stmt], out: &mut HashSet<String>) {
+    for st in stmts {
+        match st {
+            Stmt::Let { name, .. } => {
+                out.insert(name.clone());
+            }
+            Stmt::If {
+                then_branch,
+                else_branch,
+                ..
+            } => {
+                collect_local_decls(then_branch, out);
+                if let Some(eb) = else_branch {
+                    collect_local_decls(eb, out);
+                }
+            }
+            Stmt::While { body, .. } | Stmt::For { body, .. } | Stmt::Test { body, .. } => {
+                collect_local_decls(body, out);
+            }
+            Stmt::TryCatch {
+                try_body,
+                catch_body,
+                ..
+            } => {
+                collect_local_decls(try_body, out);
+                collect_local_decls(catch_body, out);
+            }
+            _ => {}
+        }
+    }
+}
+
+fn collect_assigned_in_expr_closures(
+    expr: &Expr,
+    in_closure: bool,
