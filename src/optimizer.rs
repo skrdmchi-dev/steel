@@ -647,3 +647,75 @@ fn collect_assigned_in_stmts(
 ) {
     for st in stmts {
         match st {
+            Stmt::Assign { target, value } => {
+                if in_closure {
+                    if let AssignTarget::Ident(n) = target {
+                        if !shadowed.contains(n) {
+                            out.insert(n.clone());
+                        }
+                    }
+                }
+                collect_assigned_in_expr_closures(value, in_closure, shadowed, out);
+            }
+            Stmt::Let { value, .. } | Stmt::Expr(value) | Stmt::Throw(value) => {
+                collect_assigned_in_expr_closures(value, in_closure, shadowed, out);
+            }
+            Stmt::Return(Some(e)) => {
+                collect_assigned_in_expr_closures(e, in_closure, shadowed, out);
+            }
+            Stmt::If {
+                cond,
+                then_branch,
+                else_branch,
+            } => {
+                collect_assigned_in_expr_closures(cond, in_closure, shadowed, out);
+                collect_assigned_in_stmts(then_branch, in_closure, shadowed, out);
+                if let Some(eb) = else_branch {
+                    collect_assigned_in_stmts(eb, in_closure, shadowed, out);
+                }
+            }
+            Stmt::While { cond, body } => {
+                collect_assigned_in_expr_closures(cond, in_closure, shadowed, out);
+                collect_assigned_in_stmts(body, in_closure, shadowed, out);
+            }
+            Stmt::For { iterable, body, .. } => {
+                collect_assigned_in_expr_closures(iterable, in_closure, shadowed, out);
+                collect_assigned_in_stmts(body, in_closure, shadowed, out);
+            }
+            Stmt::TryCatch {
+                try_body,
+                catch_body,
+                ..
+            } => {
+                collect_assigned_in_stmts(try_body, in_closure, shadowed, out);
+                collect_assigned_in_stmts(catch_body, in_closure, shadowed, out);
+            }
+            _ => {}
+        }
+    }
+}
+
+fn rewrite_boxed_expr(expr: Expr, boxed: &HashSet<String>) -> Expr {
+    match expr {
+        Expr::Ident(n) if boxed.contains(&n) => Expr::Index {
+            target: Box::new(Expr::Ident(format!("__cell_{}", n))),
+            index: Box::new(Expr::Number(0.0)),
+        },
+        Expr::Array(xs) => Expr::Array(xs.into_iter().map(|e| rewrite_boxed_expr(e, boxed)).collect()),
+        Expr::Map(es) => Expr::Map(
+            es.into_iter()
+                .map(|(k, v)| (k, rewrite_boxed_expr(v, boxed)))
+                .collect(),
+        ),
+        Expr::Unary { op, expr } => Expr::Unary {
+            op,
+            expr: Box::new(rewrite_boxed_expr(*expr, boxed)),
+        },
+        Expr::Binary { left, op, right } => Expr::Binary {
+            left: Box::new(rewrite_boxed_expr(*left, boxed)),
+            op,
+            right: Box::new(rewrite_boxed_expr(*right, boxed)),
+        },
+        Expr::Ternary {
+            cond,
+            then_expr,
