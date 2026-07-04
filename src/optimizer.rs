@@ -575,3 +575,75 @@ fn collect_local_decls(stmts: &[Stmt], out: &mut HashSet<String>) {
 fn collect_assigned_in_expr_closures(
     expr: &Expr,
     in_closure: bool,
+    shadowed: &HashSet<String>,
+    out: &mut HashSet<String>,
+) {
+    match expr {
+        Expr::FnExpr { params, body } => {
+            let mut inner_shadow = shadowed.clone();
+            for (p, _) in params {
+                inner_shadow.insert(p.clone());
+            }
+            collect_local_decls(body, &mut inner_shadow);
+            collect_assigned_in_stmts(body, true, &inner_shadow, out);
+        }
+        Expr::Array(xs) => {
+            for x in xs {
+                collect_assigned_in_expr_closures(x, in_closure, shadowed, out);
+            }
+        }
+        Expr::Map(es) => {
+            for (_, v) in es {
+                collect_assigned_in_expr_closures(v, in_closure, shadowed, out);
+            }
+        }
+        Expr::Unary { expr, .. } | Expr::Spread(expr) => {
+            collect_assigned_in_expr_closures(expr, in_closure, shadowed, out);
+        }
+        Expr::Binary { left, right, .. } => {
+            collect_assigned_in_expr_closures(left, in_closure, shadowed, out);
+            collect_assigned_in_expr_closures(right, in_closure, shadowed, out);
+        }
+        Expr::Ternary {
+            cond,
+            then_expr,
+            else_expr,
+        } => {
+            collect_assigned_in_expr_closures(cond, in_closure, shadowed, out);
+            collect_assigned_in_expr_closures(then_expr, in_closure, shadowed, out);
+            collect_assigned_in_expr_closures(else_expr, in_closure, shadowed, out);
+        }
+        Expr::Call { callee, args } => {
+            collect_assigned_in_expr_closures(callee, in_closure, shadowed, out);
+            for a in args {
+                collect_assigned_in_expr_closures(a, in_closure, shadowed, out);
+            }
+        }
+        Expr::New { args, .. } => {
+            for a in args {
+                collect_assigned_in_expr_closures(a, in_closure, shadowed, out);
+            }
+        }
+        Expr::Index { target, index } => {
+            collect_assigned_in_expr_closures(target, in_closure, shadowed, out);
+            collect_assigned_in_expr_closures(index, in_closure, shadowed, out);
+        }
+        Expr::Member { target, .. } => {
+            collect_assigned_in_expr_closures(target, in_closure, shadowed, out);
+        }
+        Expr::Range { start, end } => {
+            collect_assigned_in_expr_closures(start, in_closure, shadowed, out);
+            collect_assigned_in_expr_closures(end, in_closure, shadowed, out);
+        }
+        _ => {}
+    }
+}
+
+fn collect_assigned_in_stmts(
+    stmts: &[Stmt],
+    in_closure: bool,
+    shadowed: &HashSet<String>,
+    out: &mut HashSet<String>,
+) {
+    for st in stmts {
+        match st {
