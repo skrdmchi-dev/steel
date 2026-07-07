@@ -791,3 +791,75 @@ fn rewrite_boxed_stmt(stmt: Stmt, boxed: &HashSet<String>, is_decl_scope: bool) 
                 }
             }
         }
+        Stmt::Assign { target, value } => {
+            let v = rewrite_boxed_expr(value, boxed);
+            let t = match target {
+                AssignTarget::Ident(n) if boxed.contains(&n) => AssignTarget::Index {
+                    target: Expr::Ident(format!("__cell_{}", n)),
+                    index: Expr::Number(0.0),
+                },
+                AssignTarget::Index { target, index } => AssignTarget::Index {
+                    target: rewrite_boxed_expr(target, boxed),
+                    index: rewrite_boxed_expr(index, boxed),
+                },
+                AssignTarget::Member { target, field } => AssignTarget::Member {
+                    target: rewrite_boxed_expr(target, boxed),
+                    field,
+                },
+                other => other,
+            };
+            Stmt::Assign {
+                target: t,
+                value: v,
+            }
+        }
+        Stmt::Return(opt) => Stmt::Return(opt.map(|e| rewrite_boxed_expr(e, boxed))),
+        Stmt::Expr(e) => Stmt::Expr(rewrite_boxed_expr(e, boxed)),
+        Stmt::Throw(e) => Stmt::Throw(rewrite_boxed_expr(e, boxed)),
+        Stmt::If {
+            cond,
+            then_branch,
+            else_branch,
+        } => Stmt::If {
+            cond: rewrite_boxed_expr(cond, boxed),
+            then_branch: then_branch
+                .into_iter()
+                .map(|s| rewrite_boxed_stmt(s, boxed, is_decl_scope))
+                .collect(),
+            else_branch: else_branch.map(|eb| {
+                eb.into_iter()
+                    .map(|s| rewrite_boxed_stmt(s, boxed, is_decl_scope))
+                    .collect()
+            }),
+        },
+        Stmt::While { cond, body } => Stmt::While {
+            cond: rewrite_boxed_expr(cond, boxed),
+            body: body
+                .into_iter()
+                .map(|s| rewrite_boxed_stmt(s, boxed, is_decl_scope))
+                .collect(),
+        },
+        Stmt::For {
+            var,
+            iterable,
+            body,
+        } => Stmt::For {
+            var,
+            iterable: rewrite_boxed_expr(iterable, boxed),
+            body: body
+                .into_iter()
+                .map(|s| rewrite_boxed_stmt(s, boxed, is_decl_scope))
+                .collect(),
+        },
+        Stmt::TryCatch {
+            try_body,
+            err_var,
+            catch_body,
+        } => Stmt::TryCatch {
+            try_body: try_body
+                .into_iter()
+                .map(|s| rewrite_boxed_stmt(s, boxed, is_decl_scope))
+                .collect(),
+            err_var,
+            catch_body: catch_body
+                .into_iter()
