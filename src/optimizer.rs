@@ -863,3 +863,75 @@ fn rewrite_boxed_stmt(stmt: Stmt, boxed: &HashSet<String>, is_decl_scope: bool) 
             err_var,
             catch_body: catch_body
                 .into_iter()
+                .map(|s| rewrite_boxed_stmt(s, boxed, is_decl_scope))
+                .collect(),
+        },
+        other => other,
+    }
+}
+
+fn box_mutable_captures_block(stmts: Vec<Stmt>, params: &[(String, Option<Expr>)]) -> Vec<Stmt> {
+    // First recurse into nested FnDecl and ClassDecl
+    let stmts: Vec<Stmt> = stmts
+        .into_iter()
+        .map(|st| match st {
+            Stmt::FnDecl { name, params, body } => {
+                let new_body = box_mutable_captures_block(body, &params);
+                Stmt::FnDecl {
+                    name,
+                    params,
+                    body: new_body,
+                }
+            }
+            Stmt::ClassDecl {
+                name,
+                parent,
+                methods,
+            } => {
+                let new_methods = methods
+                    .into_iter()
+                    .map(|m| ClassMethod {
+                        name: m.name,
+                        body: box_mutable_captures_block(m.body, &m.params),
+                        params: m.params,
+                    })
+                    .collect();
+                Stmt::ClassDecl {
+                    name,
+                    parent,
+                    methods: new_methods,
+                }
+            }
+            other => other,
+        })
+        .collect();
+
+    let mut decls = HashSet::new();
+    for (p, _) in params {
+        decls.insert(p.clone());
+    }
+    collect_local_decls(&stmts, &mut decls);
+
+    let mut mutated_in_closure = HashSet::new();
+    collect_assigned_in_stmts(&stmts, false, &HashSet::new(), &mut mutated_in_closure);
+
+    let boxed: HashSet<String> = decls.intersection(&mutated_in_closure).cloned().collect();
+    if boxed.is_empty() {
+        return stmts;
+    }
+
+    let mut out = Vec::new();
+    for (p, _) in params {
+        if boxed.contains(p) {
+            out.push(Stmt::Let {
+                name: format!("__cell_{}", p),
+                is_const: false,
+                value: Expr::Array(vec![Expr::Ident(p.clone())]),
+            });
+        }
+    }
+    for st in stmts {
+        out.push(rewrite_boxed_stmt(st, &boxed, true));
+    }
+    out
+}
