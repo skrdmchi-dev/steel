@@ -719,3 +719,75 @@ fn rewrite_boxed_expr(expr: Expr, boxed: &HashSet<String>) -> Expr {
         Expr::Ternary {
             cond,
             then_expr,
+            else_expr,
+        } => Expr::Ternary {
+            cond: Box::new(rewrite_boxed_expr(*cond, boxed)),
+            then_expr: Box::new(rewrite_boxed_expr(*then_expr, boxed)),
+            else_expr: Box::new(rewrite_boxed_expr(*else_expr, boxed)),
+        },
+        Expr::Call { callee, args } => Expr::Call {
+            callee: Box::new(rewrite_boxed_expr(*callee, boxed)),
+            args: args.into_iter().map(|a| rewrite_boxed_expr(a, boxed)).collect(),
+        },
+        Expr::New { class_name, args } => Expr::New {
+            class_name,
+            args: args.into_iter().map(|a| rewrite_boxed_expr(a, boxed)).collect(),
+        },
+        Expr::Index { target, index } => Expr::Index {
+            target: Box::new(rewrite_boxed_expr(*target, boxed)),
+            index: Box::new(rewrite_boxed_expr(*index, boxed)),
+        },
+        Expr::Member { target, field } => Expr::Member {
+            target: Box::new(rewrite_boxed_expr(*target, boxed)),
+            field,
+        },
+        Expr::Range { start, end } => Expr::Range {
+            start: Box::new(rewrite_boxed_expr(*start, boxed)),
+            end: Box::new(rewrite_boxed_expr(*end, boxed)),
+        },
+        Expr::Spread(e) => Expr::Spread(Box::new(rewrite_boxed_expr(*e, boxed))),
+        Expr::FnExpr { params, body } => {
+            let mut inner_boxed = boxed.clone();
+            for (p, _) in &params {
+                inner_boxed.remove(p);
+            }
+            let mut inner_decls = HashSet::new();
+            collect_local_decls(&body, &mut inner_decls);
+            for d in inner_decls {
+                inner_boxed.remove(&d);
+            }
+            let new_body = body
+                .into_iter()
+                .map(|s| rewrite_boxed_stmt(s, &inner_boxed, false))
+                .collect();
+            Expr::FnExpr {
+                params,
+                body: new_body,
+            }
+        }
+        other => other,
+    }
+}
+
+fn rewrite_boxed_stmt(stmt: Stmt, boxed: &HashSet<String>, is_decl_scope: bool) -> Stmt {
+    match stmt {
+        Stmt::Let {
+            name,
+            is_const,
+            value,
+        } => {
+            let v = rewrite_boxed_expr(value, boxed);
+            if is_decl_scope && boxed.contains(&name) {
+                Stmt::Let {
+                    name: format!("__cell_{}", name),
+                    is_const: false,
+                    value: Expr::Array(vec![v]),
+                }
+            } else {
+                Stmt::Let {
+                    name,
+                    is_const,
+                    value: v,
+                }
+            }
+        }
