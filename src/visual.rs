@@ -130,3 +130,47 @@ pub fn run_visual_pipeline(
         "STATIC TYPE INFERENCE & UNBOXING PASS (AST -> Typed IR)",
         "\x1b[1;32m",
     );
+    let report = analyze_program(program);
+    if report.symbols.is_empty() {
+        println!("  (No top-level symbols declared)");
+    } else {
+        println!(
+            "  \x1b[1m{:<20} | {:<28} | {}\x1b[0m",
+            "SYMBOL", "INFERRED TYPE", "CODEGEN STRATEGY"
+        );
+        println!("  ---------------------+------------------------------+-------------------------");
+        for (name, ty) in report.symbols.iter().take(16) {
+            let strategy = match ty {
+                crate::typecheck::InferredType::Num => "\x1b[32mUnboxed Native f64/double\x1b[0m",
+                crate::typecheck::InferredType::Bool => "\x1b[32mUnboxed Native bool\x1b[0m",
+                crate::typecheck::InferredType::Str => "\x1b[36mString Slice / const char*\x1b[0m",
+                crate::typecheck::InferredType::Func { .. } => "\x1b[35mDirect Function Symbol\x1b[0m",
+                crate::typecheck::InferredType::Class(_) => "\x1b[33mClass Constructor + Map\x1b[0m",
+                _ => "\x1b[90mDynamic Boxed SVal\x1b[0m",
+            };
+            println!("  {:<20} | {:<28} | {}", name, ty.to_string(), strategy);
+            step_pause(25);
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // STAGE 4: STACK VM BYTECODE DISASSEMBLY
+    // -------------------------------------------------------------------------
+    banner(
+        4,
+        "STEEL VIRTUAL MACHINE BYTECODE (AST -> Stack VM Instructions)",
+        "\x1b[1;34m",
+    );
+    let chunk = compile_program(program);
+    let disasm = chunk.disassemble();
+    for (idx, line) in disasm.lines().take(22).enumerate() {
+        if line.starts_with("===") {
+            println!("  \x1b[1;34m{}\x1b[0m", line);
+        } else {
+            println!("  {}", line);
+        }
+        if idx % 2 == 0 {
+            step_pause(15);
+        }
+    }
+    let total_lines = disasm.lines().count();
