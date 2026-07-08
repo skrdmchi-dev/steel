@@ -86,3 +86,47 @@ pub fn run_visual_pipeline(
         if (i + 1) % 6 == 0 {
             println!();
             print!("  ");
+        }
+        step_pause(18);
+    }
+    if tokens.len() > max_preview {
+        println!(
+            "\n  \x1b[90m... +{} more tokens ({} total tokens)\x1b[0m",
+            tokens.len() - max_preview,
+            tokens.len()
+        );
+    } else {
+        println!();
+    }
+
+    // -------------------------------------------------------------------------
+    // STAGE 2: ABSTRACT SYNTAX TREE (AST)
+    // -------------------------------------------------------------------------
+    banner(
+        2,
+        "PARSER & ABSTRACT SYNTAX TREE (Tokens -> AST)",
+        "\x1b[1;33m",
+    );
+    println!("  \x1b[1;33mProgram\x1b[0m ({} top-level statements)", program.statements.len());
+    let max_stmts = 14.min(program.statements.len());
+    for (i, stmt) in program.statements.iter().take(max_stmts).enumerate() {
+        let is_last = i + 1 == max_stmts && program.statements.len() == max_stmts;
+        let branch = if is_last { "└──" } else { "├──" };
+        println!("  {} {}", branch, summarize_stmt(stmt));
+        step_pause(30);
+    }
+    if program.statements.len() > max_stmts {
+        println!(
+            "  └── \x1b[90m... (+{} more AST nodes)\x1b[0m",
+            program.statements.len() - max_stmts
+        );
+    }
+
+    // -------------------------------------------------------------------------
+    // STAGE 3: STATIC TYPE INFERENCE & SYMBOL TABLE
+    // -------------------------------------------------------------------------
+    banner(
+        3,
+        "STATIC TYPE INFERENCE & UNBOXING PASS (AST -> Typed IR)",
+        "\x1b[1;32m",
+    );
