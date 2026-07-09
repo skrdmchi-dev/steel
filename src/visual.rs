@@ -219,3 +219,47 @@ pub fn run_visual_pipeline(
         println!(
             "  \x1b[90m{:03} |\x1b[0m \x1b[1;37m{}\x1b[0m",
             user_code_start + i + 1,
+            line
+        );
+        step_pause(22);
+    }
+    if gen_lines.len() > user_code_start + 32 {
+        println!(
+            "  \x1b[90m... (+{} more lines of generated {})\x1b[0m",
+            gen_lines.len() - (user_code_start + 32),
+            chosen_target.name()
+        );
+    }
+    println!(
+        "\x1b[1;32m=========================================================================\x1b[0m"
+    );
+    println!(
+        "\x1b[1;32m  [VISUAL PIPELINE COMPLETE] Steel -> {} morphing finished!\x1b[0m",
+        chosen_target.name()
+    );
+    println!(
+        "\x1b[1;32m=========================================================================\x1b[0m\n"
+    );
+}
+
+fn summarize_stmt(stmt: &Stmt) -> String {
+    match stmt {
+        Stmt::Let {
+            name,
+            is_const,
+            value,
+        } => {
+            let kw = if *is_const { "ConstDecl" } else { "LetDecl" };
+            format!(
+                "\x1b[1;36m{}\x1b[0m({} = {})",
+                kw,
+                name,
+                summarize_expr(value)
+            )
+        }
+        Stmt::Assign { target, value } => {
+            format!("\x1b[1;36mAssign\x1b[0m({:?} = {})", target, summarize_expr(value))
+        }
+        Stmt::FnDecl { name, params, body } => {
+            let p: Vec<String> = params.iter().map(|(n, _)| n.clone()).collect();
+            format!(
