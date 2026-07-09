@@ -263,3 +263,47 @@ fn summarize_stmt(stmt: &Stmt) -> String {
         Stmt::FnDecl { name, params, body } => {
             let p: Vec<String> = params.iter().map(|(n, _)| n.clone()).collect();
             format!(
+                "\x1b[1;35mFnDecl\x1b[0m {}({}) [{} stmts]",
+                name,
+                p.join(", "),
+                body.len()
+            )
+        }
+        Stmt::ClassDecl {
+            name,
+            parent,
+            methods,
+        } => format!(
+            "\x1b[1;35mClassDecl\x1b[0m {} (extends {:?}) [{} methods]",
+            name,
+            parent,
+            methods.len()
+        ),
+        Stmt::If {
+            cond,
+            then_branch,
+            else_branch,
+        } => format!(
+            "\x1b[1;33mIfStmt\x1b[0m (cond: {}) [then: {}, else: {}]",
+            summarize_expr(cond),
+            then_branch.len(),
+            else_branch.as_ref().map(|e| e.len()).unwrap_or(0)
+        ),
+        Stmt::While { cond, body } => format!(
+            "\x1b[1;33mWhileLoop\x1b[0m (cond: {}) [{} stmts]",
+            summarize_expr(cond),
+            body.len()
+        ),
+        Stmt::For {
+            var,
+            iterable,
+            body,
+        } => format!(
+            "\x1b[1;33mForInLoop\x1b[0m ({} in {}) [{} stmts]",
+            var,
+            summarize_expr(iterable),
+            body.len()
+        ),
+        Stmt::TryCatch {
+            try_body,
+            err_var,
