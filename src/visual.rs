@@ -174,3 +174,48 @@ pub fn run_visual_pipeline(
         }
     }
     let total_lines = disasm.lines().count();
+    if total_lines > 22 {
+        println!("  \x1b[90m... (+{} more bytecode instructions)\x1b[0m", total_lines - 22);
+    }
+
+    // -------------------------------------------------------------------------
+    // STAGE 5: TARGET CODE GENERATION (LIVE MORPHING!)
+    // -------------------------------------------------------------------------
+    let chosen_target = target.unwrap_or(Target::C);
+    banner(
+        5,
+        &format!(
+            "TARGET CODE GENERATION (Steel AST -> {})",
+            chosen_target.name()
+        ),
+        "\x1b[1;35m",
+    );
+    let generated = transpile(program, chosen_target);
+    let gen_lines: Vec<&str> = generated.lines().collect();
+    // Skip runtime header to show the user's morphed functions & main body
+    let user_code_start = gen_lines
+        .iter()
+        .position(|l| {
+            l.starts_with("SVal ")
+                || l.starts_with("fn ")
+                || l.starts_with("func ")
+                || l.starts_with("def ")
+                || l.starts_with("function ")
+                || l.starts_with("local function ")
+                || l.starts_with("int main")
+        })
+        .unwrap_or(0);
+
+    println!(
+        "  \x1b[90m[Embedded Steel Runtime Header: {} lines]\x1b[0m",
+        user_code_start
+    );
+    for (i, line) in gen_lines
+        .iter()
+        .skip(user_code_start)
+        .take(32)
+        .enumerate()
+    {
+        println!(
+            "  \x1b[90m{:03} |\x1b[0m \x1b[1;37m{}\x1b[0m",
+            user_code_start + i + 1,
