@@ -307,3 +307,47 @@ fn summarize_stmt(stmt: &Stmt) -> String {
         Stmt::TryCatch {
             try_body,
             err_var,
+            catch_body,
+        } => format!(
+            "\x1b[1;31mTryCatch\x1b[0m (try: {}, catch({}): {})",
+            try_body.len(),
+            err_var,
+            catch_body.len()
+        ),
+        Stmt::Test { name, body } => {
+            format!("\x1b[1;32mTestBlock\x1b[0m {:?} [{} stmts]", name, body.len())
+        }
+        Stmt::Expr(e) => format!("\x1b[37mExprStmt\x1b[0m({})", summarize_expr(e)),
+        other => format!("{:?}", other),
+    }
+}
+
+fn summarize_expr(expr: &Expr) -> String {
+    match expr {
+        Expr::Number(n) => format!("\x1b[33m{}\x1b[0m", n),
+        Expr::String(s) => {
+            let short = if s.len() > 18 { &s[..18] } else { s };
+            format!("\x1b[32m{:?}\x1b[0m", short)
+        }
+        Expr::Bool(b) => format!("\x1b[35m{}\x1b[0m", b),
+        Expr::Null => "null".to_string(),
+        Expr::Ident(n) => format!("\x1b[36m{}\x1b[0m", n),
+        Expr::Range { start, end } => {
+            format!("Range({}..{})", summarize_expr(start), summarize_expr(end))
+        }
+        Expr::Binary { left, op, right } => format!(
+            "BinOp({:?}: {}, {})",
+            op,
+            summarize_expr(left),
+            summarize_expr(right)
+        ),
+        Expr::Call { callee, args } => {
+            format!("Call({} with {} args)", summarize_expr(callee), args.len())
+        }
+        Expr::Array(items) => format!("Array[{} items]", items.len()),
+        Expr::Map(entries) => format!("Map{{{} keys}}", entries.len()),
+        Expr::New { class_name, args } => format!("New {}({} args)", class_name, args.len()),
+        Expr::FnExpr { params, .. } => format!("Lambda({} params)", params.len()),
+        other => format!("{:?}", other),
+    }
+}
