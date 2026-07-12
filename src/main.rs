@@ -120,3 +120,63 @@ fn compile_native_binary(src_path: &Path, target: Target, release: bool, quiet: 
             let opt_flag = if release { "-O3" } else { "-O0" };
             let status = Command::new("gcc")
                 .arg(src_path)
+                .arg(opt_flag)
+                .arg("-o")
+                .arg(&exe_path)
+                .arg("-lm")
+                .status()
+                .or_else(|_| {
+                    Command::new("clang")
+                        .arg(src_path)
+                        .arg(opt_flag)
+                        .arg("-o")
+                        .arg(&exe_path)
+                        .status()
+                })
+                .map_err(|e| format!("Failed to invoke gcc/clang: {}", e))?;
+            if !status.success() {
+                return Err("C native binary compilation failed".to_string());
+            }
+        }
+        Target::Go => {
+            let status = Command::new("go")
+                .arg("build")
+                .arg("-o")
+                .arg(&exe_path)
+                .arg(src_path)
+                .status()
+                .map_err(|e| format!("Failed to invoke go build: {}", e))?;
+            if !status.success() {
+                return Err("go build failed".to_string());
+            }
+        }
+        other => {
+            return Err(format!(
+                "--bin is only supported for compiled targets (c, rust, go), not {}",
+                other.name()
+            ));
+        }
+    }
+
+    let exe_str = exe_path.to_string_lossy().to_string();
+    if !quiet {
+        println!(
+            "  \x1b[1;32m[BINARY]\x1b[0m Built native executable -> \x1b[1m{}\x1b[0m{}",
+            exe_str,
+            if release { " (release optimized)" } else { "" }
+        );
+    }
+    Ok(exe_str)
+}
+
+fn run_target_code(code: &str, target: Target, stem: &str, release: bool) -> Result<(), String> {
+    let tmp_dir = env::temp_dir();
+    let src_path = tmp_dir.join(format!("{}_steel_out.{}", stem, target.extension()));
+    fs::write(&src_path, code).map_err(|e| format!("Failed to write temp file: {}", e))?;
+
+    let status = match target {
+        Target::Js | Target::Ts => Command::new("node").arg(&src_path).status(),
+        Target::Python => Command::new("python").arg(&src_path).status(),
+        Target::Lua => Command::new("lua").arg(&src_path).status(),
+        Target::Go => Command::new("go").arg("run").arg(&src_path).status(),
+        Target::Rust => {
