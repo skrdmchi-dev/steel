@@ -180,3 +180,64 @@ fn run_target_code(code: &str, target: Target, stem: &str, release: bool) -> Res
         Target::Lua => Command::new("lua").arg(&src_path).status(),
         Target::Go => Command::new("go").arg("run").arg(&src_path).status(),
         Target::Rust => {
+            let exe_path = tmp_dir.join(format!("{}_steel_rs.exe", stem));
+            let mut cmd = Command::new("rustc");
+            cmd.arg(&src_path).arg("-o").arg(&exe_path);
+            if release {
+                cmd.arg("-C").arg("opt-level=3");
+            }
+            let compile = cmd
+                .status()
+                .map_err(|e| format!("Failed to invoke rustc: {}", e))?;
+            if !compile.success() {
+                return Err("rustc compilation failed".to_string());
+            }
+            Command::new(&exe_path).status()
+        }
+        Target::C | Target::Cpp => {
+            let exe_path = tmp_dir.join(format!("{}_steel_c.exe", stem));
+            let opt_flag = if release { "-O3" } else { "-O0" };
+            let compiler = if matches!(target, Target::Cpp) { "g++" } else { "gcc" };
+            let compile = Command::new(compiler)
+                .arg(&src_path)
+                .arg(opt_flag)
+                .arg("-o")
+                .arg(&exe_path)
+                .arg("-lm")
+                .status()
+                .or_else(|_| {
+                    Command::new("clang")
+                        .arg(&src_path)
+                        .arg(opt_flag)
+                        .arg("-o")
+                        .arg(&exe_path)
+                        .status()
+                })
+                .map_err(|e| format!("Failed to invoke C/C++ compiler: {}", e))?;
+            if !compile.success() {
+                return Err("C/C++ compilation failed".to_string());
+            }
+            Command::new(&exe_path).status()
+        }
+    };
+
+    match status {
+        Ok(s) if s.success() => Ok(()),
+        Ok(s) => Err(format!("Target process exited with {}", s)),
+        Err(e) => Err(format!(
+            "Could not launch {} runtime ({}). Tip: run `steel <file.steel>` to use the built-in native interpreter.",
+            target.name(),
+            e
+        )),
+    }
+}
+
+fn start_repl() {
+    println!("\x1b[1;36mSteel v{} Interactive REPL\x1b[0m", VERSION);
+    println!("Commands: :target <js|py|rs|c|go|lua|off>, :visual <on|off>, :help, :quit");
+    println!("-------------------------------------------------------------------------");
+
+    let mut interp = Interpreter::new();
+    let mut preview_target: Option<Target> = None;
+    let mut visual_mode = false;
+    let stdin = io::stdin();
