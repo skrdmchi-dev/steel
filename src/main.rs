@@ -241,3 +241,64 @@ fn start_repl() {
     let mut preview_target: Option<Target> = None;
     let mut visual_mode = false;
     let stdin = io::stdin();
+
+    loop {
+        print!("\x1b[1;32msteel>\x1b[0m ");
+        let _ = io::stdout().flush();
+
+        let mut line = String::new();
+        if stdin.read_line(&mut line).is_err() || line.is_empty() {
+            break;
+        }
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        if trimmed == ":quit" || trimmed == ":q" || trimmed == "exit" {
+            break;
+        }
+        if trimmed == ":help" {
+            println!("  :target <js|py|rs|c|go|lua|off>  Live-preview transpiled code in the REPL");
+            println!("  :visual <on|off>                 Toggle full 5-stage visual morphing pipeline");
+            println!("  :quit                            Exit the REPL");
+            continue;
+        }
+        if let Some(rest) = trimmed.strip_prefix(":visual") {
+            let arg = rest.trim();
+            visual_mode = arg == "on" || arg == "true" || arg.is_empty();
+            println!(
+                "Visual compilation morphing: {}",
+                if visual_mode { "ENABLED" } else { "DISABLED" }
+            );
+            continue;
+        }
+        if let Some(rest) = trimmed.strip_prefix(":target") {
+            let arg = rest.trim();
+            if arg == "off" || arg == "none" {
+                preview_target = None;
+                println!("Live transpilation preview disabled.");
+            } else if let Some(t) = Target::from_str(arg) {
+                preview_target = Some(t);
+                println!("Live transpilation preview set to: {}", t.name());
+            } else {
+                println!("Unknown target '{}'. Choose: js, py, rs, c, go, lua, or off", arg);
+            }
+            continue;
+        }
+
+        match parse_source_full(trimmed) {
+            Ok((tokens, prog)) => {
+                if visual_mode {
+                    run_visual_pipeline("<repl>", trimmed, &tokens, &prog, preview_target);
+                } else if let Some(t) = preview_target {
+                    println!("--- [{} Transpiled Output] ---", t.name());
+                    print!("{}", transpile(&prog, t));
+                    println!("------------------------------------");
+                }
+                match interp.run(&prog) {
+                    Ok(Value::Null) => {}
+                    Ok(val) => println!("=> {}", val),
+                    Err(e) => eprint!("{}", render_diagnostic("<repl>", trimmed, &e)),
+                }
+            }
+            Err(e) => eprint!("{}", render_diagnostic("<repl>", trimmed, &e)),
