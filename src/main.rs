@@ -302,3 +302,64 @@ fn start_repl() {
                 }
             }
             Err(e) => eprint!("{}", render_diagnostic("<repl>", trimmed, &e)),
+        }
+    }
+}
+
+fn load_and_parse(file_path: &str) -> (String, Vec<Token>, Program) {
+    let p = Path::new(file_path);
+    if p.is_dir() {
+        // Support passing a whole directory e.g. `steel compile c ./my-game`!
+        let main_candidate = p.join("src").join("main.steel");
+        if main_candidate.exists() {
+            return load_and_parse(&main_candidate.to_string_lossy());
+        }
+        let root_main = p.join("main.steel");
+        if root_main.exists() {
+            return load_and_parse(&root_main.to_string_lossy());
+        }
+        // Otherwise bundle all `.steel` files in the directory in alphabetical order!
+        let mut combined_src = String::new();
+        let mut entries: Vec<_> = fs::read_dir(p)
+            .unwrap_or_else(|e| {
+                eprintln!("\x1b[1;31merror:\x1b[0m Could not read directory '{}': {}", file_path, e);
+                std::process::exit(1);
+            })
+            .flatten()
+            .filter(|e| e.path().extension().and_then(|s| s.to_str()) == Some("steel"))
+            .collect();
+        entries.sort_by_key(|e| e.file_name());
+        if entries.is_empty() {
+            eprintln!("\x1b[1;31merror:\x1b[0m No .steel files found in directory '{}'", file_path);
+            std::process::exit(1);
+        }
+        for entry in entries {
+            if let Ok(content) = fs::read_to_string(entry.path()) {
+                combined_src.push_str(&content);
+                combined_src.push('\n');
+            }
+        }
+        match parse_source_full(&combined_src) {
+            Ok((tokens, mut prog)) => {
+                let mut visited = std::collections::HashSet::new();
+                if let Err(e) = bundle_imports(&mut prog, p, &mut visited) {
+                    eprint!("{}", render_diagnostic(file_path, &combined_src, &e));
+                    std::process::exit(1);
+                }
+                return (combined_src, tokens, prog);
+            }
+            Err(e) => {
+                eprint!("{}", render_diagnostic(file_path, &combined_src, &e));
+                std::process::exit(1);
+            }
+        }
+    }
+
+    let src = fs::read_to_string(file_path).unwrap_or_else(|e| {
+        eprintln!("\x1b[1;31merror:\x1b[0m Could not read '{}': {}", file_path, e);
+        std::process::exit(1);
+    });
+    match parse_source_full(&src) {
+        Ok((tokens, mut prog)) => {
+            let base_dir = Path::new(file_path)
+                .parent()
