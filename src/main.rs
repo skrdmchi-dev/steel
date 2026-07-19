@@ -484,3 +484,64 @@ fn collect_project_modules(path_str: &str) -> Result<Vec<ModuleUnit>, String> {
         }
 
         // Also include any standalone .steel files in the directory not yet visited
+        let mut entries: Vec<_> = fs::read_dir(p)
+            .map_err(|e| format!("Could not read directory '{}': {}", path_str, e))?
+            .flatten()
+            .filter(|e| e.path().extension().and_then(|s| s.to_str()) == Some("steel"))
+            .collect();
+        entries.sort_by_key(|e| e.file_name());
+        let has_entry = modules.iter().any(|m| m.is_entry);
+        for (idx, entry) in entries.iter().enumerate() {
+            let mark_entry = !has_entry && idx == entries.len() - 1;
+            collect_module_recursive(&entry.path(), mark_entry, &mut visited, &mut modules)?;
+        }
+        if modules.is_empty() {
+            return Err(format!("No .steel files found in directory '{}'", path_str));
+        }
+    } else {
+        collect_module_recursive(p, true, &mut visited, &mut modules)?;
+    }
+
+    Ok(modules)
+}
+
+fn compile_native_project_binary(
+    out_dir: &Path,
+    entry_name: &str,
+    target: Target,
+    release: bool,
+    quiet: bool,
+) -> Result<String, String> {
+    let exe_path = out_dir.join(format!("{}.exe", entry_name));
+    match target {
+        Target::Rust => {
+            let entry_rs = out_dir.join(format!("{}.rs", entry_name));
+            let mut cmd = Command::new("rustc");
+            cmd.arg(&entry_rs).arg("-o").arg(&exe_path);
+            if release {
+                cmd.arg("-C").arg("opt-level=3");
+            }
+            let status = cmd
+                .status()
+                .map_err(|e| format!("Failed to invoke rustc: {}", e))?;
+            if !status.success() {
+                return Err("rustc multi-file native binary compilation failed".to_string());
+            }
+        }
+        Target::C | Target::Cpp => {
+            let ext = target.extension();
+            let opt_flag = if release { "-O3" } else { "-O0" };
+            let src_files: Vec<_> = fs::read_dir(out_dir)
+                .map_err(|e| format!("Failed to read '{}': {}", out_dir.display(), e))?
+                .flatten()
+                .map(|e| e.path())
+                .filter(|p| p.extension().and_then(|s| s.to_str()) == Some(ext))
+                .collect();
+            let compiler = if target == Target::Cpp { "g++" } else { "gcc" };
+            let fallback = if target == Target::Cpp { "clang++" } else { "clang" };
+            let mut cmd = Command::new(compiler);
+            for f in &src_files {
+                cmd.arg(f);
+            }
+            cmd.arg(opt_flag).arg("-o").arg(&exe_path);
+            if target == Target::C {
