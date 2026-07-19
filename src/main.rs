@@ -363,3 +363,63 @@ fn load_and_parse(file_path: &str) -> (String, Vec<Token>, Program) {
         Ok((tokens, mut prog)) => {
             let base_dir = Path::new(file_path)
                 .parent()
+                .unwrap_or_else(|| Path::new("."));
+            let mut visited = std::collections::HashSet::new();
+            if let Ok(canon) = fs::canonicalize(file_path) {
+                visited.insert(canon);
+            }
+            if let Err(e) = bundle_imports(&mut prog, base_dir, &mut visited) {
+                eprint!("{}", render_diagnostic(file_path, &src, &e));
+                std::process::exit(1);
+            }
+            (src, tokens, prog)
+        }
+        Err(e) => {
+            eprint!("{}", render_diagnostic(file_path, &src, &e));
+            std::process::exit(1);
+        }
+    }
+}
+
+/// Recursively resolves and bundles `import "other.steel"` statements into a single Program
+/// so multi-file Steel projects compile cleanly to C, C++, Rust, Go, Python, JS, TS, and Lua!
+fn bundle_imports(
+    prog: &mut Program,
+    base_dir: &Path,
+    visited: &mut std::collections::HashSet<std::path::PathBuf>,
+) -> Result<(), String> {
+    let mut bundled = Vec::with_capacity(prog.statements.len());
+    for stmt in prog.statements.drain(..) {
+        if let Stmt::Import(rel_path) = stmt {
+            let candidate = base_dir.join(&rel_path);
+            let target_path = if candidate.exists() {
+                candidate
+            } else {
+                std::path::PathBuf::from(&rel_path)
+            };
+            if let Ok(canon) = fs::canonicalize(&target_path) {
+                if !visited.insert(canon) {
+                    continue; // Already imported; skip circular/duplicate import
+                }
+            }
+            let imported_src = fs::read_to_string(&target_path)
+                .map_err(|e| format!("Failed to import '{}': {}", rel_path, e))?;
+            let (_, mut imported_prog) = parse_source_full(&imported_src)?;
+            let sub_base = target_path.parent().unwrap_or(base_dir);
+            bundle_imports(&mut imported_prog, sub_base, visited)?;
+            bundled.append(&mut imported_prog.statements);
+        } else {
+            bundled.push(stmt);
+        }
+    }
+    prog.statements = bundled;
+    Ok(())
+}
+
+fn collect_module_recursive(
+    file_path: &Path,
+    is_entry: bool,
+    visited: &mut std::collections::HashSet<std::path::PathBuf>,
+    out: &mut Vec<ModuleUnit>,
+) -> Result<(), String> {
+    let canon = fs::canonicalize(file_path).unwrap_or_else(|_| file_path.to_path_buf());
