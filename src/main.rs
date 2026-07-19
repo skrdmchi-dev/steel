@@ -545,3 +545,64 @@ fn compile_native_project_binary(
             }
             cmd.arg(opt_flag).arg("-o").arg(&exe_path);
             if target == Target::C {
+                cmd.arg("-lm");
+            } else {
+                cmd.arg("-std=c++20");
+            }
+            let status = cmd
+                .status()
+                .or_else(|_| {
+                    let mut c2 = Command::new(fallback);
+                    for f in &src_files {
+                        c2.arg(f);
+                    }
+                    c2.arg(opt_flag).arg("-o").arg(&exe_path);
+                    if target == Target::Cpp {
+                        c2.arg("-std=c++20");
+                    }
+                    c2.status()
+                })
+                .map_err(|e| format!("Failed to invoke {}/{}: {}", compiler, fallback, e))?;
+            if !status.success() {
+                return Err("C/C++ multi-file native binary compilation failed".to_string());
+            }
+        }
+        Target::Go => {
+            let status = Command::new("go")
+                .arg("build")
+                .arg("-o")
+                .arg(&exe_path)
+                .arg(".")
+                .current_dir(out_dir)
+                .status()
+                .map_err(|e| format!("Failed to invoke go build: {}", e))?;
+            if !status.success() {
+                return Err("go build failed".to_string());
+            }
+        }
+        other => {
+            return Err(format!(
+                "--bin is only supported for compiled targets (c, cpp, rust, go), not {}",
+                other.name()
+            ));
+        }
+    }
+    let exe_str = exe_path.to_string_lossy().to_string();
+    if !quiet {
+        println!(
+            "  \x1b[1;32m[BIN]\x1b[0m Built native multi-file executable -> \x1b[1;36m{}\x1b[0m",
+            exe_str
+        );
+    }
+    Ok(exe_str)
+}
+
+fn write_output_file(dest: &str, code: &str, force: bool, quiet: bool, target_name: &str) {
+    let path = Path::new(dest);
+    if path.exists() && !force {
+        eprintln!(
+            "\x1b[1;33mwarning:\x1b[0m Output file '{}' already exists. Overwriting (use \x1b[1m--force\x1b[0m / \x1b[1m-f\x1b[0m to suppress this notice).",
+            dest
+        );
+    }
+    fs::write(path, code).unwrap_or_else(|e| {
