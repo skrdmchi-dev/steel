@@ -606,3 +606,63 @@ fn write_output_file(dest: &str, code: &str, force: bool, quiet: bool, target_na
         );
     }
     fs::write(path, code).unwrap_or_else(|e| {
+        eprintln!("\x1b[1;31merror:\x1b[0m Failed to write '{}': {}", dest, e);
+        std::process::exit(1);
+    });
+    if !quiet {
+        println!(
+            "  \x1b[1;32m[OK]\x1b[0m Compiled \x1b[1m{}\x1b[0m -> \x1b[1;36m{}\x1b[0m",
+            target_name, dest
+        );
+    }
+}
+
+fn handle_compile_cmd(args: &[String]) {
+    let mut file_path: Option<String> = None;
+    let mut target_str: Option<String> = None;
+    let mut out_path: Option<String> = None;
+    let mut visual = false;
+    let mut force = false;
+    let mut run_after = false;
+    let mut build_bin = false;
+    let mut release = false;
+    let mut to_stdout = false;
+    let mut quiet = false;
+    let mut bundle = false;
+
+    let mut i = 1;
+    while i < args.len() {
+        let arg = args[i].as_str();
+        match arg {
+            "--visual" | "-v" => visual = true,
+            "--force" | "-f" => force = true,
+            "--run" | "-r" => run_after = true,
+            "--bin" | "-b" => build_bin = true,
+            "--release" | "-O" => release = true,
+            "--stdout" | "--print" | "-p" => to_stdout = true,
+            "--quiet" | "-q" => quiet = true,
+            "--bundle" | "--single" => bundle = true,
+            "-t" | "--target" | "-l" | "--lang" => {
+                if let Some(val) = args.get(i + 1) {
+                    target_str = Some(val.clone());
+                    i += 1;
+                } else {
+                    eprintln!("\x1b[1;31merror:\x1b[0m Missing language after {}", arg);
+                    std::process::exit(1);
+                }
+            }
+            "-o" | "--out" | "--output" => {
+                if let Some(val) = args.get(i + 1) {
+                    out_path = Some(val.clone());
+                    i += 1;
+                } else {
+                    eprintln!("\x1b[1;31merror:\x1b[0m Missing file path after {}", arg);
+                    std::process::exit(1);
+                }
+            }
+            "--" => {
+                // Ignore bare `--` separator so `steel compile c file.steel -- --visual --force` works seamlessly!
+            }
+            other if other.starts_with("--target=") => {
+                target_str = Some(other.trim_start_matches("--target=").to_string());
+            }
