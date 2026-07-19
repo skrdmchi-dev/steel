@@ -423,3 +423,64 @@ fn collect_module_recursive(
     out: &mut Vec<ModuleUnit>,
 ) -> Result<(), String> {
     let canon = fs::canonicalize(file_path).unwrap_or_else(|_| file_path.to_path_buf());
+    if !visited.insert(canon) {
+        return Ok(());
+    }
+    let src = fs::read_to_string(file_path)
+        .map_err(|e| format!("Could not read '{}': {}", file_path.display(), e))?;
+    let (_, prog) = parse_source_full(&src)?;
+    let base_dir = file_path.parent().unwrap_or_else(|| Path::new("."));
+
+    let mut imports = Vec::new();
+    for stmt in &prog.statements {
+        if let Stmt::Import(rel_path) = stmt {
+            let candidate = base_dir.join(rel_path);
+            let target_path = if candidate.exists() {
+                candidate
+            } else {
+                std::path::PathBuf::from(rel_path)
+            };
+            let imp_stem = target_path
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or("module")
+                .to_string();
+            imports.push(imp_stem);
+            collect_module_recursive(&target_path, false, visited, out)?;
+        }
+    }
+
+    let name = file_path
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("main")
+        .to_string();
+    out.push(ModuleUnit {
+        name,
+        is_entry,
+        imports,
+        program: prog,
+    });
+    Ok(())
+}
+
+/// Collects a Steel directory or multi-file entry into separate `ModuleUnit`s without combining them.
+fn collect_project_modules(path_str: &str) -> Result<Vec<ModuleUnit>, String> {
+    let p = Path::new(path_str);
+    let mut visited = std::collections::HashSet::new();
+    let mut modules = Vec::new();
+
+    if p.is_dir() {
+        let entry_path = if p.join("src").join("main.steel").exists() {
+            Some(p.join("src").join("main.steel"))
+        } else if p.join("main.steel").exists() {
+            Some(p.join("main.steel"))
+        } else {
+            None
+        };
+
+        if let Some(ep) = entry_path {
+            collect_module_recursive(&ep, true, &mut visited, &mut modules)?;
+        }
+
+        // Also include any standalone .steel files in the directory not yet visited
