@@ -666,3 +666,64 @@ fn handle_compile_cmd(args: &[String]) {
             other if other.starts_with("--target=") => {
                 target_str = Some(other.trim_start_matches("--target=").to_string());
             }
+            other if other.starts_with("--out=") => {
+                out_path = Some(other.trim_start_matches("--out=").to_string());
+            }
+            other if other.starts_with('-') => {
+                // Support combined short flags like `-vf` or `-vfr`
+                if other.len() > 1 && !other.starts_with("--") {
+                    for ch in other.chars().skip(1) {
+                        match ch {
+                            'v' => visual = true,
+                            'f' => force = true,
+                            'r' => run_after = true,
+                            'b' => build_bin = true,
+                            'O' => release = true,
+                            'p' => to_stdout = true,
+                            'q' => quiet = true,
+                            _ => {
+                                eprintln!("\x1b[1;31merror:\x1b[0m Unknown short flag '-{}'", ch);
+                                std::process::exit(1);
+                            }
+                        }
+                    }
+                } else {
+                    eprintln!(
+                        "\x1b[1;31merror:\x1b[0m Unknown flag '{}'. Run `steel --help` for options.",
+                        other
+                    );
+                    std::process::exit(1);
+                }
+            }
+            positional => {
+                if Target::from_str(positional).is_some()
+                    || positional.eq_ignore_ascii_case("all")
+                {
+                    if target_str.is_none() {
+                        target_str = Some(positional.to_string());
+                    } else if file_path.is_none() {
+                        file_path = Some(positional.to_string());
+                    }
+                } else if file_path.is_none() {
+                    file_path = Some(positional.to_string());
+                } else if target_str.is_none() {
+                    target_str = Some(positional.to_string());
+                }
+            }
+        }
+        i += 1;
+    }
+
+    let file_path = file_path.unwrap_or_else(|| {
+        eprintln!("Usage: steel compile <lang> <file.steel> [--visual] [--force] [--run] [--bin] [--release] [-o <out>]");
+        eprintln!("   or: steel compile <file.steel> <lang> [flags]");
+        std::process::exit(1);
+    });
+    let target_str = target_str.unwrap_or_else(|| "c".to_string());
+    let trimmed_path = file_path.trim_end_matches(&['/', '\\'][..]);
+    let base = trimmed_path.strip_suffix(".steel").unwrap_or(trimmed_path);
+
+    // Multi-file project output is the DEFAULT whenever compiling a directory or a file with imports.
+    // Pass `--bundle` (or `--single`) to combine all files into one single output file.
+    if !bundle && !to_stdout {
+        let is_dir = Path::new(trimmed_path).is_dir();
