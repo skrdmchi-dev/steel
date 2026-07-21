@@ -727,3 +727,64 @@ fn handle_compile_cmd(args: &[String]) {
     // Pass `--bundle` (or `--single`) to combine all files into one single output file.
     if !bundle && !to_stdout {
         let is_dir = Path::new(trimmed_path).is_dir();
+        if let Ok(modules) = collect_project_modules(trimmed_path) {
+            if is_dir || modules.len() > 1 {
+                let targets_to_emit: Vec<Target> = if target_str.eq_ignore_ascii_case("all") {
+                    vec![
+                        Target::Js,
+                        Target::Ts,
+                        Target::Python,
+                        Target::Rust,
+                        Target::C,
+                        Target::Cpp,
+                        Target::Go,
+                        Target::Lua,
+                    ]
+                } else {
+                    let t = Target::from_str(&target_str).unwrap_or_else(|| {
+                        eprintln!(
+                            "\x1b[1;31merror:\x1b[0m Unknown target language '{}'. Supported: c, cpp, rust (rs), python (py), go, js, ts, lua, all",
+                            target_str
+                        );
+                        std::process::exit(1);
+                    });
+                    vec![t]
+                };
+
+                let entry_name = modules
+                    .iter()
+                    .find(|m| m.is_entry)
+                    .map(|m| m.name.clone())
+                    .unwrap_or_else(|| "main".to_string());
+
+                for target in targets_to_emit {
+                    let out_dir_str = if target_str.eq_ignore_ascii_case("all") {
+                        format!("{}_{}", base, target.extension())
+                    } else {
+                        out_path
+                            .clone()
+                            .unwrap_or_else(|| format!("{}_{}", base, target.extension()))
+                    };
+                    let out_dir = Path::new(&out_dir_str);
+                    if let Err(e) = fs::create_dir_all(out_dir) {
+                        eprintln!(
+                            "\x1b[1;31merror:\x1b[0m Could not create output directory '{}': {}",
+                            out_dir_str, e
+                        );
+                        std::process::exit(1);
+                    }
+
+                    let files = transpile_project(&modules, target);
+                    for (rel_file, code) in &files {
+                        let dest_path = out_dir.join(rel_file);
+                        write_output_file(
+                            &dest_path.to_string_lossy(),
+                            code,
+                            force,
+                            quiet,
+                            target.name(),
+                        );
+                    }
+
+                    if !quiet {
+                        println!(
