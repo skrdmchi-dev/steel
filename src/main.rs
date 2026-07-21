@@ -788,3 +788,64 @@ fn handle_compile_cmd(args: &[String]) {
 
                     if !quiet {
                         println!(
+                            "  \x1b[1;36m[PROJECT]\x1b[0m Emitted {} separate {} files into \x1b[1;36m{}/\x1b[0m (use --bundle to combine into one file)",
+                            files.len(),
+                            target.name(),
+                            out_dir_str
+                        );
+                    }
+
+                    if build_bin && !target_str.eq_ignore_ascii_case("all") {
+                        if let Err(e) = compile_native_project_binary(
+                            out_dir,
+                            &entry_name,
+                            target,
+                            release,
+                            quiet,
+                        ) {
+                            eprintln!("\x1b[1;31merror:\x1b[0m {}", e);
+                            std::process::exit(1);
+                        }
+                    }
+
+                    if run_after && !target_str.eq_ignore_ascii_case("all") {
+                        let (_src, _tokens, prog) = load_and_parse(trimmed_path);
+                        let bundled_code = transpile(&prog, target);
+                        if !quiet {
+                            println!("  \x1b[1;36m[RUN]\x1b[0m Executing {} output...", target.name());
+                        }
+                        if let Err(e) =
+                            run_target_code(&bundled_code, target, "steel_compile_run", release)
+                        {
+                            eprintln!("\x1b[1;31merror:\x1b[0m {}", e);
+                            std::process::exit(1);
+                        }
+                    }
+                }
+                return;
+            }
+        }
+    }
+
+    let (src, tokens, prog) = load_and_parse(&file_path);
+
+    if target_str.eq_ignore_ascii_case("all") {
+        if visual {
+            run_visual_pipeline(&file_path, &src, &tokens, &prog, Some(Target::C));
+        }
+        for t in [
+            Target::Js,
+            Target::Ts,
+            Target::Python,
+            Target::Rust,
+            Target::C,
+            Target::Cpp,
+            Target::Go,
+            Target::Lua,
+        ] {
+            let code = transpile(&prog, t);
+            let dest = format!("{}.{}", base, t.extension());
+            write_output_file(&dest, &code, force, quiet, t.name());
+        }
+        return;
+    }
