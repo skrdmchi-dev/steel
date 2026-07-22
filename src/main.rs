@@ -909,3 +909,64 @@ fn main() {
         }
         "targets" => {
             println!("Available Steel Target Languages (8 Backends):");
+            for t in [
+                Target::C,
+                Target::Cpp,
+                Target::Rust,
+                Target::Python,
+                Target::Go,
+                Target::Js,
+                Target::Ts,
+                Target::Lua,
+            ] {
+                println!("  - {:<22} (.{})", t.name(), t.extension());
+            }
+        }
+        "init" | "new" => {
+            let proj_name = args.get(1).map(|s| s.as_str()).unwrap_or("steel-app");
+            let proj_dir = Path::new(proj_name);
+            let src_dir = proj_dir.join("src");
+            let tests_dir = proj_dir.join("tests");
+            let _ = fs::create_dir_all(&src_dir);
+            let _ = fs::create_dir_all(&tests_dir);
+
+            let toml = format!(
+                "[package]\nname = \"{}\"\nversion = \"0.1.0\"\nentry = \"src/main.steel\"\ntests = \"tests/main_test.steel\"\ndefault_target = \"c\"\n",
+                proj_name
+            );
+            let main_steel = format!(
+                "// {} — Entry Point (src/main.steel)\n\nfn greet(name: str) -> str {{\n    return \"Welcome to {}, ${{name}}!\"\n}}\n\nprint(greet(\"Developer\"))\n",
+                proj_name, proj_name
+            );
+            let test_steel = "// Unit Tests (run with `steel test`)\n\ntest \"sample project test\" {\n    let nums = [1, 2, 3, 4]\n    assert(nums.sum() == 10, \"Sum should be 10\")\n}\n";
+
+            let _ = fs::write(proj_dir.join("steel.toml"), toml);
+            let _ = fs::write(src_dir.join("main.steel"), main_steel);
+            let _ = fs::write(tests_dir.join("main_test.steel"), test_steel);
+            println!(
+                "  \x1b[1;32m[CREATED]\x1b[0m Scaffolded new Steel project in \x1b[1;36m{}/\x1b[0m",
+                proj_name
+            );
+            println!("    - {}/steel.toml", proj_name);
+            println!("    - {}/src/main.steel", proj_name);
+            println!("    - {}/tests/main_test.steel", proj_name);
+            println!("\n  Get started:\n    cd {}\n    steel run\n    steel test", proj_name);
+        }
+        "watch" => {
+            let file_path = args
+                .get(1)
+                .cloned()
+                .unwrap_or_else(|| "src/main.steel".to_string());
+            println!(
+                "\x1b[1;36m[WATCH]\x1b[0m Watching '\x1b[1m{}\x1b[0m' for changes (Ctrl+C to stop)...",
+                file_path
+            );
+            let mut last_content = String::new();
+            loop {
+                if let Ok(content) = fs::read_to_string(&file_path) {
+                    if content != last_content {
+                        last_content = content.clone();
+                        println!("\x1b[1;33m--- [Change detected: Running {}] ---\x1b[0m", file_path);
+                        let t0 = Instant::now();
+                        match parse_source_full(&content) {
+                            Ok((tokens, prog)) => {
