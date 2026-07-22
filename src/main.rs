@@ -849,3 +849,63 @@ fn handle_compile_cmd(args: &[String]) {
         }
         return;
     }
+
+    let target = Target::from_str(&target_str).unwrap_or_else(|| {
+        eprintln!(
+            "\x1b[1;31merror:\x1b[0m Unknown target language '{}'. Supported: c, rust (rs), python (py), go, js, lua, all",
+            target_str
+        );
+        std::process::exit(1);
+    });
+
+    if visual {
+        run_visual_pipeline(&file_path, &src, &tokens, &prog, Some(target));
+    }
+
+    let code = transpile(&prog, target);
+
+    if to_stdout {
+        print!("{}", code);
+    } else {
+        let dest = out_path.unwrap_or_else(|| format!("{}.{}", base, target.extension()));
+        write_output_file(&dest, &code, force, quiet, target.name());
+
+        if build_bin {
+            if let Err(e) = compile_native_binary(Path::new(&dest), target, release, quiet) {
+                eprintln!("\x1b[1;31merror:\x1b[0m {}", e);
+                std::process::exit(1);
+            }
+        }
+    }
+
+    if run_after {
+        if !quiet {
+            println!("  \x1b[1;36m[RUN]\x1b[0m Executing {} output...", target.name());
+        }
+        if let Err(e) = run_target_code(&code, target, "steel_compile_run", release) {
+            eprintln!("\x1b[1;31merror:\x1b[0m {}", e);
+            std::process::exit(1);
+        }
+    }
+}
+
+fn main() {
+    let args: Vec<String> = env::args().skip(1).collect();
+
+    if args.is_empty() {
+        start_repl();
+        return;
+    }
+
+    let visual = args.iter().any(|a| a == "--visual" || a == "-v");
+    let cmd = args[0].as_str();
+
+    match cmd {
+        "-h" | "--help" | "help" => {
+            print_help();
+        }
+        "-V" | "--version" | "version" => {
+            println!("steel {} (multi-target compiler & VM)", VERSION);
+        }
+        "targets" => {
+            println!("Available Steel Target Languages (8 Backends):");
