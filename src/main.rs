@@ -1152,3 +1152,64 @@ fn main() {
                     "tests/main_test.steel".to_string()
                 } else {
                     "examples/tests.steel".to_string()
+                }
+            });
+            let (src, _tokens, prog) = load_and_parse(&file_path);
+            let prog = optimize_program(&prog);
+            let mut setup_stmts = Vec::new();
+            let mut tests = Vec::new();
+
+            for st in &prog.statements {
+                if let Stmt::Test { name, body } = st {
+                    tests.push((name.clone(), body.clone()));
+                } else {
+                    setup_stmts.push(st.clone());
+                }
+            }
+
+            println!("Running {} test(s) from '{}'...", tests.len(), file_path);
+            let mut passed = 0;
+            let mut failed = 0;
+            let start_all = Instant::now();
+
+            for (t_name, t_body) in tests {
+                let mut interp = Interpreter::new();
+                let _ = interp.run(&Program {
+                    statements: setup_stmts.clone(),
+                });
+                let t0 = Instant::now();
+                match interp.run(&Program { statements: t_body }) {
+                    Ok(_) => {
+                        passed += 1;
+                        println!(
+                            "  \x1b[1;32m[PASS]\x1b[0m {} ({:.2?})",
+                            t_name,
+                            t0.elapsed()
+                        );
+                    }
+                    Err(e) => {
+                        failed += 1;
+                        println!("  \x1b[1;31m[FAIL]\x1b[0m {}", t_name);
+                        eprint!("{}", render_diagnostic(&file_path, &src, &e));
+                    }
+                }
+            }
+            println!(
+                "\nTest Result: \x1b[1;32m{} passed\x1b[0m, \x1b[1;31m{} failed\x1b[0m (finished in {:.2?})",
+                passed,
+                failed,
+                start_all.elapsed()
+            );
+            if failed > 0 {
+                std::process::exit(1);
+            }
+        }
+        "run" => {
+            let file_path = args.get(1).cloned().unwrap_or_else(|| {
+                if Path::new("src/main.steel").exists() {
+                    "src/main.steel".to_string()
+                } else {
+                    eprintln!("Usage: steel run <file.steel> [--target <native|js|ts|py|rs|c|cpp|go|lua>] [--visual] [--release]");
+                    std::process::exit(1);
+                }
+            });
