@@ -1031,3 +1031,64 @@ fn main() {
             let file_path = &args[1];
             let (_src, _tokens, prog) = load_and_parse(file_path);
             let report = typecheck::analyze_program(&prog);
+            let mut md = format!("# API Documentation — `{}`\n\n", file_path);
+            md.push_str("## Inferred Symbol Table\n\n| Symbol | Inferred Type |\n| :--- | :--- |\n");
+            for (sym, ty) in &report.symbols {
+                md.push_str(&format!("| `{}` | `{}` |\n", sym, ty));
+            }
+            md.push_str("\n## Declarations\n\n");
+            for st in &prog.statements {
+                match st {
+                    Stmt::FnDecl { name, params, .. } => {
+                        let p_list: Vec<String> = params
+                            .iter()
+                            .map(|(n, d)| match d {
+                                Some(e) => format!("{} = {:?}", n, e),
+                                None => n.clone(),
+                            })
+                            .collect();
+                        md.push_str(&format!("### `fn {}({})`\n\n", name, p_list.join(", ")));
+                    }
+                    Stmt::ClassDecl {
+                        name,
+                        parent,
+                        methods,
+                    } => {
+                        let ext = parent
+                            .as_ref()
+                            .map(|p| format!(" extends {}", p))
+                            .unwrap_or_default();
+                        md.push_str(&format!("### `class {}{}`\n", name, ext));
+                        for m in methods {
+                            let p_list: Vec<String> =
+                                m.params.iter().map(|(n, _)| n.clone()).collect();
+                            md.push_str(&format!("- Method `{}`(`{}`)\n", m.name, p_list.join(", ")));
+                        }
+                        md.push('\n');
+                    }
+                    _ => {}
+                }
+            }
+            if let Some(pos) = args.iter().position(|a| a == "-o" || a == "--out") {
+                if let Some(dest) = args.get(pos + 1) {
+                    let _ = fs::write(dest, &md);
+                    println!("  \x1b[1;32m[DOC]\x1b[0m Generated Markdown docs -> {}", dest);
+                    return;
+                }
+            }
+            print!("{}", md);
+        }
+        "compile" | "transpile" | "build" | "c" => {
+            handle_compile_cmd(&args);
+        }
+        "check" => {
+            if args.len() < 2 {
+                eprintln!("Usage: steel check <file.steel>");
+                std::process::exit(1);
+            }
+            let file_path = &args[1];
+            let (src, tokens, prog) = load_and_parse(file_path);
+            let report = typecheck::analyze_program(&prog);
+            if !report.errors.is_empty() {
+                for err in &report.errors {
+                    eprint!("{}", render_diagnostic(file_path, &src, err));
