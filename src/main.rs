@@ -1092,3 +1092,63 @@ fn main() {
             if !report.errors.is_empty() {
                 for err in &report.errors {
                     eprint!("{}", render_diagnostic(file_path, &src, err));
+                }
+                std::process::exit(1);
+            }
+            println!(
+                "\x1b[1;32m[OK]\x1b[0m '{}' passed syntax & type analysis ({} tokens, {} statements, {} inferred symbols)",
+                file_path,
+                tokens.len(),
+                prog.statements.len(),
+                report.symbols.len()
+            );
+            for (sym, ty) in &report.symbols {
+                println!("  - {:<18} : {}", sym, ty);
+            }
+        }
+        "disasm" | "vm" => {
+            if args.len() < 2 {
+                eprintln!("Usage: steel vm <file.steel> [--run]");
+                std::process::exit(1);
+            }
+            let file_path = &args[1];
+            let (_src, _tokens, prog) = load_and_parse(file_path);
+            let opt_prog = optimize_program(&prog);
+            let chunk = compile_program(&opt_prog);
+            if args.iter().any(|a| a == "--run" || a == "-r") {
+                match chunk.execute(false) {
+                    Ok(_) => {}
+                    Err(e) => {
+                        eprintln!("VM Runtime Error: {}", e);
+                        std::process::exit(1);
+                    }
+                }
+            } else {
+                print!("{}", chunk.disassemble());
+            }
+        }
+        "fmt" | "format" => {
+            if args.len() < 2 {
+                eprintln!("Usage: steel fmt <file.steel> [--write]");
+                std::process::exit(1);
+            }
+            let file_path = &args[1];
+            let write_in_place = args.iter().any(|a| a == "--write" || a == "-w");
+            let (_src, _tokens, prog) = load_and_parse(file_path);
+            let formatted = format_program(&prog);
+            if write_in_place {
+                fs::write(file_path, formatted).unwrap_or_else(|e| {
+                    eprintln!("Failed to write '{}': {}", file_path, e);
+                    std::process::exit(1);
+                });
+                println!("Formatted '{}'", file_path);
+            } else {
+                print!("{}", formatted);
+            }
+        }
+        "test" => {
+            let file_path = args.get(1).cloned().unwrap_or_else(|| {
+                if Path::new("tests/main_test.steel").exists() {
+                    "tests/main_test.steel".to_string()
+                } else {
+                    "examples/tests.steel".to_string()
