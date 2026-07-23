@@ -970,3 +970,64 @@ fn main() {
                         let t0 = Instant::now();
                         match parse_source_full(&content) {
                             Ok((tokens, prog)) => {
+                                let opt_prog = optimize_program(&prog);
+                                if visual {
+                                    run_visual_pipeline(&file_path, &content, &tokens, &opt_prog, None);
+                                }
+                                let mut interp = Interpreter::new();
+                                match interp.run(&opt_prog) {
+                                    Ok(_) => println!(
+                                        "\x1b[1;32m[OK]\x1b[0m Finished in {:.2?}",
+                                        t0.elapsed()
+                                    ),
+                                    Err(e) => eprint!("{}", render_diagnostic(&file_path, &content, &e)),
+                                }
+                            }
+                            Err(e) => eprint!("{}", render_diagnostic(&file_path, &content, &e)),
+                        }
+                    }
+                }
+                thread::sleep(Duration::from_millis(350));
+            }
+        }
+        "bench" | "benchmark" => {
+            let file_path = args
+                .get(1)
+                .cloned()
+                .unwrap_or_else(|| "examples/showcase.steel".to_string());
+            let (src, tokens, prog) = load_and_parse(&file_path);
+
+            let t_opt0 = Instant::now();
+            let opt_prog = optimize_program(&prog);
+            let d_opt = t_opt0.elapsed();
+
+            let t_vm_comp0 = Instant::now();
+            let chunk = compile_program(&opt_prog);
+            let d_vm_comp = t_vm_comp0.elapsed();
+
+            let t_vm_exec0 = Instant::now();
+            let _ = chunk.execute(true);
+            let d_vm_exec = t_vm_exec0.elapsed();
+
+            let t_c_gen0 = Instant::now();
+            let c_code = transpile(&opt_prog, Target::C);
+            let d_c_gen = t_c_gen0.elapsed();
+
+            println!("\x1b[1;36m=========================================================================\x1b[0m");
+            println!("\x1b[1;37m  STEEL MULTI-ENGINE BENCHMARK SUITE — {}\x1b[0m", file_path);
+            println!("\x1b[1;36m=========================================================================\x1b[0m");
+            println!("  Source Metrics     : {} bytes | {} tokens | {} AST statements", src.len(), tokens.len(), prog.statements.len());
+            println!("  AST Constant Fold  : \x1b[1;32m{:.2?}\x1b[0m", d_opt);
+            println!("  Bytecode Compile   : \x1b[1;32m{:.2?}\x1b[0m ({} VM instructions)", d_vm_comp, chunk.ops.len());
+            println!("  Stack VM Execution : \x1b[1;32m{:.2?}\x1b[0m (headless fast-path)", d_vm_exec);
+            println!("  C11 Codegen Pass   : \x1b[1;32m{:.2?}\x1b[0m ({} bytes emitted)", d_c_gen, c_code.len());
+            println!("\x1b[1;36m=========================================================================\x1b[0m");
+        }
+        "doc" | "docs" => {
+            if args.len() < 2 {
+                eprintln!("Usage: steel doc <file.steel> [-o <DOCS.md>]");
+                std::process::exit(1);
+            }
+            let file_path = &args[1];
+            let (_src, _tokens, prog) = load_and_parse(file_path);
+            let report = typecheck::analyze_program(&prog);
