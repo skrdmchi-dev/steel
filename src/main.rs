@@ -1213,3 +1213,64 @@ fn main() {
                     std::process::exit(1);
                 }
             });
+            let mut target_opt: Option<Target> = None;
+            let release = args.iter().any(|a| a == "--release" || a == "-O");
+            let mut i = 2;
+            while i < args.len() {
+                if (args[i] == "-t" || args[i] == "--target") && i + 1 < args.len() {
+                    let t_name = &args[i + 1];
+                    if t_name != "native" {
+                        target_opt = Some(Target::from_str(t_name).unwrap_or_else(|| {
+                            eprintln!("Unknown target '{}'", t_name);
+                            std::process::exit(1);
+                        }));
+                    }
+                    i += 2;
+                } else {
+                    i += 1;
+                }
+            }
+
+            let (src, tokens, prog) = load_and_parse(&file_path);
+            let prog = optimize_program(&prog);
+            if visual {
+                run_visual_pipeline(&file_path, &src, &tokens, &prog, target_opt);
+            }
+
+            if let Some(target) = target_opt {
+                let code = transpile(&prog, target);
+                if let Err(e) = run_target_code(&code, target, "program", release) {
+                    eprintln!("Error: {}", e);
+                    std::process::exit(1);
+                }
+            } else {
+                let mut interp = Interpreter::new();
+                if let Err(e) = interp.run(&prog) {
+                    eprint!("{}", render_diagnostic(&file_path, &src, &e));
+                    std::process::exit(1);
+                }
+            }
+        }
+        file_path => {
+            let mut target_opt: Option<Target> = None;
+            let mut i = 1;
+            while i < args.len() {
+                if (args[i] == "-t" || args[i] == "--target") && i + 1 < args.len() {
+                    target_opt = Target::from_str(&args[i + 1]);
+                    i += 2;
+                } else {
+                    i += 1;
+                }
+            }
+            let (src, tokens, prog) = load_and_parse(file_path);
+            if visual {
+                run_visual_pipeline(file_path, &src, &tokens, &prog, target_opt);
+            }
+            let mut interp = Interpreter::new();
+            if let Err(e) = interp.run(&prog) {
+                eprint!("{}", render_diagnostic(file_path, &src, &e));
+                std::process::exit(1);
+            }
+        }
+    }
+}
