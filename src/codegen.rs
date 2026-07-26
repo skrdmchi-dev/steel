@@ -162,3 +162,85 @@ fn emit_js(program: &Program) -> String {
     }
     if ["abs(", "floor(", "ceil(", "round(", "sqrt(", "sin(", "cos(", "tan(", "atan2(", "log(", "exp(", "min(", "max(", "pow("]
         .iter()
+        .any(|m| body_out.contains(m))
+    {
+        out.push_str("const { abs, floor, ceil, round, sqrt, sin, cos, tan, atan2, log, exp, min, max, pow } = Math;\n");
+    }
+    for (helper, def) in [
+        ("__steel_print", "const __steel_print = (...args) => console.log(...args.map(a => typeof a === 'object' && a !== null ? JSON.stringify(a) : a));\n"),
+        ("__steel_len", "const __steel_len = (x) => Array.isArray(x) || typeof x === 'string' ? x.length : Object.keys(x || {}).length;\n"),
+        ("__steel_push", "const __steel_push = (arr, v) => { arr.push(v); return arr; };\n"),
+        ("__steel_pop", "const __steel_pop = (arr) => arr.pop();\n"),
+        ("__steel_get", "const __steel_get = (t, i) => Array.isArray(t) && i < 0 ? t[t.length + i] : t[i];\n"),
+        ("__steel_set", "const __steel_set = (t, i, v) => { if (Array.isArray(t) && i < 0) t[t.length + i] = v; else t[i] = v; };\n"),
+        ("__steel_keys", "const __steel_keys = (obj) => Object.keys(obj);\n"),
+        ("__steel_values", "const __steel_values = (obj) => Object.values(obj);\n"),
+        ("__steel_has_key", "const __steel_has_key = (obj, k) => Object.prototype.hasOwnProperty.call(obj || {}, k);\n"),
+        ("__steel_delete_key", "const __steel_delete_key = (obj, k) => { if (obj && Object.prototype.hasOwnProperty.call(obj, k)) { delete obj[k]; return true; } return false; };\n"),
+        ("__steel_concat", "const __steel_concat = (a, b) => [...a, ...b];\n"),
+        ("__steel_contains", "const __steel_contains = (x, v) => Array.isArray(x) || typeof x === 'string' ? x.includes(v) : Object.prototype.hasOwnProperty.call(x || {}, v);\n"),
+        ("__steel_index_of", "const __steel_index_of = (x, v) => (Array.isArray(x) || typeof x === 'string') ? x.indexOf(v) : -1;\n"),
+        ("__steel_starts_with", "const __steel_starts_with = (s, p) => String(s).startsWith(String(p));\n"),
+        ("__steel_ends_with", "const __steel_ends_with = (s, p) => String(s).endsWith(String(p));\n"),
+        ("__steel_repeat", "const __steel_repeat = (s, n) => String(s).repeat(Math.max(0, Math.trunc(n)));\n"),
+        ("__steel_pad_start", "const __steel_pad_start = (s, w, ch = ' ') => String(s).padStart(w, ch);\n"),
+        ("__steel_pad_end", "const __steel_pad_end = (s, w, ch = ' ') => String(s).padEnd(w, ch);\n"),
+        ("__steel_char_code", "const __steel_char_code = (s) => s.length > 0 ? s.codePointAt(0) : 0;\n"),
+        ("__steel_from_char_code", "const __steel_from_char_code = (n) => String.fromCodePoint(Math.max(0, Math.trunc(n)));\n"),
+        ("__steel_str", "const __steel_str = (x) => typeof x === 'object' && x !== null ? JSON.stringify(x) : String(x);\n"),
+        ("__steel_num", "const __steel_num = (x) => Number(x);\n"),
+        ("__steel_int", "const __steel_int = (x) => Math.trunc(Number(x));\n"),
+        ("__steel_bool", "const __steel_bool = (x) => Boolean(x);\n"),
+        ("__steel_type", "const __steel_type = (x) => x === null || x === undefined ? 'null' : Array.isArray(x) ? 'array' : typeof x === 'object' ? 'map' : typeof x;\n"),
+        ("__steel_range", "const __steel_range = (a, b, step = 1) => { const r = []; if (step > 0) { for (let i = a; i < b; i += step) r.push(i); } else if (step < 0) { for (let i = a; i > b; i += step) r.push(i); } return r; };\n"),
+        ("__steel_map", "const __steel_map = (arr, fn) => arr.map(fn);\n"),
+        ("__steel_filter", "const __steel_filter = (arr, fn) => arr.filter(fn);\n"),
+        ("__steel_reduce", "const __steel_reduce = (arr, fn, init) => init !== undefined ? arr.reduce(fn, init) : arr.reduce(fn);\n"),
+        ("__steel_find", "const __steel_find = (arr, fn) => { const r = arr.find(fn); return r === undefined ? null : r; };\n"),
+        ("__steel_any", "const __steel_any = (arr, fn) => arr.some(fn);\n"),
+        ("__steel_all", "const __steel_all = (arr, fn) => arr.every(fn);\n"),
+        ("__steel_sum", "const __steel_sum = (arr) => arr.reduce((a, b) => a + (typeof b === 'number' ? b : 0), 0);\n"),
+        ("__steel_avg", "const __steel_avg = (arr) => arr.length === 0 ? 0 : arr.reduce((a, b) => a + (typeof b === 'number' ? b : 0), 0) / arr.length;\n"),
+        ("__steel_unique", "const __steel_unique = (arr) => { const out = []; for (const v of arr) if (!out.includes(v)) out.push(v); return out; };\n"),
+        ("__steel_flat", "const __steel_flat = (arr) => arr.flat(1);\n"),
+        ("__steel_zip", "const __steel_zip = (a, b) => { const n = Math.min(a.length, b.length), out = []; for (let i = 0; i < n; i++) out.push([a[i], b[i]]); return out; };\n"),
+        ("__steel_enumerate", "const __steel_enumerate = (arr) => arr.map((v, i) => [i, v]);\n"),
+        ("__steel_clamp", "const __steel_clamp = (x, lo, hi) => Math.min(Math.max(x, lo), hi);\n"),
+        ("__steel_sign", "const __steel_sign = (x) => x > 0 ? 1 : x < 0 ? -1 : 0;\n"),
+        ("__steel_split", "const __steel_split = (s, sep) => s.split(sep);\n"),
+        ("__steel_join", "const __steel_join = (arr, sep) => arr.join(sep);\n"),
+        ("__steel_trim", "const __steel_trim = (s) => s.trim();\n"),
+        ("__steel_upper", "const __steel_upper = (s) => s.toUpperCase();\n"),
+        ("__steel_lower", "const __steel_lower = (s) => s.toLowerCase();\n"),
+        ("__steel_replace", "const __steel_replace = (s, a, b) => s.split(a).join(b);\n"),
+        ("__steel_slice", "const __steel_slice = (x, s, e) => x.slice(s, e);\n"),
+        ("__steel_reverse", "const __steel_reverse = (x) => Array.isArray(x) ? [...x].reverse() : x.split('').reverse().join('');\n"),
+        ("__steel_sort", "const __steel_sort = (x) => [...x].sort((a, b) => String(a) < String(b) ? -1 : String(a) > String(b) ? 1 : 0);\n"),
+        ("__steel_json_stringify", "const __steel_json_stringify = (x) => JSON.stringify(x);\n"),
+        ("__steel_json_parse", "const __steel_json_parse = (s) => JSON.parse(s);\n"),
+        ("__steel_hash", "const __steel_hash = (x) => { const b = Buffer.from(String(x), 'utf8'); let h = 0xcbf29ce484222325n; for (const c of b) { h ^= BigInt(c); h = (h * 0x0100000001b3n) & 0xffffffffffffffffn; } return h.toString(16).padStart(16, '0'); };\n"),
+        ("__steel_assert", "const __steel_assert = (c, m = 'Assertion failed') => { if (!c) throw new Error(m); return true; };\n"),
+        ("read_file(", "const read_file = (p) => fs.readFileSync(p, 'utf8');\n"),
+        ("write_file(", "const write_file = (p, c) => { fs.writeFileSync(p, String(c)); return true; };\n"),
+        ("append_file(", "const append_file = (p, c) => { fs.appendFileSync(p, String(c)); return true; };\n"),
+        ("remove_file(", "const remove_file = (p) => { fs.unlinkSync(p); return true; };\n"),
+        ("file_exists(", "const file_exists = (p) => fs.existsSync(p);\n"),
+        ("env(", "const env = (k) => process.env[k] ?? null;\n"),
+        ("time_ms(", "const time_ms = () => Date.now();\n"),
+        ("clock(", "const clock = () => Date.now() / 1000;\n"),
+    ] {
+        if body_out.contains(helper) {
+            out.push_str(def);
+        }
+    }
+    out.push('\n');
+    out.push_str(&body_out);
+    out.replace("__steel_", "_steel_").replace("__SteelObj", "_SteelObj")
+}
+
+fn js_safe_ident(name: &str) -> String {
+    match name {
+        "arguments" | "await" | "break" | "case" | "catch" | "class" | "const" | "continue"
+        | "debugger" | "default" | "delete" | "do" | "else" | "enum" | "eval" | "export"
+        | "extends" | "false" | "finally" | "for" | "function" | "if" | "implements" | "import"
+        | "in" | "instanceof" | "interface" | "let" | "new" | "null" | "package" | "private"
