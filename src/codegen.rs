@@ -244,3 +244,85 @@ fn js_safe_ident(name: &str) -> String {
         | "debugger" | "default" | "delete" | "do" | "else" | "enum" | "eval" | "export"
         | "extends" | "false" | "finally" | "for" | "function" | "if" | "implements" | "import"
         | "in" | "instanceof" | "interface" | "let" | "new" | "null" | "package" | "private"
+        | "protected" | "public" | "return" | "static" | "super" | "switch" | "throw" | "true"
+        | "try" | "typeof" | "var" | "void" | "while" | "with" | "yield" => format!("_{}", name),
+        _ => name.to_string(),
+    }
+}
+
+fn js_params(params: &[(String, Option<Expr>)], lvl: usize) -> String {
+    params
+        .iter()
+        .map(|(n, def)| {
+            let sn = js_safe_ident(n);
+            match def {
+                Some(e) => format!("{} = {}", sn, js_expr(e, lvl)),
+                None => sn,
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+fn js_stmt(stmt: &Stmt, lvl: usize) -> String {
+    let pad = indent(lvl);
+    match stmt {
+        Stmt::Import(path) => format!("{}require(\"{}\");\n", pad, escape_str(path)),
+        Stmt::Let {
+            name,
+            is_const,
+            value,
+        } => {
+            let kw = if *is_const { "const" } else { "let" };
+            format!("{}{} {} = {};\n", pad, kw, js_safe_ident(name), js_expr(value, lvl))
+        }
+        Stmt::Assign { target, value } => {
+            if let AssignTarget::Index { target, index } = target {
+                return format!(
+                    "{}__steel_set({}, {}, {});\n",
+                    pad,
+                    js_expr(target, lvl),
+                    js_expr(index, lvl),
+                    js_expr(value, lvl)
+                );
+            }
+            let lhs = match target {
+                AssignTarget::Ident(n) => js_safe_ident(n),
+                AssignTarget::Member { target, field } => {
+                    format!("{}.{}", js_expr(target, lvl), field)
+                }
+                AssignTarget::Index { .. } => unreachable!(),
+            };
+            format!("{}{} = {};\n", pad, lhs, js_expr(value, lvl))
+        }
+        Stmt::FnDecl { name, params, body } => {
+            let mut s = format!("{}function {}({}) {{\n", pad, name, js_params(params, lvl));
+            for st in body {
+                s.push_str(&js_stmt(st, lvl + 1));
+            }
+            s.push_str(&format!("{}}}\n", pad));
+            s
+        }
+        Stmt::ClassDecl {
+            name,
+            parent,
+            methods,
+        } => {
+            let ext = parent
+                .as_ref()
+                .map(|p| format!(" extends {}", p))
+                .unwrap_or_default();
+            let mut s = format!("{}class {}{} {{\n", pad, name, ext);
+            for m in methods {
+                let m_name = if m.name == "init" {
+                    "constructor"
+                } else {
+                    m.name.as_str()
+                };
+                s.push_str(&format!(
+                    "{}    {}({}) {{\n{}        const self = this;\n",
+                    pad,
+                    m_name,
+                    js_params(&m.params, lvl + 1),
+                    pad
+                ));
