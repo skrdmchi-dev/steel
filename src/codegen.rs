@@ -490,3 +490,85 @@ fn js_expr(expr: &Expr, lvl: usize) -> String {
         }
         Expr::Ternary {
             cond,
+            then_expr,
+            else_expr,
+        } => format!(
+            "({} ? {} : {})",
+            js_expr(cond, lvl),
+            js_expr(then_expr, lvl),
+            js_expr(else_expr, lvl)
+        ),
+        Expr::Binary { left, op, right } => {
+            let op_str = match op {
+                BinaryOp::Add => "+",
+                BinaryOp::Sub => "-",
+                BinaryOp::Mul => "*",
+                BinaryOp::Pow => "**",
+                BinaryOp::Div => "/",
+                BinaryOp::Mod => "%",
+                BinaryOp::Eq => "===",
+                BinaryOp::Neq => "!==",
+                BinaryOp::Lt => "<",
+                BinaryOp::Gt => ">",
+                BinaryOp::Lte => "<=",
+                BinaryOp::Gte => ">=",
+                BinaryOp::And => "&&",
+                BinaryOp::Or => "||",
+                BinaryOp::BitAnd => "&",
+                BinaryOp::BitOr => "|",
+                BinaryOp::BitXor => "^",
+                BinaryOp::Shl => "<<",
+                BinaryOp::Shr => ">>",
+                BinaryOp::NullCoalesce => "??",
+            };
+            format!("({} {} {})", js_expr(left, lvl), op_str, js_expr(right, lvl))
+        }
+        Expr::Unary { op, expr } => {
+            let op_str = match op {
+                UnaryOp::Neg => "-",
+                UnaryOp::Not => "!",
+                UnaryOp::BitNot => "~",
+            };
+            format!("({}{})", op_str, js_expr(expr, lvl))
+        }
+        Expr::Call { callee, args } => {
+            let arg_strs: Vec<String> = args.iter().map(|a| js_expr(a, lvl)).collect();
+            format!("{}({})", js_expr(callee, lvl), arg_strs.join(", "))
+        }
+        Expr::Index { target, index } => {
+            format!("__steel_get({}, {})", js_expr(target, lvl), js_expr(index, lvl))
+        }
+        Expr::Member { target, field } => format!("{}.{}", js_expr(target, lvl), field),
+        Expr::FnExpr { params, body } => {
+            let mut s = format!("(({}) => {{\n", js_params(params, lvl));
+            for st in body {
+                s.push_str(&js_stmt(st, lvl + 1));
+            }
+            s.push_str(&format!("{}}})", indent(lvl)));
+            s
+        }
+        Expr::Range { start, end } => {
+            format!(
+                "__steel_range({}, {})",
+                js_expr(start, lvl),
+                js_expr(end, lvl)
+            )
+        }
+        Expr::Spread(inner) => format!("...{}", js_expr(inner, lvl)),
+    }
+}
+
+// 2. PYTHON TARGET (On-Demand Minimal Helpers)
+fn emit_python(program: &Program) -> String {
+    let mut fn_counter = 0;
+    let mut body_out = String::new();
+    for stmt in &program.statements {
+        body_out.push_str(&py_stmt(stmt, 0, &mut fn_counter));
+    }
+
+    let mut out = String::new();
+    if body_out.contains("__steel_str")
+        || body_out.contains("__steel_print")
+        || body_out.contains("__steel_join")
+        || body_out.contains("__steel_add")
+        || body_out.contains("__steel_json_")
