@@ -326,3 +326,85 @@ fn js_stmt(stmt: &Stmt, lvl: usize) -> String {
                     js_params(&m.params, lvl + 1),
                     pad
                 ));
+                for st in &m.body {
+                    s.push_str(&js_stmt(st, lvl + 2));
+                }
+                s.push_str(&format!("{}    }}\n", pad));
+            }
+            s.push_str(&format!("{}}}\n", pad));
+            s
+        }
+        Stmt::TryCatch {
+            try_body,
+            err_var,
+            catch_body,
+        } => {
+            let mut s = format!("{}try {{\n", pad);
+            for st in try_body {
+                s.push_str(&js_stmt(st, lvl + 1));
+            }
+            s.push_str(&format!("{}}} catch ({}) {{\n", pad, err_var));
+            for st in catch_body {
+                s.push_str(&js_stmt(st, lvl + 1));
+            }
+            s.push_str(&format!("{}}}\n", pad));
+            s
+        }
+        Stmt::Throw(e) => format!("{}throw {};\n", pad, js_expr(e, lvl)),
+        Stmt::Test { name, body } => {
+            let mut s = format!("{}// test \"{}\"\n{}{{\n", pad, escape_str(name), pad);
+            for st in body {
+                s.push_str(&js_stmt(st, lvl + 1));
+            }
+            s.push_str(&format!("{}}}\n", pad));
+            s
+        }
+        Stmt::Defer(inner) => js_stmt(inner, lvl),
+        Stmt::Return(expr) => match expr {
+            Some(e) => format!("{}return {};\n", pad, js_expr(e, lvl)),
+            None => format!("{}return null;\n", pad),
+        },
+        Stmt::If {
+            cond,
+            then_branch,
+            else_branch,
+        } => {
+            let mut s = format!("{}if ({}) {{\n", pad, js_expr(cond, lvl));
+            for st in then_branch {
+                s.push_str(&js_stmt(st, lvl + 1));
+            }
+            if let Some(eb) = else_branch {
+                s.push_str(&format!("{}}} else {{\n", pad));
+                for st in eb {
+                    s.push_str(&js_stmt(st, lvl + 1));
+                }
+            }
+            s.push_str(&format!("{}}}\n", pad));
+            s
+        }
+        Stmt::While { cond, body } => {
+            let mut s = format!("{}while ({}) {{\n", pad, js_expr(cond, lvl));
+            for st in body {
+                s.push_str(&js_stmt(st, lvl + 1));
+            }
+            s.push_str(&format!("{}}}\n", pad));
+            s
+        }
+        Stmt::For {
+            var,
+            iterable,
+            body,
+        } => {
+            let mut s = format!(
+                "{}for (const {} of {}) {{\n",
+                pad,
+                var,
+                js_expr(iterable, lvl)
+            );
+            for st in body {
+                s.push_str(&js_stmt(st, lvl + 1));
+            }
+            s.push_str(&format!("{}}}\n", pad));
+            s
+        }
+        Stmt::Break => format!("{}break;\n", pad),
