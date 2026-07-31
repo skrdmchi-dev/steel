@@ -654,3 +654,85 @@ fn emit_python(program: &Program) -> String {
         ("__steel_hash", "def __steel_hash(x):\n    h = 0xcbf29ce484222325\n    for b in __steel_str(x).encode('utf-8'):\n        h ^= b\n        h = (h * 0x0100000001b3) & 0xffffffffffffffff\n    return f'{h:016x}'\n"),
         ("__steel_assert", "def __steel_assert(c, m='Assertion failed'):\n    if not c: raise RuntimeError(m)\n    return True\n"),
         ("read_file(", "def read_file(p):\n    with open(p, 'r', encoding='utf-8') as f: return f.read()\n"),
+        ("write_file(", "def write_file(p, c):\n    with open(p, 'w', encoding='utf-8') as f: f.write(str(c))\n    return True\n"),
+        ("append_file(", "def append_file(p, c):\n    with open(p, 'a', encoding='utf-8') as f: f.write(str(c))\n    return True\n"),
+        ("remove_file(", "import os as _os_rm\ndef remove_file(p): _os_rm.remove(p); return True\n"),
+        ("file_exists(", "import os as _os_fe\ndef file_exists(p): return _os_fe.path.exists(p)\n"),
+        ("env(", "import os as _os_env\ndef env(k): return _os_env.environ.get(k, None)\n"),
+        ("time_ms(", "import time as _time_ms\ndef time_ms(): return int(_time_ms.time() * 1000)\n"),
+        ("clock(", "import time as _time_clk\ndef clock(): return _time_clk.time()\n"),
+        ("__steel_type", "def __steel_type(x):\n    if x is None: return 'null'\n    if isinstance(x, bool): return 'boolean'\n    if isinstance(x, (int, float)): return 'number'\n    if isinstance(x, str): return 'string'\n    if isinstance(x, list): return 'array'\n    if isinstance(x, dict): return 'map'\n    return 'function'\n"),
+    ] {
+        if body_out.contains(helper) {
+            out.push_str(def);
+        }
+    }
+    out.push('\n');
+    out.push_str(&body_out);
+    out.replace("__steel_", "_steel_").replace("__SteelObj", "_SteelObj")
+}
+
+fn py_safe_ident(name: &str) -> String {
+    match name {
+        "False" | "None" | "True" | "and" | "as" | "assert" | "async" | "await" | "break"
+        | "class" | "continue" | "def" | "del" | "elif" | "else" | "except" | "finally" | "for"
+        | "from" | "global" | "if" | "import" | "in" | "is" | "lambda" | "nonlocal" | "not"
+        | "or" | "pass" | "raise" | "return" | "try" | "while" | "with" | "yield" => {
+            format!("_{}", name)
+        }
+        _ => name.to_string(),
+    }
+}
+
+fn py_params(params: &[(String, Option<Expr>)], lvl: usize, fn_counter: &mut usize) -> String {
+    params
+        .iter()
+        .map(|(n, def)| {
+            let sn = py_safe_ident(n);
+            match def {
+                Some(e) => {
+                    let (_, v) = py_expr(e, lvl, fn_counter);
+                    format!("{}={}", sn, v)
+                }
+                None => sn,
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+fn py_stmt(stmt: &Stmt, lvl: usize, fn_counter: &mut usize) -> String {
+    let pad = indent(lvl);
+    match stmt {
+        Stmt::Import(path) => format!("{}# import \"{}\"\n", pad, escape_str(path)),
+        Stmt::Let { name, value, .. } => {
+            let (pre, val_str) = py_expr(value, lvl, fn_counter);
+            format!("{}{}{} = {}\n", pre, pad, py_safe_ident(name), val_str)
+        }
+        Stmt::Assign { target, value } => {
+            let (pre, val_str) = py_expr(value, lvl, fn_counter);
+            let lhs = match target {
+                AssignTarget::Ident(n) => py_safe_ident(n),
+                AssignTarget::Index { target, index } => {
+                    let (_, t) = py_expr(target, lvl, fn_counter);
+                    let (_, i) = py_expr(index, lvl, fn_counter);
+                    format!("{}[{}]", t, i)
+                }
+                AssignTarget::Member { target, field } => {
+                    let (_, t) = py_expr(target, lvl, fn_counter);
+                    format!("{}.{}", t, field)
+                }
+            };
+            format!("{}{}{} = {}\n", pre, pad, lhs, val_str)
+        }
+        Stmt::FnDecl { name, params, body } => {
+            let p_str = py_params(params, lvl, fn_counter);
+            let mut s = format!("{}def {}({}):\n", pad, py_safe_ident(name), p_str);
+            if body.is_empty() {
+                s.push_str(&format!("{}    pass\n", pad));
+            } else {
+                for st in body {
+                    s.push_str(&py_stmt(st, lvl + 1, fn_counter));
+                }
+            }
+            s
