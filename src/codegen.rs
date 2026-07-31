@@ -736,3 +736,85 @@ fn py_stmt(stmt: &Stmt, lvl: usize, fn_counter: &mut usize) -> String {
                 }
             }
             s
+        }
+        Stmt::ClassDecl {
+            name,
+            parent,
+            methods,
+        } => {
+            let base = parent.as_deref().unwrap_or("object");
+            let mut s = format!("{}class {}({}):\n", pad, name, base);
+            if methods.is_empty() {
+                s.push_str(&format!("{}    pass\n", pad));
+            } else {
+                for m in methods {
+                    let m_name = if m.name == "init" || m.name == "constructor" {
+                        "__init__"
+                    } else {
+                        m.name.as_str()
+                    };
+                    let p_str = py_params(&m.params, lvl + 1, fn_counter);
+                    let full_params = if p_str.is_empty() {
+                        "self".to_string()
+                    } else {
+                        format!("self, {}", p_str)
+                    };
+                    s.push_str(&format!(
+                        "{}    def {}({}):\n{}        this = self\n",
+                        pad, m_name, full_params, pad
+                    ));
+                    for st in &m.body {
+                        s.push_str(&py_stmt(st, lvl + 2, fn_counter));
+                    }
+                }
+            }
+            s
+        }
+        Stmt::TryCatch {
+            try_body,
+            err_var,
+            catch_body,
+        } => {
+            let mut s = format!("{}try:\n", pad);
+            if try_body.is_empty() {
+                s.push_str(&format!("{}    pass\n", pad));
+            } else {
+                for st in try_body {
+                    s.push_str(&py_stmt(st, lvl + 1, fn_counter));
+                }
+            }
+            s.push_str(&format!(
+                "{}except Exception as __e:\n{}    {} = str(__e)\n",
+                pad, pad, err_var
+            ));
+            for st in catch_body {
+                s.push_str(&py_stmt(st, lvl + 1, fn_counter));
+            }
+            s
+        }
+        Stmt::Throw(e) => {
+            let (pre, val) = py_expr(e, lvl, fn_counter);
+            format!("{}{}raise RuntimeError(__steel_str({}))\n", pre, pad, val)
+        }
+        Stmt::Test { name, body } => {
+            let mut s = format!("{}# test \"{}\"\n", pad, escape_str(name));
+            for st in body {
+                s.push_str(&py_stmt(st, lvl, fn_counter));
+            }
+            s
+        }
+        Stmt::Defer(inner) => py_stmt(inner, lvl, fn_counter),
+        Stmt::Return(expr) => match expr {
+            Some(e) => {
+                let (pre, val) = py_expr(e, lvl, fn_counter);
+                format!("{}{}return {}\n", pre, pad, val)
+            }
+            None => format!("{}return None\n", pad),
+        },
+        Stmt::If {
+            cond,
+            then_branch,
+            else_branch,
+        } => {
+            let (pre, c) = py_expr(cond, lvl, fn_counter);
+            let mut s = format!("{}{}if {}:\n", pre, pad, c);
