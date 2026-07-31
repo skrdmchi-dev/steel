@@ -572,3 +572,85 @@ fn emit_python(program: &Program) -> String {
         || body_out.contains("__steel_join")
         || body_out.contains("__steel_add")
         || body_out.contains("__steel_json_")
+    {
+        out.push_str("import json\n");
+    }
+    if ["sqrt(", "sin(", "cos(", "tan(", "atan2(", "log(", "exp(", "floor(", "ceil(", "PI", "E"]
+        .iter()
+        .any(|m| body_out.contains(m))
+    {
+        out.push_str("import math\nPI, E = math.pi, math.e\nsqrt, sin, cos, tan, atan2, log, exp, floor, ceil = math.sqrt, math.sin, math.cos, math.tan, math.atan2, math.log, math.exp, math.floor, math.ceil\n");
+    }
+    if body_out.contains("__steel_reduce") {
+        out.push_str("import functools\n");
+    }
+    if body_out.contains("__SteelObj") || body_out.contains("__steel_json_parse") {
+        out.push_str("class __SteelObj(dict):\n    def __getattribute__(self, k):\n        if dict.__contains__(self, k): return dict.__getitem__(self, k)\n        return object.__getattribute__(self, k)\n    __getattr__ = dict.get\n    __setattr__ = dict.__setitem__\n");
+    }
+    if body_out.contains("__steel_str")
+        || body_out.contains("__steel_print")
+        || body_out.contains("__steel_join")
+        || body_out.contains("__steel_add")
+        || body_out.contains("__steel_sort")
+        || body_out.contains("__steel_hash")
+    {
+        out.push_str(
+            "def __steel_str(x):\n\
+             \x20   if x is None: return 'null'\n\
+             \x20   if isinstance(x, bool): return 'true' if x else 'false'\n\
+             \x20   if isinstance(x, float) and x.is_integer(): return str(int(x))\n\
+             \x20   if isinstance(x, (list, dict)): return json.dumps(x, separators=(',', ':'))\n\
+             \x20   return str(x)\n",
+        );
+    }
+    for (helper, def) in [
+        ("__steel_add", "def __steel_add(a, b): return (__steel_str(a) + __steel_str(b)) if (isinstance(a, str) or isinstance(b, str)) else (a + b)\n"),
+        ("__steel_print", "def __steel_print(*args): print(*(__steel_str(a) for a in args))\n"),
+        ("__steel_push", "def __steel_push(arr, val): arr.append(val); return arr\n"),
+        ("__steel_pop", "def __steel_pop(arr): return arr.pop() if arr else None\n"),
+        ("__steel_get", "def __steel_get(t, i): return t.get(i, None) if isinstance(t, dict) else (t[int(i)] if -len(t) <= int(i) < len(t) else None)\n"),
+        ("__steel_keys", "def __steel_keys(obj): return list(obj.keys())\n"),
+        ("__steel_values", "def __steel_values(obj): return list(obj.values())\n"),
+        ("__steel_has_key", "def __steel_has_key(obj, k): return isinstance(obj, dict) and k in obj\n"),
+        ("__steel_delete_key", "def __steel_delete_key(obj, k):\n    if isinstance(obj, dict) and k in obj:\n        del obj[k]\n        return True\n    return False\n"),
+        ("__steel_concat", "def __steel_concat(a, b): return list(a) + list(b)\n"),
+        ("__steel_contains", "def __steel_contains(x, v): return v in x\n"),
+        ("__steel_index_of", "def __steel_index_of(x, v):\n    if isinstance(x, str): return x.find(str(v))\n    if isinstance(x, list):\n        try: return x.index(v)\n        except ValueError: return -1\n    return -1\n"),
+        ("__steel_repeat", "def __steel_repeat(s, n): return str(s) * max(0, int(n))\n"),
+        ("__steel_pad_start", "def __steel_pad_start(s, w, ch=' '):\n    s, ch = str(s), str(ch)\n    need = max(0, int(w) - len(s))\n    if need == 0 or not ch: return s\n    return (ch * (need // len(ch) + 1))[:need] + s\n"),
+        ("__steel_pad_end", "def __steel_pad_end(s, w, ch=' '):\n    s, ch = str(s), str(ch)\n    need = max(0, int(w) - len(s))\n    if need == 0 or not ch: return s\n    return s + (ch * (need // len(ch) + 1))[:need]\n"),
+        ("__steel_char_code", "def __steel_char_code(s): return ord(s[0]) if len(s) > 0 else 0\n"),
+        ("__steel_from_char_code", "def __steel_from_char_code(n): return chr(max(0, int(n)))\n"),
+        ("__steel_int", "def __steel_int(x): return int(float(x))\n"),
+        ("__steel_bool", "def __steel_bool(x): return bool(x)\n"),
+        ("__steel_range", "def __steel_range(a, b, step=1): return list(range(int(a), int(b), int(step)))\n"),
+        ("__steel_map", "def __steel_map(arr, fn): return [fn(x) for x in arr]\n"),
+        ("__steel_filter", "def __steel_filter(arr, fn): return [x for x in arr if fn(x)]\n"),
+        ("__steel_reduce", "def __steel_reduce(arr, fn, *init): return functools.reduce(fn, arr, *init)\n"),
+        ("__steel_find", "def __steel_find(arr, fn):\n    for x in arr:\n        if fn(x): return x\n    return None\n"),
+        ("__steel_any", "def __steel_any(arr, fn): return any(fn(x) for x in arr)\n"),
+        ("__steel_all", "def __steel_all(arr, fn): return all(fn(x) for x in arr)\n"),
+        ("__steel_sum", "def __steel_sum(arr): return sum(x for x in arr if isinstance(x, (int, float)) and not isinstance(x, bool))\n"),
+        ("__steel_avg", "def __steel_avg(arr): return 0 if not arr else sum(x for x in arr if isinstance(x, (int, float)) and not isinstance(x, bool)) / len(arr)\n"),
+        ("__steel_unique", "def __steel_unique(arr):\n    out = []\n    for v in arr:\n        if v not in out: out.append(v)\n    return out\n"),
+        ("__steel_flat", "def __steel_flat(arr):\n    out = []\n    for v in arr:\n        if isinstance(v, list): out.extend(v)\n        else: out.append(v)\n    return out\n"),
+        ("__steel_zip", "def __steel_zip(a, b): return [[x, y] for x, y in zip(a, b)]\n"),
+        ("__steel_enumerate", "def __steel_enumerate(arr): return [[i, v] for i, v in enumerate(arr)]\n"),
+        ("__steel_clamp", "def __steel_clamp(x, lo, hi): return min(max(x, lo), hi)\n"),
+        ("__steel_sign", "def __steel_sign(x): return 1 if x > 0 else (-1 if x < 0 else 0)\n"),
+        ("__steel_split", "def __steel_split(s, sep): return s.split(sep) if sep != '' else list(s)\n"),
+        ("__steel_join", "def __steel_join(arr, sep): return sep.join(__steel_str(x) for x in arr)\n"),
+        ("__steel_trim", "def __steel_trim(s): return s.strip()\n"),
+        ("__steel_upper", "def __steel_upper(s): return s.upper()\n"),
+        ("__steel_lower", "def __steel_lower(s): return s.lower()\n"),
+        ("__steel_replace", "def __steel_replace(s, a, b): return s.replace(a, b)\n"),
+        ("__steel_slice", "def __steel_slice(x, s, e=None): return x[int(s):None if e is None else int(e)]\n"),
+        ("__steel_starts_with", "def __steel_starts_with(s, p): return str(s).startswith(str(p))\n"),
+        ("__steel_ends_with", "def __steel_ends_with(s, p): return str(s).endswith(str(p))\n"),
+        ("__steel_reverse", "def __steel_reverse(x): return list(reversed(x)) if isinstance(x, list) else x[::-1]\n"),
+        ("__steel_sort", "def __steel_sort(x): return sorted(x, key=__steel_str)\n"),
+        ("__steel_json_stringify", "def __steel_json_stringify(x): return json.dumps(x, separators=(',', ':'))\n"),
+        ("__steel_json_parse", "def __steel_json_parse(s): return json.loads(s, object_hook=__SteelObj)\n"),
+        ("__steel_hash", "def __steel_hash(x):\n    h = 0xcbf29ce484222325\n    for b in __steel_str(x).encode('utf-8'):\n        h ^= b\n        h = (h * 0x0100000001b3) & 0xffffffffffffffff\n    return f'{h:016x}'\n"),
+        ("__steel_assert", "def __steel_assert(c, m='Assertion failed'):\n    if not c: raise RuntimeError(m)\n    return True\n"),
+        ("read_file(", "def read_file(p):\n    with open(p, 'r', encoding='utf-8') as f: return f.read()\n"),
