@@ -981,3 +981,85 @@ fn py_expr(expr: &Expr, lvl: usize, fn_counter: &mut usize) -> (String, String) 
             }
             (pre, format!("{}({})", class_name, arg_strs.join(", ")))
         }
+        Expr::Ternary {
+            cond,
+            then_expr,
+            else_expr,
+        } => {
+            let (mut pre, c) = py_expr(cond, lvl, fn_counter);
+            let (p1, t) = py_expr(then_expr, lvl, fn_counter);
+            let (p2, e) = py_expr(else_expr, lvl, fn_counter);
+            pre.push_str(&p1);
+            pre.push_str(&p2);
+            (pre, format!("({} if {} else {})", t, c, e))
+        }
+        Expr::Binary { left, op, right } => {
+            let (mut pre, l) = py_expr(left, lvl, fn_counter);
+            let (p2, r) = py_expr(right, lvl, fn_counter);
+            pre.push_str(&p2);
+            if matches!(op, BinaryOp::NullCoalesce) {
+                return (
+                    pre,
+                    format!("({} if {} is not None else {})", l, l, r),
+                );
+            }
+            if matches!(op, BinaryOp::Add) {
+                let both_num_lit = matches!(**left, Expr::Number(_)) && matches!(**right, Expr::Number(_));
+                if !both_num_lit {
+                    return (pre, format!("__steel_add({}, {})", l, r));
+                }
+            }
+            let op_str = match op {
+                BinaryOp::Add => "+",
+                BinaryOp::Sub => "-",
+                BinaryOp::Mul => "*",
+                BinaryOp::Pow => "**",
+                BinaryOp::Div => "/",
+                BinaryOp::Mod => "%",
+                BinaryOp::Eq => "==",
+                BinaryOp::Neq => "!=",
+                BinaryOp::Lt => "<",
+                BinaryOp::Gt => ">",
+                BinaryOp::Lte => "<=",
+                BinaryOp::Gte => ">=",
+                BinaryOp::And => "and",
+                BinaryOp::Or => "or",
+                BinaryOp::BitAnd => "&",
+                BinaryOp::BitOr => "|",
+                BinaryOp::BitXor => "^",
+                BinaryOp::Shl => "<<",
+                BinaryOp::Shr => ">>",
+                BinaryOp::NullCoalesce => unreachable!(),
+            };
+            (pre, format!("({} {} {})", l, op_str, r))
+        }
+        Expr::Unary { op, expr } => {
+            let (pre, e) = py_expr(expr, lvl, fn_counter);
+            let op_str = match op {
+                UnaryOp::Neg => "-",
+                UnaryOp::Not => "not ",
+                UnaryOp::BitNot => "~",
+            };
+            (pre, format!("({}{})", op_str, e))
+        }
+        Expr::Call { callee, args } => {
+            let (mut pre, c) = py_expr(callee, lvl, fn_counter);
+            let mut arg_strs = Vec::new();
+            for a in args {
+                let (p, v) = py_expr(a, lvl, fn_counter);
+                pre.push_str(&p);
+                arg_strs.push(v);
+            }
+            (pre, format!("{}({})", c, arg_strs.join(", ")))
+        }
+        Expr::Index { target, index } => {
+            let (mut pre, t) = py_expr(target, lvl, fn_counter);
+            let (p2, i) = py_expr(index, lvl, fn_counter);
+            pre.push_str(&p2);
+            (pre, format!("__steel_get({}, {})", t, i))
+        }
+        Expr::Member { target, field } => {
+            let (pre, t) = py_expr(target, lvl, fn_counter);
+            (pre, format!("{}.{}", t, field))
+        }
+        Expr::FnExpr { params, body } => {
