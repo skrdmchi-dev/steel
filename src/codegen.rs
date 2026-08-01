@@ -818,3 +818,84 @@ fn py_stmt(stmt: &Stmt, lvl: usize, fn_counter: &mut usize) -> String {
         } => {
             let (pre, c) = py_expr(cond, lvl, fn_counter);
             let mut s = format!("{}{}if {}:\n", pre, pad, c);
+            if then_branch.is_empty() {
+                s.push_str(&format!("{}    pass\n", pad));
+            } else {
+                for st in then_branch {
+                    s.push_str(&py_stmt(st, lvl + 1, fn_counter));
+                }
+            }
+            if let Some(eb) = else_branch {
+                s.push_str(&format!("{}else:\n", pad));
+                if eb.is_empty() {
+                    s.push_str(&format!("{}    pass\n", pad));
+                } else {
+                    for st in eb {
+                        s.push_str(&py_stmt(st, lvl + 1, fn_counter));
+                    }
+                }
+            }
+            s
+        }
+        Stmt::While { cond, body } => {
+            let (pre, c) = py_expr(cond, lvl, fn_counter);
+            let mut s = format!("{}{}while {}:\n", pre, pad, c);
+            if body.is_empty() {
+                s.push_str(&format!("{}    pass\n", pad));
+            } else {
+                for st in body {
+                    s.push_str(&py_stmt(st, lvl + 1, fn_counter));
+                }
+            }
+            s
+        }
+        Stmt::For {
+            var,
+            iterable,
+            body,
+        } => {
+            if let Expr::Range { start, end } = iterable {
+                let (mut pre, s_val) = py_expr(start, lvl, fn_counter);
+                let (p2, e_val) = py_expr(end, lvl, fn_counter);
+                pre.push_str(&p2);
+                let mut s = format!("{}{}for {} in range(int({}), int({})):\n", pre, pad, var, s_val, e_val);
+                if body.is_empty() {
+                    s.push_str(&format!("{}    pass\n", pad));
+                } else {
+                    for st in body {
+                        s.push_str(&py_stmt(st, lvl + 1, fn_counter));
+                    }
+                }
+                return s;
+            }
+            let (pre, it) = py_expr(iterable, lvl, fn_counter);
+            let mut s = format!("{}{}for {} in {}:\n", pre, pad, var, it);
+            if body.is_empty() {
+                s.push_str(&format!("{}    pass\n", pad));
+            } else {
+                for st in body {
+                    s.push_str(&py_stmt(st, lvl + 1, fn_counter));
+                }
+            }
+            s
+        }
+        Stmt::Break => format!("{}break\n", pad),
+        Stmt::Continue => format!("{}continue\n", pad),
+        Stmt::Expr(e) => {
+            let (pre, val) = py_expr(e, lvl, fn_counter);
+            format!("{}{}{}\n", pre, pad, val)
+        }
+    }
+}
+
+fn py_expr(expr: &Expr, lvl: usize, fn_counter: &mut usize) -> (String, String) {
+    match expr {
+        Expr::Number(n) => (String::new(), fmt_num(*n)),
+        Expr::String(s) => (String::new(), format!("\"{}\"", escape_str(s))),
+        Expr::Bool(b) => (String::new(), if *b { "True" } else { "False" }.to_string()),
+        Expr::Null => (String::new(), "None".to_string()),
+        Expr::Ident(name) => {
+            let mapped = match name.as_str() {
+                "print" | "println" => "__steel_print",
+                "len" => "len",
+                "push" => "__steel_push",
