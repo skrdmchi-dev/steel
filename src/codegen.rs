@@ -899,3 +899,85 @@ fn py_expr(expr: &Expr, lvl: usize, fn_counter: &mut usize) -> (String, String) 
                 "print" | "println" => "__steel_print",
                 "len" => "len",
                 "push" => "__steel_push",
+                "pop" => "__steel_pop",
+                "keys" => "__steel_keys",
+                "values" => "__steel_values",
+                "has_key" => "__steel_has_key",
+                "delete_key" => "__steel_delete_key",
+                "concat" => "__steel_concat",
+                "contains" => "__steel_contains",
+                "index_of" => "__steel_index_of",
+                "starts_with" => "__steel_starts_with",
+                "ends_with" => "__steel_ends_with",
+                "repeat" => "__steel_repeat",
+                "pad_start" => "__steel_pad_start",
+                "pad_end" => "__steel_pad_end",
+                "char_code" => "__steel_char_code",
+                "from_char_code" => "__steel_from_char_code",
+                "str" => "__steel_str",
+                "num" => "float",
+                "int" => "__steel_int",
+                "bool" => "__steel_bool",
+                "type" => "__steel_type",
+                "range" => "__steel_range",
+                "map" => "__steel_map",
+                "filter" => "__steel_filter",
+                "reduce" => "__steel_reduce",
+                "find" => "__steel_find",
+                "any" => "__steel_any",
+                "all" => "__steel_all",
+                "sum" => "__steel_sum",
+                "avg" => "__steel_avg",
+                "unique" => "__steel_unique",
+                "flat" => "__steel_flat",
+                "zip" => "__steel_zip",
+                "enumerate" => "__steel_enumerate",
+                "clamp" => "__steel_clamp",
+                "sign" => "__steel_sign",
+                "split" => "__steel_split",
+                "join" => "__steel_join",
+                "trim" => "__steel_trim",
+                "upper" => "__steel_upper",
+                "lower" => "__steel_lower",
+                "replace" => "__steel_replace",
+                "slice" => "__steel_slice",
+                "reverse" => "__steel_reverse",
+                "sort" => "__steel_sort",
+                "json_stringify" => "__steel_json_stringify",
+                "json_parse" => "__steel_json_parse",
+                "hash" => "__steel_hash",
+                "assert" => "__steel_assert",
+                other => return (String::new(), py_safe_ident(other)),
+            };
+            (String::new(), mapped.to_string())
+        }
+        Expr::Array(items) => {
+            let mut pre = String::new();
+            let mut parts = Vec::new();
+            for item in items {
+                let (p, v) = py_expr(item, lvl, fn_counter);
+                pre.push_str(&p);
+                parts.push(v);
+            }
+            (pre, format!("[{}]", parts.join(", ")))
+        }
+        Expr::Map(entries) => {
+            let mut pre = String::new();
+            let mut parts = Vec::new();
+            for (k, val) in entries {
+                let (p, v) = py_expr(val, lvl, fn_counter);
+                pre.push_str(&p);
+                parts.push(format!("\"{}\": {}", escape_str(k), v));
+            }
+            (pre, format!("__SteelObj({{{}}})", parts.join(", ")))
+        }
+        Expr::New { class_name, args } => {
+            let mut pre = String::new();
+            let mut arg_strs = Vec::new();
+            for a in args {
+                let (p, v) = py_expr(a, lvl, fn_counter);
+                pre.push_str(&p);
+                arg_strs.push(v);
+            }
+            (pre, format!("{}({})", class_name, arg_strs.join(", ")))
+        }
