@@ -1063,3 +1063,85 @@ fn py_expr(expr: &Expr, lvl: usize, fn_counter: &mut usize) -> (String, String) 
             (pre, format!("{}.{}", t, field))
         }
         Expr::FnExpr { params, body } => {
+            *fn_counter += 1;
+            let fn_name = format!("__anon_fn_{}", *fn_counter);
+            let pad = indent(lvl);
+            let p_str = py_params(params, lvl, fn_counter);
+            let mut def = format!("{}def {}({}):\n", pad, fn_name, p_str);
+            if body.is_empty() {
+                def.push_str(&format!("{}    pass\n", pad));
+            } else {
+                for st in body {
+                    def.push_str(&py_stmt(st, lvl + 1, fn_counter));
+                }
+            }
+            (def, fn_name)
+        }
+        Expr::Range { start, end } => {
+            let (mut pre, s) = py_expr(start, lvl, fn_counter);
+            let (p2, e) = py_expr(end, lvl, fn_counter);
+            pre.push_str(&p2);
+            (pre, format!("list(range(int({}), int({})))", s, e))
+        }
+        Expr::Spread(inner) => {
+            let (pre, s) = py_expr(inner, lvl, fn_counter);
+            (pre, format!("*{}", s))
+        }
+    }
+}
+
+// 3. LUA TARGET (On-Demand Minimal Helpers)
+fn lua_safe_ident(name: &str) -> String {
+    match name {
+        "and" | "do" | "elseif" | "end" | "function" | "goto" | "local" | "nil" | "not" | "or"
+        | "repeat" | "then" | "until" => format!("_st_{}", name),
+        _ => name.to_string(),
+    }
+}
+
+fn emit_lua(program: &Program) -> String {
+    let mut fwd_names: Vec<String> = Vec::new();
+    for stmt in &program.statements {
+        match stmt {
+            Stmt::FnDecl { name, .. } | Stmt::ClassDecl { name, .. } => {
+                fwd_names.push(lua_safe_ident(name));
+            }
+            _ => {}
+        }
+    }
+    let mut body_out = String::new();
+    if !fwd_names.is_empty() {
+        body_out.push_str(&format!("local {}\n", fwd_names.join(", ")));
+    }
+    for stmt in &program.statements {
+        body_out.push_str(&lua_stmt(stmt, 0));
+    }
+    let mut out = String::new();
+    if body_out.contains("PI") || body_out.contains("E") {
+        out.push_str("local PI, E = math.pi, math.exp(1)\n");
+    }
+    if ["sqrt(", "abs(", "floor(", "ceil(", "sin(", "cos(", "tan(", "atan2(", "log(", "exp(", "min(", "max("].iter().any(|m| body_out.contains(m)) {
+        out.push_str("local abs, floor, ceil, sqrt, sin, cos, tan, log, exp, min, max = math.abs, math.floor, math.ceil, math.sqrt, math.sin, math.cos, math.tan, math.log, math.exp, math.min, math.max\nlocal function atan2(y, x) return math.atan(y, x) end\n");
+    }
+    if body_out.contains("__steel_str")
+        || body_out.contains("__steel_print")
+        || body_out.contains("__steel_add")
+        || body_out.contains("__steel_join")
+        || body_out.contains("__steel_sort")
+        || body_out.contains("__steel_hash")
+    {
+        out.push_str(
+            "local function __steel_str(v)\n\
+             \x20   if v == nil then return 'null' end\n\
+             \x20   if type(v) == 'number' then\n\
+             \x20       if math.type(v) == 'float' and v == math.floor(v) and math.abs(v) < 9007199254740992 then\n\
+             \x20           return string.format('%.0f', v)\n\
+             \x20       end\n\
+             \x20       return tostring(v)\n\
+             \x20   end\n\
+             \x20   if type(v) == 'table' then\n\
+             \x20       local parts = {}\n\
+             \x20       for k, val in pairs(v) do table.insert(parts, tostring(k) .. ':' .. __steel_str(val)) end\n\
+             \x20       return '{' .. table.concat(parts, ', ') .. '}'\n\
+             \x20   end\n\
+             \x20   return tostring(v)\n\
