@@ -1145,3 +1145,85 @@ fn emit_lua(program: &Program) -> String {
              \x20       return '{' .. table.concat(parts, ', ') .. '}'\n\
              \x20   end\n\
              \x20   return tostring(v)\n\
+             end\n",
+        );
+    }
+    for (helper, def) in [
+        ("__steel_add", "local function __steel_add(a, b) if type(a) == 'string' or type(b) == 'string' then return __steel_str(a) .. __steel_str(b) end return a + b end\n"),
+        ("__steel_print", "local function __steel_print(...)\n    local args, out = {...}, {}\n    for i = 1, select('#', ...) do table.insert(out, __steel_str(args[i])) end\n    print(table.concat(out, ' '))\nend\n"),
+        ("__steel_range", "local function __steel_range(a, b, step)\n    step = step or 1\n    local t = {}\n    if step > 0 then for i = a, b - 1, step do table.insert(t, i) end\n    elseif step < 0 then for i = a, b + 1, step do table.insert(t, i) end end\n    return t\nend\n"),
+        ("__steel_push", "local function __steel_push(t, v) table.insert(t, v); return t end\n"),
+        ("__steel_pop", "local function __steel_pop(t) return table.remove(t) end\n"),
+        ("__steel_get", "local function __steel_get(t, i) if type(i) == 'number' then if i < 0 then i = #t + i end return t[i + 1] end return t[i] end\n"),
+        ("__steel_set", "local function __steel_set(t, i, v) if type(i) == 'number' then if i < 0 then i = #t + i end t[i + 1] = v else t[i] = v end end\n"),
+        ("__steel_len", "local function __steel_len(t) if type(t) == 'string' then return #t end if type(t) == 'table' then local n = #t; if n > 0 then return n end local c = 0; for _ in pairs(t) do c = c + 1 end return c end return 0 end\n"),
+        ("__steel_has_key", "local function __steel_has_key(t, k) return type(t) == 'table' and t[k] ~= nil end\n"),
+        ("__steel_delete_key", "local function __steel_delete_key(t, k) if type(t) == 'table' and t[k] ~= nil then t[k] = nil; return true end return false end\n"),
+        ("__steel_concat", "local function __steel_concat(a, b) local r = {}; for _, v in ipairs(a) do table.insert(r, v) end for _, v in ipairs(b) do table.insert(r, v) end return r end\n"),
+        ("__steel_index_of", "local function __steel_index_of(t, v) if type(t) == 'string' then local p = string.find(t, tostring(v), 1, true); return p and (p - 1) or -1 end if type(t) == 'table' then for i, x in ipairs(t) do if x == v then return i - 1 end end end return -1 end\n"),
+        ("__steel_repeat", "local function __steel_repeat(s, n) return string.rep(tostring(s), math.max(0, math.floor(n))) end\n"),
+        ("__steel_pad_start", "local function __steel_pad_start(s, w, ch) s = tostring(s); ch = ch or ' '; local need = math.floor(w) - #s; if need <= 0 or #ch == 0 then return s end return string.sub(string.rep(ch, math.floor(need / #ch) + 1), 1, need) .. s end\n"),
+        ("__steel_pad_end", "local function __steel_pad_end(s, w, ch) s = tostring(s); ch = ch or ' '; local need = math.floor(w) - #s; if need <= 0 or #ch == 0 then return s end return s .. string.sub(string.rep(ch, math.floor(need / #ch) + 1), 1, need) end\n"),
+        ("__steel_char_code", "local function __steel_char_code(s) return #s > 0 and string.byte(s, 1) or 0 end\n"),
+        ("__steel_from_char_code", "local function __steel_from_char_code(n) return utf8.char(math.max(0, math.floor(n))) end\n"),
+        ("__steel_int", "local function __steel_int(x) local n = tonumber(x) or 0; return n >= 0 and math.floor(n) or math.ceil(n) end\n"),
+        ("__steel_bool", "local function __steel_bool(x) return not (x == nil or x == false or x == 0 or x == '') end\n"),
+        ("__steel_type", "local function __steel_type(x) if x == nil then return 'null' end local t = type(x); if t == 'table' then for k, _ in pairs(x) do if type(k) ~= 'number' then return 'map' end end return 'array' end return t end\n"),
+        ("__steel_map", "local function __steel_map(t, fn) local r = {}; for i, v in ipairs(t) do r[i] = fn(v) end; return r end\n"),
+        ("__steel_filter", "local function __steel_filter(t, fn) local r = {}; for _, v in ipairs(t) do if fn(v) then table.insert(r, v) end end; return r end\n"),
+        ("__steel_reduce", "local function __steel_reduce(t, fn, init) local acc, s; if init ~= nil then acc = init; s = 1 else acc = t[1]; s = 2 end; for i = s, #t do acc = fn(acc, t[i]) end; return acc end\n"),
+        ("__steel_find", "local function __steel_find(t, fn) for _, v in ipairs(t) do if fn(v) then return v end end return nil end\n"),
+        ("__steel_any", "local function __steel_any(t, fn) for _, v in ipairs(t) do if fn(v) then return true end end return false end\n"),
+        ("__steel_all", "local function __steel_all(t, fn) for _, v in ipairs(t) do if not fn(v) then return false end end return true end\n"),
+        ("__steel_sum", "local function __steel_sum(t) local s = 0; for _, v in ipairs(t) do if type(v) == 'number' then s = s + v end end return s end\n"),
+        ("__steel_avg", "local function __steel_avg(t) if #t == 0 then return 0 end local s = 0; for _, v in ipairs(t) do if type(v) == 'number' then s = s + v end end return s / #t end\n"),
+        ("__steel_unique", "local function __steel_unique(t) local r = {}; for _, v in ipairs(t) do local f = false; for _, u in ipairs(r) do if u == v then f = true; break end end if not f then table.insert(r, v) end end return r end\n"),
+        ("__steel_flat", "local function __steel_flat(t) local r = {}; for _, v in ipairs(t) do if type(v) == 'table' then for _, u in ipairs(v) do table.insert(r, u) end else table.insert(r, v) end end return r end\n"),
+        ("__steel_zip", "local function __steel_zip(a, b) local r = {}; local n = math.min(#a, #b); for i = 1, n do table.insert(r, {a[i], b[i]}) end return r end\n"),
+        ("__steel_enumerate", "local function __steel_enumerate(t) local r = {}; for i, v in ipairs(t) do table.insert(r, {i - 1, v}) end return r end\n"),
+        ("__steel_clamp", "local function __steel_clamp(x, lo, hi) if x < lo then return lo end if x > hi then return hi end return x end\n"),
+        ("__steel_sign", "local function __steel_sign(x) if x > 0 then return 1 elseif x < 0 then return -1 else return 0 end end\n"),
+        ("__steel_upper", "local function __steel_upper(s) return string.upper(s) end\n"),
+        ("__steel_lower", "local function __steel_lower(s) return string.lower(s) end\n"),
+        ("__steel_trim", "local function __steel_trim(s) return (s:gsub('^%s*(.-)%s*$', '%1')) end\n"),
+        ("__steel_contains", "local function __steel_contains(s, sub) if type(s) == 'table' then if s[sub] ~= nil then return true end for _, v in ipairs(s) do if v == sub then return true end end return false end return string.find(tostring(s), tostring(sub), 1, true) ~= nil end\n"),
+        ("__steel_starts_with", "local function __steel_starts_with(s, p) s = tostring(s); p = tostring(p); return string.sub(s, 1, #p) == p end\n"),
+        ("__steel_ends_with", "local function __steel_ends_with(s, p) s = tostring(s); p = tostring(p); return p == '' or string.sub(s, -#p) == p end\n"),
+        ("__steel_split", "local function __steel_split(s, sep) local r = {}; if sep == '' then for i = 1, #s do table.insert(r, string.sub(s, i, i)) end return r end local i = 1; while true do local a, b = string.find(s, sep, i, true); if not a then table.insert(r, string.sub(s, i)); break end table.insert(r, string.sub(s, i, a - 1)); i = b + 1 end return r end\n"),
+        ("__steel_join", "local function __steel_join(t, sep) local o = {}; for i, v in ipairs(t) do o[i] = __steel_str(v) end return table.concat(o, sep) end\n"),
+        ("__steel_replace", "local function __steel_replace(s, a, b) local r, i = {}, 1; while true do local x, y = string.find(s, a, i, true); if not x then table.insert(r, string.sub(s, i)); break end table.insert(r, string.sub(s, i, x - 1)); table.insert(r, b); i = y + 1 end return table.concat(r) end\n"),
+        ("__steel_reverse", "local function __steel_reverse(t) if type(t) == 'string' then return string.reverse(t) end local r = {}; for i = #t, 1, -1 do table.insert(r, t[i]) end return r end\n"),
+        ("__steel_keys", "local function __steel_keys(t) local r = {}; for k, _ in pairs(t) do table.insert(r, k) end return r end\n"),
+        ("__steel_values", "local function __steel_values(t) local r = {}; for _, v in pairs(t) do table.insert(r, v) end return r end\n"),
+        ("__steel_slice", "local function __steel_slice(t, s, e) if type(t) == 'string' then return string.sub(t, s + 1, e) end local r = {}; local last = e or #t; for i = s + 1, last do if t[i] ~= nil then table.insert(r, t[i]) end end return r end\n"),
+        ("__steel_sort", "local function __steel_sort(t) local r = {}; for i, v in ipairs(t) do r[i] = v end table.sort(r, function(a, b) return __steel_str(a) < __steel_str(b) end); return r end\n"),
+        ("__steel_json_stringify", "local function __steel_json_esc(s) return '\"' .. s:gsub('\\\\', '\\\\\\\\'):gsub('\"', '\\\\\"'):gsub('\\n', '\\\\n'):gsub('\\r', '\\\\r'):gsub('\\t', '\\\\t') .. '\"' end\nlocal function __steel_json_stringify(v)\n    if v == nil then return 'null' end\n    local t = type(v)\n    if t == 'boolean' then return tostring(v) end\n    if t == 'number' then if math.type(v) == 'float' and v == math.floor(v) and math.abs(v) < 9007199254740992 then return string.format('%.0f', v) end return tostring(v) end\n    if t == 'string' then return __steel_json_esc(v) end\n    if t == 'table' then\n        local is_arr, max_k = true, 0\n        for k, _ in pairs(v) do if type(k) ~= 'number' or k < 1 or k ~= math.floor(k) then is_arr = false; break end if k > max_k then max_k = k end end\n        if is_arr then\n            local p = {}; for i = 1, max_k do p[i] = __steel_json_stringify(v[i]) end; return '[' .. table.concat(p, ',') .. ']'\n        end\n        local p = {}; for k, val in pairs(v) do table.insert(p, __steel_json_esc(tostring(k)) .. ':' .. __steel_json_stringify(val)) end\n        return '{' .. table.concat(p, ',') .. '}'\n    end\n    return 'null'\nend\n"),
+        ("__steel_json_parse", "local function __steel_json_parse(s)\n    local i, n = 1, #s\n    local function skip() while i <= n and s:sub(i,i):match('%s') do i = i + 1 end end\n    local parse_val\n    local function parse_str()\n        i = i + 1; local out = {}\n        while i <= n do\n            local c = s:sub(i,i); i = i + 1\n            if c == '\"' then return table.concat(out) end\n            if c == '\\\\' then\n                local e = s:sub(i,i); i = i + 1\n                if e == 'n' then table.insert(out, '\\n') elseif e == 'r' then table.insert(out, '\\r') elseif e == 't' then table.insert(out, '\\t') else table.insert(out, e) end\n            else table.insert(out, c) end\n        end\n        return table.concat(out)\n    end\n    parse_val = function()\n        skip(); local c = s:sub(i,i)\n        if c == '\"' then return parse_str() end\n        if c == '[' then\n            i = i + 1; local arr = {}; local idx = 1; skip()\n            if s:sub(i,i) == ']' then i = i + 1; return arr end\n            while i <= n do arr[idx] = parse_val(); idx = idx + 1; skip(); if s:sub(i,i) == ',' then i = i + 1 else i = i + 1; break end end\n            return arr\n        end\n        if c == '{' then\n            i = i + 1; local obj = {}; skip()\n            if s:sub(i,i) == '}' then i = i + 1; return obj end\n            while i <= n do skip(); local k = parse_str(); skip(); i = i + 1; obj[k] = parse_val(); skip(); if s:sub(i,i) == ',' then i = i + 1 else i = i + 1; break end end\n            return obj\n        end\n        if s:sub(i, i + 3) == 'true' then i = i + 4; return true end\n        if s:sub(i, i + 4) == 'false' then i = i + 5; return false end\n        if s:sub(i, i + 3) == 'null' then i = i + 4; return nil end\n        local num_s = s:match('^-?%d+%.?%d*[eE]?[+-]?%d*', i)\n        i = i + #num_s; return tonumber(num_s)\n    end\n    return parse_val()\nend\n"),
+        ("__steel_hash", "local function __steel_hash(x) local s = __steel_str(x); local h = 0xcbf29ce484222325; for i = 1, #s do h = (h ~ string.byte(s, i)) * 0x0100000001b3 end; return string.format('%016x', h) end\n"),
+        ("__steel_assert", "local function __steel_assert(c, m) if not c then error(m or 'Assertion failed') end return true end\n"),
+        ("round(", "local function round(x) return x >= 0 and math.floor(x + 0.5) or math.ceil(x - 0.5) end\n"),
+        ("pow(", "local function pow(a, b) return a ^ b end\n"),
+        ("read_file(", "local function read_file(p) local f = assert(io.open(p, 'r')); local c = f:read('*a'); f:close(); return c end\n"),
+        ("write_file(", "local function write_file(p, c) local f = assert(io.open(p, 'w')); f:write(tostring(c)); f:close(); return true end\n"),
+        ("append_file(", "local function append_file(p, c) local f = assert(io.open(p, 'a')); f:write(tostring(c)); f:close(); return true end\n"),
+        ("remove_file(", "local function remove_file(p) os.remove(p); return true end\n"),
+        ("file_exists(", "local function file_exists(p) local f = io.open(p, 'r'); if f then f:close(); return true end return false end\n"),
+        ("env(", "local function env(k) return os.getenv(k) end\n"),
+        ("time_ms(", "local function time_ms() return math.floor(os.time() * 1000) end\n"),
+        ("clock(", "local function clock() return os.time() end\n"),
+    ] {
+        if body_out.contains(helper) {
+            out.push_str(def);
+        }
+    }
+    out.push('\n');
+    out.push_str(&body_out);
+    out.replace("__steel_", "_steel_").replace("__SteelObj", "_SteelObj")
+}
+
+fn lua_try_stmt(stmt: &Stmt, lvl: usize) -> String {
+    let pad = indent(lvl);
+    match stmt {
+        Stmt::Return(val) => {
+            let v = val.as_ref().map(|e| lua_expr(e, lvl)).unwrap_or_else(|| "nil".to_string());
+            format!("{}return \"__STEEL_RET__\", {}\n", pad, v)
