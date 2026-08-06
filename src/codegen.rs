@@ -1473,3 +1473,85 @@ fn lua_expr(expr: &Expr, lvl: usize) -> String {
         } => format!(
             "(({}) and ({}) or ({}))",
             lua_expr(cond, lvl),
+            lua_expr(then_expr, lvl),
+            lua_expr(else_expr, lvl)
+        ),
+        Expr::Binary { left, op, right } => {
+            let l = lua_expr(left, lvl);
+            let r = lua_expr(right, lvl);
+            if matches!(op, BinaryOp::NullCoalesce) {
+                return format!("(({} ~= nil) and {} or {})", l, l, r);
+            }
+            if matches!(op, BinaryOp::Add) {
+                let both_num_lit = matches!(**left, Expr::Number(_)) && matches!(**right, Expr::Number(_));
+                if !both_num_lit {
+                    return format!("__steel_add({}, {})", l, r);
+                }
+            }
+            let op_str = match op {
+                BinaryOp::Add => "+",
+                BinaryOp::Sub => "-",
+                BinaryOp::Mul => "*",
+                BinaryOp::Pow => "^",
+                BinaryOp::Div => "/",
+                BinaryOp::Mod => "%",
+                BinaryOp::Eq => "==",
+                BinaryOp::Neq => "~=",
+                BinaryOp::Lt => "<",
+                BinaryOp::Gt => ">",
+                BinaryOp::Lte => "<=",
+                BinaryOp::Gte => ">=",
+                BinaryOp::And => "and",
+                BinaryOp::Or => "or",
+                BinaryOp::BitAnd => "&",
+                BinaryOp::BitOr => "|",
+                BinaryOp::BitXor => "~",
+                BinaryOp::Shl => "<<",
+                BinaryOp::Shr => ">>",
+                BinaryOp::NullCoalesce => unreachable!(),
+            };
+            format!("({} {} {})", l, op_str, r)
+        }
+        Expr::Unary { op, expr } => {
+            let op_str = match op {
+                UnaryOp::Neg => "-",
+                UnaryOp::Not => "not ",
+                UnaryOp::BitNot => "~",
+            };
+            format!("({}{})", op_str, lua_expr(expr, lvl))
+        }
+        Expr::Call { callee, args } => {
+            let arg_strs: Vec<String> = args.iter().map(|a| lua_expr(a, lvl)).collect();
+            format!("{}({})", lua_expr(callee, lvl), arg_strs.join(", "))
+        }
+        Expr::Index { target, index } => {
+            format!("__steel_get({}, {})", lua_expr(target, lvl), lua_expr(index, lvl))
+        }
+        Expr::Member { target, field } => format!("{}.{}", lua_expr(target, lvl), field),
+        Expr::FnExpr { params, body } => {
+            let p_names: Vec<String> = params.iter().map(|(p, _)| lua_safe_ident(p)).collect();
+            let mut s = format!("function({})\n", p_names.join(", "));
+            let inner_pad = indent(lvl + 1);
+            for (p, def) in params {
+                if let Some(d) = def {
+                    let sp = lua_safe_ident(p);
+                    s.push_str(&format!("{}if {} == nil then {} = {} end\n", inner_pad, sp, sp, lua_expr(d, lvl + 1)));
+                }
+            }
+            for st in body {
+                s.push_str(&lua_stmt(st, lvl + 1));
+            }
+            s.push_str(&format!("{}end", indent(lvl)));
+            s
+        }
+        Expr::Range { start, end } => {
+            format!(
+                "__steel_range({}, {})",
+                lua_expr(start, lvl),
+                lua_expr(end, lvl)
+            )
+        }
+        Expr::Spread(inner) => format!("table.unpack({})", lua_expr(inner, lvl)),
+    }
+}
+
