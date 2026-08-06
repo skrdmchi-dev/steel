@@ -1309,3 +1309,85 @@ fn lua_stmt(stmt: &Stmt, lvl: usize) -> String {
             let p_names: Vec<String> = params.iter().map(|(p, _)| lua_safe_ident(p)).collect();
             let mut s = if lvl == 0 {
                 format!("{}{} = function({})\n", pad, lua_safe_ident(name), p_names.join(", "))
+            } else {
+                format!("{}local function {}({})\n", pad, lua_safe_ident(name), p_names.join(", "))
+            };
+            for (p, def) in params {
+                if let Some(d) = def {
+                    s.push_str(&format!(
+                        "{}    if {} == nil then {} = {} end\n",
+                        pad,
+                        p,
+                        p,
+                        lua_expr(d, lvl + 1)
+                    ));
+                }
+            }
+            for st in body {
+                s.push_str(&lua_stmt(st, lvl + 1));
+            }
+            s.push_str(&format!("{}end\n", pad));
+            s
+        }
+        Stmt::Return(expr) => match expr {
+            Some(e) => format!("{}do return {} end\n", pad, lua_expr(e, lvl)),
+            None => format!("{}do return nil end\n", pad),
+        },
+        Stmt::If {
+            cond,
+            then_branch,
+            else_branch,
+        } => {
+            let mut s = format!("{}if {} then\n", pad, lua_expr(cond, lvl));
+            for st in then_branch {
+                s.push_str(&lua_stmt(st, lvl + 1));
+            }
+            if let Some(eb) = else_branch {
+                s.push_str(&format!("{}else\n", pad));
+                for st in eb {
+                    s.push_str(&lua_stmt(st, lvl + 1));
+                }
+            }
+            s.push_str(&format!("{}end\n", pad));
+            s
+        }
+        Stmt::While { cond, body } => {
+            let mut body_s = String::new();
+            for st in body {
+                body_s.push_str(&lua_stmt(st, lvl + 1));
+            }
+            let mut s = format!("{}while {} do\n{}", pad, lua_expr(cond, lvl), body_s);
+            if body_s.contains("goto __continue") {
+                s.push_str(&format!("{}    ::__continue::\n", pad));
+            }
+            s.push_str(&format!("{}end\n", pad));
+            s
+        }
+        Stmt::For {
+            var,
+            iterable,
+            body,
+        } => {
+            let mut body_s = String::new();
+            for st in body {
+                body_s.push_str(&lua_stmt(st, lvl + 1));
+            }
+            let mut s = format!(
+                "{}for _, {} in ipairs({}) do\n{}",
+                pad,
+                var,
+                lua_expr(iterable, lvl),
+                body_s
+            );
+            if body_s.contains("goto __continue") {
+                s.push_str(&format!("{}    ::__continue::\n", pad));
+            }
+            s.push_str(&format!("{}end\n", pad));
+            s
+        }
+        Stmt::Break => format!("{}break\n", pad),
+        Stmt::Continue => format!("{}goto __continue\n", pad),
+        Stmt::Expr(e) => format!("{}{}\n", pad, lua_expr(e, lvl)),
+    }
+}
+
