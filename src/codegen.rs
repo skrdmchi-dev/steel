@@ -1227,3 +1227,85 @@ fn lua_try_stmt(stmt: &Stmt, lvl: usize) -> String {
         Stmt::Return(val) => {
             let v = val.as_ref().map(|e| lua_expr(e, lvl)).unwrap_or_else(|| "nil".to_string());
             format!("{}return \"__STEEL_RET__\", {}\n", pad, v)
+        }
+        Stmt::If { cond, then_branch, else_branch } => {
+            let mut s = format!("{}if {} then\n", pad, lua_expr(cond, lvl));
+            for st in then_branch { s.push_str(&lua_try_stmt(st, lvl + 1)); }
+            if let Some(eb) = else_branch {
+                s.push_str(&format!("{}else\n", pad));
+                for st in eb { s.push_str(&lua_try_stmt(st, lvl + 1)); }
+            }
+            s.push_str(&format!("{}end\n", pad));
+            s
+        }
+        Stmt::While { cond, body } => {
+            let mut s = format!("{}while {} do\n", pad, lua_expr(cond, lvl));
+            for st in body { s.push_str(&lua_try_stmt(st, lvl + 1)); }
+            s.push_str(&format!("{}end\n", pad));
+            s
+        }
+        other => lua_stmt(other, lvl),
+    }
+}
+
+fn lua_stmt(stmt: &Stmt, lvl: usize) -> String {
+    let pad = indent(lvl);
+    match stmt {
+        Stmt::Import(path) => format!("{}require(\"{}\")\n", pad, escape_str(path)),
+        Stmt::ClassDecl {
+            name,
+            parent,
+            methods,
+        } => lua_stmt(&desugar_class(name, parent, methods), lvl),
+        Stmt::TryCatch {
+            try_body,
+            err_var,
+            catch_body,
+        } => {
+            let mut s = format!("{}local __ok, {}, __try_val = pcall(function()\n", pad, err_var);
+            for st in try_body {
+                s.push_str(&lua_try_stmt(st, lvl + 1));
+            }
+            s.push_str(&format!("{}end)\n{}if __ok and {} == \"__STEEL_RET__\" then return __try_val end\n{}if not __ok then\n", pad, pad, err_var, pad));
+            for st in catch_body {
+                s.push_str(&lua_stmt(st, lvl + 1));
+            }
+            s.push_str(&format!("{}end\n", pad));
+            s
+        }
+        Stmt::Throw(e) => format!("{}error({}, 0)\n", pad, lua_expr(e, lvl)),
+        Stmt::Test { name, body } => {
+            let mut s = format!("{}-- test \"{}\"\n{}do\n", pad, escape_str(name), pad);
+            for st in body {
+                s.push_str(&lua_stmt(st, lvl + 1));
+            }
+            s.push_str(&format!("{}end\n", pad));
+            s
+        }
+        Stmt::Defer(inner) => lua_stmt(inner, lvl),
+        Stmt::Let { name, value, .. } => {
+            format!("{}local {} = {}\n", pad, lua_safe_ident(name), lua_expr(value, lvl))
+        }
+        Stmt::Assign { target, value } => {
+            if let AssignTarget::Index { target, index } = target {
+                return format!(
+                    "{}__steel_set({}, {}, {})\n",
+                    pad,
+                    lua_expr(target, lvl),
+                    lua_expr(index, lvl),
+                    lua_expr(value, lvl)
+                );
+            }
+            let lhs = match target {
+                AssignTarget::Ident(n) => lua_safe_ident(n),
+                AssignTarget::Member { target, field } => {
+                    format!("{}.{}", lua_expr(target, lvl), field)
+                }
+                AssignTarget::Index { .. } => unreachable!(),
+            };
+            format!("{}{} = {}\n", pad, lhs, lua_expr(value, lvl))
+        }
+        Stmt::FnDecl { name, params, body } => {
+            let p_names: Vec<String> = params.iter().map(|(p, _)| lua_safe_ident(p)).collect();
+            let mut s = if lvl == 0 {
+                format!("{}{} = function({})\n", pad, lua_safe_ident(name), p_names.join(", "))
