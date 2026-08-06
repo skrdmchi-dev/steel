@@ -1391,3 +1391,85 @@ fn lua_stmt(stmt: &Stmt, lvl: usize) -> String {
     }
 }
 
+fn lua_expr(expr: &Expr, lvl: usize) -> String {
+    match expr {
+        Expr::Number(n) => fmt_num(*n),
+        Expr::String(s) => format!("\"{}\"", escape_str(s)),
+        Expr::Bool(b) => b.to_string(),
+        Expr::Null => "nil".to_string(),
+        Expr::Ident(name) => match name.as_str() {
+            "print" | "println" => "__steel_print".to_string(),
+            "len" => "__steel_len".to_string(),
+            "push" => "__steel_push".to_string(),
+            "pop" => "__steel_pop".to_string(),
+            "has_key" => "__steel_has_key".to_string(),
+            "delete_key" => "__steel_delete_key".to_string(),
+            "concat" => "__steel_concat".to_string(),
+            "index_of" => "__steel_index_of".to_string(),
+            "repeat" => "__steel_repeat".to_string(),
+            "pad_start" => "__steel_pad_start".to_string(),
+            "pad_end" => "__steel_pad_end".to_string(),
+            "char_code" => "__steel_char_code".to_string(),
+            "from_char_code" => "__steel_from_char_code".to_string(),
+            "str" => "__steel_str".to_string(),
+            "num" => "tonumber".to_string(),
+            "int" => "__steel_int".to_string(),
+            "bool" => "__steel_bool".to_string(),
+            "type" => "__steel_type".to_string(),
+            "range" => "__steel_range".to_string(),
+            "map" => "__steel_map".to_string(),
+            "filter" => "__steel_filter".to_string(),
+            "reduce" => "__steel_reduce".to_string(),
+            "find" => "__steel_find".to_string(),
+            "any" => "__steel_any".to_string(),
+            "all" => "__steel_all".to_string(),
+            "sum" => "__steel_sum".to_string(),
+            "avg" => "__steel_avg".to_string(),
+            "unique" => "__steel_unique".to_string(),
+            "flat" => "__steel_flat".to_string(),
+            "zip" => "__steel_zip".to_string(),
+            "enumerate" => "__steel_enumerate".to_string(),
+            "clamp" => "__steel_clamp".to_string(),
+            "sign" => "__steel_sign".to_string(),
+            "upper" => "__steel_upper".to_string(),
+            "lower" => "__steel_lower".to_string(),
+            "trim" => "__steel_trim".to_string(),
+            "contains" => "__steel_contains".to_string(),
+            "starts_with" => "__steel_starts_with".to_string(),
+            "ends_with" => "__steel_ends_with".to_string(),
+            "split" => "__steel_split".to_string(),
+            "join" => "__steel_join".to_string(),
+            "replace" => "__steel_replace".to_string(),
+            "reverse" => "__steel_reverse".to_string(),
+            "keys" => "__steel_keys".to_string(),
+            "values" => "__steel_values".to_string(),
+            "slice" => "__steel_slice".to_string(),
+            "sort" => "__steel_sort".to_string(),
+            "json_stringify" => "__steel_json_stringify".to_string(),
+            "json_parse" => "__steel_json_parse".to_string(),
+            "hash" => "__steel_hash".to_string(),
+            "assert" => "__steel_assert".to_string(),
+            _ => lua_safe_ident(name),
+        },
+        Expr::Array(items) => {
+            let inner: Vec<String> = items.iter().map(|e| lua_expr(e, lvl)).collect();
+            format!("{{{}}}", inner.join(", "))
+        }
+        Expr::Map(entries) => {
+            let inner: Vec<String> = entries
+                .iter()
+                .map(|(k, v)| format!("[\"{}\"] = {}", escape_str(k), lua_expr(v, lvl)))
+                .collect();
+            format!("{{{}}}", inner.join(", "))
+        }
+        Expr::New { class_name, args } => {
+            let arg_strs: Vec<String> = args.iter().map(|a| lua_expr(a, lvl)).collect();
+            format!("{}({})", class_name, arg_strs.join(", "))
+        }
+        Expr::Ternary {
+            cond,
+            then_expr,
+            else_expr,
+        } => format!(
+            "(({}) and ({}) or ({}))",
+            lua_expr(cond, lvl),
