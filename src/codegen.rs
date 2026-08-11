@@ -1637,3 +1637,85 @@ fn emit_rust(program: &Program) -> String {
          \x20   fn eq(&self, other: &Self) -> bool {\n\
          \x20       match (self, other) {\n\
          \x20           (SVal::Null, SVal::Null) => true,\n\
+         \x20           (SVal::Bool(a), SVal::Bool(b)) => a == b,\n\
+         \x20           (SVal::Num(a), SVal::Num(b)) => a == b,\n\
+         \x20           (SVal::Str(a), SVal::Str(b)) => a == b,\n\
+         \x20           _ => false,\n\
+         \x20       }\n\
+         \x20   }\n\
+         }\n\n\
+         impl Add for SVal { type Output = SVal; fn add(self, rhs: SVal) -> SVal {\n\
+         \x20   match (&self, &rhs) {\n\
+         \x20       (SVal::Str(_), _) | (_, SVal::Str(_)) => SVal::Str(format!(\"{}{}\", self, rhs)),\n\
+         \x20       _ => SVal::Num(self.as_num() + rhs.as_num()),\n\
+         \x20   }\n\
+         }}\n\
+         impl Sub for SVal { type Output = SVal; fn sub(self, rhs: SVal) -> SVal { SVal::Num(self.as_num() - rhs.as_num()) } }\n\
+         impl Mul for SVal { type Output = SVal; fn mul(self, rhs: SVal) -> SVal { SVal::Num(self.as_num() * rhs.as_num()) } }\n\
+         impl Div for SVal { type Output = SVal; fn div(self, rhs: SVal) -> SVal { SVal::Num(self.as_num() / rhs.as_num()) } }\n\
+         impl Rem for SVal { type Output = SVal; fn rem(self, rhs: SVal) -> SVal { SVal::Num(self.as_num() % rhs.as_num()) } }\n\
+         impl Neg for SVal { type Output = SVal; fn neg(self) -> SVal { SVal::Num(-self.as_num()) } }\n\
+         impl Not for SVal { type Output = SVal; fn not(self) -> SVal { SVal::Bool(!self.is_truthy()) } }\n\n\
+         fn __steel_range(a: SVal, b: SVal) -> SVal {\n\
+         \x20   let start = a.as_num() as i64;\n\
+         \x20   let end = b.as_num() as i64;\n\
+         \x20   let v: Vec<SVal> = (start..end).map(|i| SVal::Num(i as f64)).collect();\n\
+         \x20   SVal::Arr(Rc::new(RefCell::new(v)))\n\
+         }\n\n",
+    );
+
+    let mut top_fn_names = std::collections::HashSet::new();
+    let mut top_var_names = std::collections::HashSet::new();
+    for stmt in &program.statements {
+        match stmt {
+            Stmt::FnDecl { name, .. } | Stmt::ClassDecl { name, .. } => {
+                top_fn_names.insert(name.clone());
+            }
+            Stmt::Let { name, .. } => {
+                top_var_names.insert(name.clone());
+            }
+            Stmt::Assign { target: AssignTarget::Ident(name), .. } => {
+                top_var_names.insert(name.clone());
+            }
+            _ => {}
+        }
+    }
+    let mut fn_used_globals = std::collections::BTreeSet::new();
+    for stmt in &program.statements {
+        if let Stmt::FnDecl { params, body, .. } = stmt {
+            let mut locals: std::collections::HashSet<String> =
+                params.iter().map(|(p, _)| p.clone()).collect();
+            rs_collect_local_decls(body, &mut locals);
+            let mut refs = std::collections::HashSet::new();
+            rs_collect_ident_refs_stmts(body, &mut refs);
+            for r in refs {
+                if top_var_names.contains(&r) && !locals.contains(&r) && !top_fn_names.contains(&r) {
+                    fn_used_globals.insert(r);
+                }
+            }
+        }
+    }
+    if !fn_used_globals.is_empty() {
+        out.push_str("thread_local! {\n");
+        for g in &fn_used_globals {
+            out.push_str(&format!(
+                "    static __STEEL_G_{}: RefCell<SVal> = RefCell::new(SVal::Null);\n",
+                g
+            ));
+        }
+        out.push_str("}\n\n");
+    }
+    RS_GLOBALS.with(|gs| {
+        *gs.borrow_mut() = fn_used_globals.iter().cloned().collect();
+    });
+    let mut top_fns = String::new();
+    let mut main_body = String::new();
+    for stmt in &program.statements {
+        match stmt {
+            Stmt::FnDecl { name, params, body } => {
+                top_fns.push_str(&rs_top_fn(name, params, body, &top_fn_names));
+            }
+            Stmt::ClassDecl {
+                name,
+                parent,
+                methods,
