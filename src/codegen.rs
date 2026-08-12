@@ -1719,3 +1719,85 @@ fn emit_rust(program: &Program) -> String {
                 name,
                 parent,
                 methods,
+            } => {
+                let desugared = desugar_class(name, parent, methods);
+                if let Stmt::FnDecl { name, params, body } = desugared {
+                    top_fns.push_str(&rs_top_fn(&name, &params, &body, &top_fn_names));
+                }
+            }
+            other => {
+                main_body.push_str(&rs_stmt(other, 1, &top_fn_names));
+            }
+        }
+    }
+    RS_GLOBALS.with(|gs| gs.borrow_mut().clear());
+
+    out.push_str(&top_fns);
+    out.push_str("fn main() {\n");
+    out.push_str(&rs_builtins_preamble(&main_body));
+    out.push_str(&main_body);
+    out.push_str("}\n");
+    out
+}
+
+thread_local! {
+    static RS_GLOBALS: std::cell::RefCell<std::collections::HashSet<String>> =
+        std::cell::RefCell::new(std::collections::HashSet::new());
+}
+
+fn rs_is_global(name: &str) -> bool {
+    RS_GLOBALS.with(|gs| gs.borrow().contains(name))
+}
+
+fn rs_collect_local_decls(stmts: &[Stmt], out: &mut std::collections::HashSet<String>) {
+    for st in stmts {
+        match st {
+            Stmt::Let { name, .. } => { out.insert(name.clone()); }
+            Stmt::For { var, body, .. } => { out.insert(var.clone()); rs_collect_local_decls(body, out); }
+            Stmt::If { then_branch, else_branch, .. } => {
+                rs_collect_local_decls(then_branch, out);
+                if let Some(eb) = else_branch { rs_collect_local_decls(eb, out); }
+            }
+            Stmt::While { body, .. } => rs_collect_local_decls(body, out),
+            Stmt::TryCatch { try_body, err_var, catch_body } => {
+                rs_collect_local_decls(try_body, out);
+                out.insert(err_var.clone());
+                rs_collect_local_decls(catch_body, out);
+            }
+            _ => {}
+        }
+    }
+}
+
+fn rs_collect_ident_refs_expr(expr: &Expr, out: &mut std::collections::HashSet<String>) {
+    match expr {
+        Expr::Ident(n) => { out.insert(n.clone()); }
+        Expr::Array(items) => for e in items { rs_collect_ident_refs_expr(e, out); },
+        Expr::Map(entries) => for (_, v) in entries { rs_collect_ident_refs_expr(v, out); },
+        Expr::Binary { left, right, .. } => { rs_collect_ident_refs_expr(left, out); rs_collect_ident_refs_expr(right, out); }
+        Expr::Unary { expr, .. } | Expr::Spread(expr) => rs_collect_ident_refs_expr(expr, out),
+        Expr::Ternary { cond, then_expr, else_expr } => {
+            rs_collect_ident_refs_expr(cond, out);
+            rs_collect_ident_refs_expr(then_expr, out);
+            rs_collect_ident_refs_expr(else_expr, out);
+        }
+        Expr::Call { callee, args } => {
+            rs_collect_ident_refs_expr(callee, out);
+            for a in args { rs_collect_ident_refs_expr(a, out); }
+        }
+        Expr::New { args, .. } => for a in args { rs_collect_ident_refs_expr(a, out); },
+        Expr::Index { target, index } => { rs_collect_ident_refs_expr(target, out); rs_collect_ident_refs_expr(index, out); }
+        Expr::Member { target, .. } => rs_collect_ident_refs_expr(target, out),
+        Expr::FnExpr { params, body } => {
+            let mut inner_refs = std::collections::HashSet::new();
+            rs_collect_ident_refs_stmts(body, &mut inner_refs);
+            let mut inner_bound: std::collections::HashSet<String> =
+                params.iter().map(|(p, _)| p.clone()).collect();
+            rs_collect_local_decls(body, &mut inner_bound);
+            for r in inner_refs {
+                if !inner_bound.contains(&r) {
+                    out.insert(r);
+                }
+            }
+        }
+        Expr::Range { start, end } => { rs_collect_ident_refs_expr(start, out); rs_collect_ident_refs_expr(end, out); }
