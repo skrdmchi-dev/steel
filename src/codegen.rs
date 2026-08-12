@@ -1883,3 +1883,85 @@ fn try_emit_human_rust(program: &Program) -> Option<String> {
     let mut env: std::collections::BTreeMap<String, InferredType> = std::collections::BTreeMap::new();
     for (k, (_, r)) in &fn_sigs {
         env.insert(
+            k.clone(),
+            InferredType::Func {
+                params: 0,
+                ret: Box::new(r.clone()),
+            },
+        );
+    }
+
+    let mut fns_out = String::new();
+    let mut main_out = String::new();
+    let mut declared = std::collections::HashSet::new();
+
+    for stmt in &program.statements {
+        if let Stmt::FnDecl { name, params, body } = stmt {
+            let (p_types, ret_ty) = fn_sigs.get(name)?;
+            let mut local_env = env.clone();
+            let mut local_decl = std::collections::HashSet::new();
+            let mut sig_parts = Vec::new();
+            for ((p_name, _), p_ty) in params.iter().zip(p_types.iter()) {
+                local_env.insert(p_name.clone(), p_ty.clone());
+                local_decl.insert(p_name.clone());
+                sig_parts.push(format!("{}: {}", p_name, rs_native_type(p_ty)?));
+            }
+            let ret_str = if *ret_ty == InferredType::Null {
+                String::new()
+            } else {
+                format!(" -> {}", rs_native_type(ret_ty)?)
+            };
+            fns_out.push_str(&format!("fn {}({}){} {{\n", name, sig_parts.join(", "), ret_str));
+            for st in body {
+                fns_out.push_str(&human_rs_stmt(st, 1, &mut local_env, &mut local_decl, &fn_sigs)?);
+            }
+            fns_out.push_str("}\n\n");
+        } else {
+            main_out.push_str(&human_rs_stmt(stmt, 1, &mut env, &mut declared, &fn_sigs)?);
+        }
+    }
+
+    let mut out = String::from("#![allow(unused_variables,unused_mut,unused_parens,dead_code,non_snake_case)]\n\n");
+    out.push_str(&fns_out);
+    out.push_str("fn main() {\n");
+    out.push_str(&main_out);
+    out.push_str("}\n");
+    Some(out)
+}
+
+fn rs_native_type(ty: &crate::typecheck::InferredType) -> Option<&'static str> {
+    use crate::typecheck::InferredType;
+    match ty {
+        InferredType::Num => Some("f64"),
+        InferredType::Str => Some("&'static str"),
+        InferredType::Bool => Some("bool"),
+        InferredType::Null => Some("()"),
+        _ => None,
+    }
+}
+
+fn human_rs_stmt(
+    stmt: &Stmt,
+    lvl: usize,
+    env: &mut std::collections::BTreeMap<String, crate::typecheck::InferredType>,
+    declared: &mut std::collections::HashSet<String>,
+    fn_sigs: &std::collections::BTreeMap<
+        String,
+        (Vec<crate::typecheck::InferredType>, crate::typecheck::InferredType),
+    >,
+) -> Option<String> {
+    use crate::typecheck::{infer_expr, InferredType};
+    let pad = indent(lvl);
+    match stmt {
+        Stmt::Let { name, value, .. } => {
+            let ty = infer_expr(value, env);
+            let _ = rs_native_type(&ty)?;
+            let val_s = human_rs_expr(value, env, fn_sigs)?;
+            env.insert(name.clone(), ty);
+            declared.insert(name.clone());
+            Some(format!("{}let mut {} = {};\n", pad, name, val_s))
+        }
+        Stmt::Assign {
+            target: AssignTarget::Ident(name),
+            value,
+        } => {
