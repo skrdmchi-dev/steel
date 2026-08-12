@@ -1801,3 +1801,85 @@ fn rs_collect_ident_refs_expr(expr: &Expr, out: &mut std::collections::HashSet<S
             }
         }
         Expr::Range { start, end } => { rs_collect_ident_refs_expr(start, out); rs_collect_ident_refs_expr(end, out); }
+        _ => {}
+    }
+}
+
+fn rs_collect_ident_refs_stmts(stmts: &[Stmt], out: &mut std::collections::HashSet<String>) {
+    for st in stmts {
+        match st {
+            Stmt::Let { value, .. } | Stmt::Expr(value) | Stmt::Throw(value) => rs_collect_ident_refs_expr(value, out),
+            Stmt::Assign { target, value } => {
+                match target {
+                    AssignTarget::Ident(n) => { out.insert(n.clone()); }
+                    AssignTarget::Index { target, index } => { rs_collect_ident_refs_expr(target, out); rs_collect_ident_refs_expr(index, out); }
+                    AssignTarget::Member { target, .. } => rs_collect_ident_refs_expr(target, out),
+                }
+                rs_collect_ident_refs_expr(value, out);
+            }
+            Stmt::Return(Some(e)) => rs_collect_ident_refs_expr(e, out),
+            Stmt::If { cond, then_branch, else_branch } => {
+                rs_collect_ident_refs_expr(cond, out);
+                rs_collect_ident_refs_stmts(then_branch, out);
+                if let Some(eb) = else_branch { rs_collect_ident_refs_stmts(eb, out); }
+            }
+            Stmt::While { cond, body } => { rs_collect_ident_refs_expr(cond, out); rs_collect_ident_refs_stmts(body, out); }
+            Stmt::For { iterable, body, .. } => { rs_collect_ident_refs_expr(iterable, out); rs_collect_ident_refs_stmts(body, out); }
+            Stmt::TryCatch { try_body, catch_body, .. } => { rs_collect_ident_refs_stmts(try_body, out); rs_collect_ident_refs_stmts(catch_body, out); }
+            Stmt::FnDecl { body, .. } | Stmt::Test { body, .. } => rs_collect_ident_refs_stmts(body, out),
+            Stmt::Defer(inner) => rs_collect_ident_refs_stmts(&[(**inner).clone()], out),
+            _ => {}
+        }
+    }
+}
+
+fn rs_stmts_have_return(stmts: &[Stmt]) -> bool {
+    for st in stmts {
+        match st {
+            Stmt::Return(_) => return true,
+            Stmt::If { then_branch, else_branch, .. } => {
+                if rs_stmts_have_return(then_branch) || else_branch.as_deref().map(rs_stmts_have_return).unwrap_or(false) {
+                    return true;
+                }
+            }
+            Stmt::While { body, .. } | Stmt::For { body, .. } => {
+                if rs_stmts_have_return(body) { return true; }
+            }
+            Stmt::TryCatch { try_body, catch_body, .. } => {
+                if rs_stmts_have_return(try_body) || rs_stmts_have_return(catch_body) { return true; }
+            }
+            _ => {}
+        }
+    }
+    false
+}
+
+/// Emits 100% pure, human-written Rust (`f64`, `&'static str`, `bool`, `println!`)
+/// with ZERO `SVal` runtime header whenever a program's types are statically resolvable!
+fn try_emit_human_rust(program: &Program) -> Option<String> {
+    use crate::typecheck::{analyze_program, InferredType};
+    let report = analyze_program(program);
+    let mut fn_sigs: std::collections::BTreeMap<String, (Vec<InferredType>, InferredType)> =
+        std::collections::BTreeMap::new();
+
+    for stmt in &program.statements {
+        match stmt {
+            Stmt::ClassDecl { .. } | Stmt::TryCatch { .. } | Stmt::Throw(_) => return None,
+            Stmt::FnDecl { name, params, body } => {
+                let mut local_env = report.symbols.clone();
+                let mut p_types = Vec::new();
+                for (p, def) in params {
+                    let guessed = guess_param_type_in_body(p, def.as_ref(), body)?;
+                    local_env.insert(p.clone(), guessed.clone());
+                    p_types.push(guessed);
+                }
+                let ret_ty = infer_fn_return_type(body, &local_env)?;
+                fn_sigs.insert(name.clone(), (p_types, ret_ty));
+            }
+            _ => {}
+        }
+    }
+
+    let mut env: std::collections::BTreeMap<String, InferredType> = std::collections::BTreeMap::new();
+    for (k, (_, r)) in &fn_sigs {
+        env.insert(
