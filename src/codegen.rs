@@ -1965,3 +1965,85 @@ fn human_rs_stmt(
             target: AssignTarget::Ident(name),
             value,
         } => {
+            let ty = infer_expr(value, env);
+            let _ = rs_native_type(&ty)?;
+            let val_s = human_rs_expr(value, env, fn_sigs)?;
+            let var_name = if fn_sigs.contains_key(name) {
+                format!("{}_val", name)
+            } else {
+                name.clone()
+            };
+            env.insert(name.clone(), ty.clone());
+            env.insert(var_name.clone(), ty);
+            if !declared.contains(&var_name) {
+                declared.insert(var_name.clone());
+                Some(format!("{}let mut {} = {};\n", pad, var_name, val_s))
+            } else {
+                Some(format!("{}{} = {};\n", pad, var_name, val_s))
+            }
+        }
+        Stmt::Return(Some(e)) => Some(format!("{}return {};\n", pad, human_rs_expr(e, env, fn_sigs)?)),
+        Stmt::Return(None) => Some(format!("{}return;\n", pad)),
+        Stmt::If {
+            cond,
+            then_branch,
+            else_branch,
+        } => {
+            let mut s = format!("{}if {} {{\n", pad, human_rs_expr(cond, env, fn_sigs)?);
+            for st in then_branch {
+                s.push_str(&human_rs_stmt(st, lvl + 1, env, declared, fn_sigs)?);
+            }
+            if let Some(eb) = else_branch {
+                s.push_str(&format!("{}}} else {{\n", pad));
+                for st in eb {
+                    s.push_str(&human_rs_stmt(st, lvl + 1, env, declared, fn_sigs)?);
+                }
+            }
+            s.push_str(&format!("{}}}\n", pad));
+            Some(s)
+        }
+        Stmt::While { cond, body } => {
+            let mut s = format!("{}while {} {{\n", pad, human_rs_expr(cond, env, fn_sigs)?);
+            for st in body {
+                s.push_str(&human_rs_stmt(st, lvl + 1, env, declared, fn_sigs)?);
+            }
+            s.push_str(&format!("{}}}\n", pad));
+            Some(s)
+        }
+        Stmt::For {
+            var,
+            iterable: Expr::Range { start, end },
+            body,
+        } => {
+            let s_val = human_rs_expr(start, env, fn_sigs)?;
+            let e_val = human_rs_expr(end, env, fn_sigs)?;
+            env.insert(var.clone(), InferredType::Num);
+            declared.insert(var.clone());
+            let mut s = format!(
+                "{}for __i in ({} as i64)..({} as i64) {{\n{}    let mut {} = __i as f64;\n",
+                pad, s_val, e_val, pad, var
+            );
+            for st in body {
+                s.push_str(&human_rs_stmt(st, lvl + 1, env, declared, fn_sigs)?);
+            }
+            s.push_str(&format!("{}}}\n", pad));
+            Some(s)
+        }
+        Stmt::Expr(Expr::Call { callee, args }) => {
+            if let Expr::Ident(name) = &**callee {
+                if name == "print" || name == "println" {
+                    let mut fmt_parts = Vec::new();
+                    let mut rs_args = Vec::new();
+                    for a in args {
+                        fmt_parts.push("{}");
+                        rs_args.push(human_rs_expr(a, env, fn_sigs)?);
+                    }
+                    if rs_args.is_empty() {
+                        return Some(format!("{}println!();\n", pad));
+                    } else {
+                        return Some(format!(
+                            "{}println!(\"{}\", {});\n",
+                            pad,
+                            fmt_parts.join(" "),
+                            rs_args.join(", ")
+                        ));
