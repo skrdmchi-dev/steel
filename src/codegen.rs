@@ -2047,3 +2047,85 @@ fn human_rs_stmt(
                             fmt_parts.join(" "),
                             rs_args.join(", ")
                         ));
+                    }
+                }
+            }
+            Some(format!(
+                "{}{};\n",
+                pad,
+                human_rs_expr(
+                    &Expr::Call {
+                        callee: callee.clone(),
+                        args: args.clone()
+                    },
+                    env,
+                    fn_sigs
+                )?
+            ))
+        }
+        _ => None,
+    }
+}
+
+fn human_rs_expr(
+    expr: &Expr,
+    env: &std::collections::BTreeMap<String, crate::typecheck::InferredType>,
+    fn_sigs: &std::collections::BTreeMap<
+        String,
+        (Vec<crate::typecheck::InferredType>, crate::typecheck::InferredType),
+    >,
+) -> Option<String> {
+    use crate::typecheck::{infer_expr, InferredType};
+    match expr {
+        Expr::Number(n) => Some(if n.fract() == 0.0 {
+            format!("{:.1}", n)
+        } else {
+            format!("{}", n)
+        }),
+        Expr::String(s) => Some(format!("\"{}\"", escape_str(s))),
+        Expr::Bool(b) => Some(b.to_string()),
+        Expr::Ident(n) => {
+            let actual = if env.contains_key(&format!("{}_val", n)) {
+                format!("{}_val", n)
+            } else {
+                n.clone()
+            };
+            if env.contains_key(n) || fn_sigs.contains_key(n) {
+                Some(actual)
+            } else {
+                Some(format!("\"{}\"", escape_str(n)))
+            }
+        }
+        Expr::Unary { op, expr: inner } => {
+            let e = human_rs_expr(inner, env, fn_sigs)?;
+            match op {
+                UnaryOp::Neg => Some(format!("(-{})", e)),
+                UnaryOp::Not => Some(format!("(!{})", e)),
+                _ => None,
+            }
+        }
+        Expr::Binary { left, op, right } => {
+            let lt = infer_expr(left, env);
+            let rt = infer_expr(right, env);
+            if matches!(op, BinaryOp::Add) && (lt == InferredType::Str || rt == InferredType::Str) {
+                return None;
+            }
+            let l = human_rs_expr(left, env, fn_sigs)?;
+            let r = human_rs_expr(right, env, fn_sigs)?;
+            let op_s = match op {
+                BinaryOp::Add => "+",
+                BinaryOp::Sub => "-",
+                BinaryOp::Mul => "*",
+                BinaryOp::Div => "/",
+                BinaryOp::Mod => "%",
+                BinaryOp::Eq => "==",
+                BinaryOp::Neq => "!=",
+                BinaryOp::Lt => "<",
+                BinaryOp::Gt => ">",
+                BinaryOp::Lte => "<=",
+                BinaryOp::Gte => ">=",
+                BinaryOp::And => "&&",
+                BinaryOp::Or => "||",
+                _ => return None,
+            };
+            Some(format!("({} {} {})", l, op_s, r))
