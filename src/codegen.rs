@@ -2129,3 +2129,85 @@ fn human_rs_expr(
                 _ => return None,
             };
             Some(format!("({} {} {})", l, op_s, r))
+        }
+        Expr::Ternary {
+            cond,
+            then_expr,
+            else_expr,
+        } => {
+            let c = human_rs_expr(cond, env, fn_sigs)?;
+            let t = human_rs_expr(then_expr, env, fn_sigs)?;
+            let e = human_rs_expr(else_expr, env, fn_sigs)?;
+            Some(format!("(if {} {{ {} }} else {{ {} }})", c, t, e))
+        }
+        Expr::Call { callee, args } => {
+            if let Expr::Ident(name) = &**callee {
+                if fn_sigs.contains_key(name) {
+                    let mut a_strs = Vec::new();
+                    for a in args {
+                        a_strs.push(human_rs_expr(a, env, fn_sigs)?);
+                    }
+                    return Some(format!("{}({})", name, a_strs.join(", ")));
+                }
+            }
+            None
+        }
+        _ => None,
+    }
+}
+
+fn rs_builtins_preamble(body_code: &str) -> String {
+    let mut out = String::new();
+    for (token, decl) in [
+        ("PI.clone()", "    let PI = SVal::Num(std::f64::consts::PI);\n"),
+        ("E.clone()", "    let E = SVal::Num(std::f64::consts::E);\n"),
+        ("print.clone()", "    let print = SVal::Func(Rc::new(|args: Vec<SVal>| { println!(\"{}\", args.iter().map(|a| a.to_string()).collect::<Vec<_>>().join(\" \")); SVal::Null }));\n"),
+        ("len.clone()", "    let len = SVal::Func(Rc::new(|args: Vec<SVal>| match args.first() { Some(SVal::Arr(a)) => SVal::Num(a.borrow().len() as f64), Some(SVal::Str(s)) => SVal::Num(s.chars().count() as f64), Some(SVal::Map(m)) => SVal::Num(m.borrow().len() as f64), _ => SVal::Num(0.0) }));\n"),
+        ("push.clone()", "    let push = SVal::Func(Rc::new(|args: Vec<SVal>| { if let (Some(SVal::Arr(a)), Some(v)) = (args.get(0), args.get(1)) { a.borrow_mut().push(v.clone()); return SVal::Arr(a.clone()); } SVal::Null }));\n"),
+        ("pop.clone()", "    let pop = SVal::Func(Rc::new(|args: Vec<SVal>| { if let Some(SVal::Arr(a)) = args.get(0) { return a.borrow_mut().pop().unwrap_or(SVal::Null); } SVal::Null }));\n"),
+        ("keys.clone()", "    let keys = SVal::Func(Rc::new(|args: Vec<SVal>| { if let Some(SVal::Map(m)) = args.get(0) { let ks = m.borrow().keys().map(|k| SVal::Str(k.clone())).collect(); return SVal::Arr(Rc::new(RefCell::new(ks))); } SVal::Null }));\n"),
+        ("values.clone()", "    let values = SVal::Func(Rc::new(|args: Vec<SVal>| { if let Some(SVal::Map(m)) = args.get(0) { let vs = m.borrow().values().cloned().collect(); return SVal::Arr(Rc::new(RefCell::new(vs))); } SVal::Null }));\n"),
+        ("has_key.clone()", "    let has_key = SVal::Func(Rc::new(|args: Vec<SVal>| { if let (Some(SVal::Map(m)), Some(k)) = (args.get(0), args.get(1)) { return SVal::Bool(m.borrow().contains_key(&k.to_string())); } SVal::Bool(false) }));\n"),
+        ("delete_key.clone()", "    let delete_key = SVal::Func(Rc::new(|args: Vec<SVal>| { if let (Some(SVal::Map(m)), Some(k)) = (args.get(0), args.get(1)) { return SVal::Bool(m.borrow_mut().remove(&k.to_string()).is_some()); } SVal::Bool(false) }));\n"),
+        ("concat.clone()", "    let concat = SVal::Func(Rc::new(|args: Vec<SVal>| { if let (Some(SVal::Arr(a)), Some(SVal::Arr(b))) = (args.get(0), args.get(1)) { let mut out = a.borrow().clone(); out.extend(b.borrow().iter().cloned()); return SVal::Arr(Rc::new(RefCell::new(out))); } SVal::Arr(Rc::new(RefCell::new(vec![]))) }));\n"),
+        ("str_fn.clone()", "    let str_fn = SVal::Func(Rc::new(|args: Vec<SVal>| SVal::Str(args.first().cloned().unwrap_or(SVal::Null).to_string())));\n"),
+        ("num_fn.clone()", "    let num_fn = SVal::Func(Rc::new(|args: Vec<SVal>| SVal::Num(args.first().cloned().unwrap_or(SVal::Null).as_num())));\n"),
+        ("int_fn.clone()", "    let int_fn = SVal::Func(Rc::new(|args: Vec<SVal>| SVal::Num(args.first().cloned().unwrap_or(SVal::Null).as_num().trunc())));\n"),
+        ("bool_fn.clone()", "    let bool_fn = SVal::Func(Rc::new(|args: Vec<SVal>| SVal::Bool(args.first().map(|a| a.is_truthy()).unwrap_or(false))));\n"),
+        ("type_fn.clone()", "    let type_fn = SVal::Func(Rc::new(|args: Vec<SVal>| SVal::Str(match args.first() { Some(SVal::Null) | None => \"null\", Some(SVal::Bool(_)) => \"boolean\", Some(SVal::Num(_)) => \"number\", Some(SVal::Str(_)) => \"string\", Some(SVal::Arr(_)) => \"array\", Some(SVal::Map(_)) => \"map\", Some(SVal::Func(_)) => \"function\" }.to_string())));\n"),
+        ("range.clone()", "    let range = SVal::Func(Rc::new(|args: Vec<SVal>| { let s = args.get(0).map(|a| a.as_num() as i64).unwrap_or(0); let e = args.get(1).map(|a| a.as_num() as i64).unwrap_or(0); let step = args.get(2).map(|a| a.as_num() as i64).unwrap_or(1); let mut v = Vec::new(); let mut cur = s; if step > 0 { while cur < e { v.push(SVal::Num(cur as f64)); cur += step; } } else if step < 0 { while cur > e { v.push(SVal::Num(cur as f64)); cur += step; } } SVal::Arr(Rc::new(RefCell::new(v))) }));\n"),
+        ("map.clone()", "    let map = SVal::Func(Rc::new(|args: Vec<SVal>| { if let (Some(SVal::Arr(a)), Some(f)) = (args.get(0), args.get(1)) { let out = a.borrow().iter().map(|x| f.call(vec![x.clone()])).collect(); return SVal::Arr(Rc::new(RefCell::new(out))); } SVal::Null }));\n"),
+        ("filter.clone()", "    let filter = SVal::Func(Rc::new(|args: Vec<SVal>| { if let (Some(SVal::Arr(a)), Some(f)) = (args.get(0), args.get(1)) { let out = a.borrow().iter().filter(|x| f.call(vec![(*x).clone()]).is_truthy()).cloned().collect(); return SVal::Arr(Rc::new(RefCell::new(out))); } SVal::Null }));\n"),
+        ("reduce.clone()", "    let reduce = SVal::Func(Rc::new(|args: Vec<SVal>| { if let (Some(SVal::Arr(a)), Some(f)) = (args.get(0), args.get(1)) { let items = a.borrow().clone(); let mut it = items.into_iter(); let mut acc = args.get(2).cloned().or_else(|| it.next()).unwrap_or(SVal::Null); for x in it { acc = f.call(vec![acc, x]); } return acc; } SVal::Null }));\n"),
+        ("find.clone()", "    let find = SVal::Func(Rc::new(|args: Vec<SVal>| { if let (Some(SVal::Arr(a)), Some(f)) = (args.get(0), args.get(1)) { for x in a.borrow().iter() { if f.call(vec![x.clone()]).is_truthy() { return x.clone(); } } } SVal::Null }));\n"),
+        ("any.clone()", "    let any = SVal::Func(Rc::new(|args: Vec<SVal>| { if let (Some(SVal::Arr(a)), Some(f)) = (args.get(0), args.get(1)) { for x in a.borrow().iter() { if f.call(vec![x.clone()]).is_truthy() { return SVal::Bool(true); } } } SVal::Bool(false) }));\n"),
+        ("all.clone()", "    let all = SVal::Func(Rc::new(|args: Vec<SVal>| { if let (Some(SVal::Arr(a)), Some(f)) = (args.get(0), args.get(1)) { for x in a.borrow().iter() { if !f.call(vec![x.clone()]).is_truthy() { return SVal::Bool(false); } } return SVal::Bool(true); } SVal::Bool(false) }));\n"),
+        ("sum.clone()", "    let sum = SVal::Func(Rc::new(|args: Vec<SVal>| { let mut s = 0.0; if let Some(SVal::Arr(a)) = args.get(0) { for x in a.borrow().iter() { if let SVal::Num(n) = x { s += *n; } } } SVal::Num(s) }));\n"),
+        ("avg.clone()", "    let avg = SVal::Func(Rc::new(|args: Vec<SVal>| { if let Some(SVal::Arr(a)) = args.get(0) { let b = a.borrow(); if b.is_empty() { return SVal::Num(0.0); } let mut s = 0.0; for x in b.iter() { if let SVal::Num(n) = x { s += *n; } } return SVal::Num(s / b.len() as f64); } SVal::Num(0.0) }));\n"),
+        ("unique.clone()", "    let unique = SVal::Func(Rc::new(|args: Vec<SVal>| { let mut out: Vec<SVal> = Vec::new(); if let Some(SVal::Arr(a)) = args.get(0) { for x in a.borrow().iter() { if !out.contains(x) { out.push(x.clone()); } } } SVal::Arr(Rc::new(RefCell::new(out))) }));\n"),
+        ("flat.clone()", "    let flat = SVal::Func(Rc::new(|args: Vec<SVal>| { let mut out: Vec<SVal> = Vec::new(); if let Some(SVal::Arr(a)) = args.get(0) { for x in a.borrow().iter() { if let SVal::Arr(inner) = x { out.extend(inner.borrow().iter().cloned()); } else { out.push(x.clone()); } } } SVal::Arr(Rc::new(RefCell::new(out))) }));\n"),
+        ("zip.clone()", "    let zip = SVal::Func(Rc::new(|args: Vec<SVal>| { let mut out: Vec<SVal> = Vec::new(); if let (Some(SVal::Arr(a)), Some(SVal::Arr(b))) = (args.get(0), args.get(1)) { for (x, y) in a.borrow().iter().zip(b.borrow().iter()) { out.push(SVal::Arr(Rc::new(RefCell::new(vec![x.clone(), y.clone()])))); } } SVal::Arr(Rc::new(RefCell::new(out))) }));\n"),
+        ("enumerate.clone()", "    let enumerate = SVal::Func(Rc::new(|args: Vec<SVal>| { let mut out: Vec<SVal> = Vec::new(); if let Some(SVal::Arr(a)) = args.get(0) { for (i, x) in a.borrow().iter().enumerate() { out.push(SVal::Arr(Rc::new(RefCell::new(vec![SVal::Num(i as f64), x.clone()])))); } } SVal::Arr(Rc::new(RefCell::new(out))) }));\n"),
+        ("upper.clone()", "    let upper = SVal::Func(Rc::new(|args: Vec<SVal>| SVal::Str(args.first().map(|a| a.to_string().to_uppercase()).unwrap_or_default())));\n"),
+        ("lower.clone()", "    let lower = SVal::Func(Rc::new(|args: Vec<SVal>| SVal::Str(args.first().map(|a| a.to_string().to_lowercase()).unwrap_or_default())));\n"),
+        ("trim.clone()", "    let trim = SVal::Func(Rc::new(|args: Vec<SVal>| SVal::Str(args.first().map(|a| a.to_string().trim().to_string()).unwrap_or_default())));\n"),
+        ("contains.clone()", "    let contains = SVal::Func(Rc::new(|args: Vec<SVal>| match args.get(0) { Some(SVal::Map(m)) => { let k = args.get(1).map(|a| a.to_string()).unwrap_or_default(); SVal::Bool(m.borrow().contains_key(&k)) } Some(SVal::Arr(a)) => { let target = args.get(1).cloned().unwrap_or(SVal::Null); SVal::Bool(a.borrow().iter().any(|x| x.to_string() == target.to_string())) } _ => { let h = args.get(0).map(|a| a.to_string()).unwrap_or_default(); let n = args.get(1).map(|a| a.to_string()).unwrap_or_default(); SVal::Bool(h.contains(&n)) } }));\n"),
+        ("index_of.clone()", "    let index_of = SVal::Func(Rc::new(|args: Vec<SVal>| match (args.get(0), args.get(1)) { (Some(SVal::Str(s)), Some(SVal::Str(sub))) => SVal::Num(s.find(sub.as_str()).map(|bi| s[..bi].chars().count() as f64).unwrap_or(-1.0)), (Some(SVal::Arr(a)), Some(n)) => SVal::Num(a.borrow().iter().position(|x| x == n).map(|i| i as f64).unwrap_or(-1.0)), _ => SVal::Num(-1.0) }));\n"),
+        ("starts_with.clone()", "    let starts_with = SVal::Func(Rc::new(|args: Vec<SVal>| { let h = args.get(0).map(|a| a.to_string()).unwrap_or_default(); let p = args.get(1).map(|a| a.to_string()).unwrap_or_default(); SVal::Bool(h.starts_with(&p)) }));\n"),
+        ("ends_with.clone()", "    let ends_with = SVal::Func(Rc::new(|args: Vec<SVal>| { let h = args.get(0).map(|a| a.to_string()).unwrap_or_default(); let p = args.get(1).map(|a| a.to_string()).unwrap_or_default(); SVal::Bool(h.ends_with(&p)) }));\n"),
+        ("repeat.clone()", "    let repeat = SVal::Func(Rc::new(|args: Vec<SVal>| { let s = args.get(0).map(|a| a.to_string()).unwrap_or_default(); let n = args.get(1).map(|a| (a.as_num() as isize).max(0) as usize).unwrap_or(0); SVal::Str(s.repeat(n)) }));\n"),
+        ("pad_start.clone()", "    let pad_start = SVal::Func(Rc::new(|args: Vec<SVal>| { let s = args.get(0).map(|a| a.to_string()).unwrap_or_default(); let w = args.get(1).map(|a| (a.as_num() as isize).max(0) as usize).unwrap_or(0); let p = args.get(2).map(|a| a.to_string()).unwrap_or_else(|| \" \".to_string()); let cur = s.chars().count(); if cur >= w || p.is_empty() { return SVal::Str(s); } let pc: Vec<char> = p.chars().collect(); let mut out = String::new(); for i in 0..(w - cur) { out.push(pc[i % pc.len()]); } out.push_str(&s); SVal::Str(out) }));\n"),
+        ("pad_end.clone()", "    let pad_end = SVal::Func(Rc::new(|args: Vec<SVal>| { let s = args.get(0).map(|a| a.to_string()).unwrap_or_default(); let w = args.get(1).map(|a| (a.as_num() as isize).max(0) as usize).unwrap_or(0); let p = args.get(2).map(|a| a.to_string()).unwrap_or_else(|| \" \".to_string()); let cur = s.chars().count(); if cur >= w || p.is_empty() { return SVal::Str(s); } let pc: Vec<char> = p.chars().collect(); let mut out = s; for i in 0..(w - cur) { out.push(pc[i % pc.len()]); } SVal::Str(out) }));\n"),
+        ("char_code.clone()", "    let char_code = SVal::Func(Rc::new(|args: Vec<SVal>| SVal::Num(args.get(0).map(|a| a.to_string().chars().next().map(|c| c as u32 as f64).unwrap_or(0.0)).unwrap_or(0.0))));\n"),
+        ("from_char_code.clone()", "    let from_char_code = SVal::Func(Rc::new(|args: Vec<SVal>| { let n = args.get(0).map(|a| (a.as_num() as i64).max(0) as u32).unwrap_or(0); SVal::Str(char::from_u32(n).unwrap_or('\\0').to_string()) }));\n"),
+        ("replace.clone()", "    let replace = SVal::Func(Rc::new(|args: Vec<SVal>| { let s = args.get(0).map(|a| a.to_string()).unwrap_or_default(); let a = args.get(1).map(|x| x.to_string()).unwrap_or_default(); let b = args.get(2).map(|x| x.to_string()).unwrap_or_default(); SVal::Str(s.replace(&a, &b)) }));\n"),
+        ("reverse.clone()", "    let reverse = SVal::Func(Rc::new(|args: Vec<SVal>| match args.get(0) { Some(SVal::Arr(a)) => { let mut v = a.borrow().clone(); v.reverse(); SVal::Arr(Rc::new(RefCell::new(v))) } Some(SVal::Str(s)) => SVal::Str(s.chars().rev().collect()), _ => SVal::Null }));\n"),
+        ("slice.clone()", "    let slice = SVal::Func(Rc::new(|args: Vec<SVal>| { let s = args.get(1).map(|a| a.as_num() as usize).unwrap_or(0); match args.get(0) { Some(SVal::Arr(a)) => { let b = a.borrow(); let e = args.get(2).map(|x| (x.as_num() as usize).min(b.len())).unwrap_or(b.len()); let s = s.min(e); SVal::Arr(Rc::new(RefCell::new(b[s..e].to_vec()))) } Some(SVal::Str(st)) => { let cs: Vec<char> = st.chars().collect(); let e = args.get(2).map(|x| (x.as_num() as usize).min(cs.len())).unwrap_or(cs.len()); let s = s.min(e); SVal::Str(cs[s..e].iter().collect()) } _ => SVal::Null } }));\n"),
+        ("sort.clone()", "    let sort = SVal::Func(Rc::new(|args: Vec<SVal>| { if let Some(SVal::Arr(a)) = args.get(0) { let mut v = a.borrow().clone(); v.sort_by(|x, y| x.to_string().cmp(&y.to_string())); return SVal::Arr(Rc::new(RefCell::new(v))); } SVal::Null }));\n"),
+        ("pow.clone()", "    let pow = SVal::Func(Rc::new(|args: Vec<SVal>| SVal::Num(args.get(0).map(|a| a.as_num()).unwrap_or(0.0).powf(args.get(1).map(|b| b.as_num()).unwrap_or(0.0)))));\n"),
+        ("clamp.clone()", "    let clamp = SVal::Func(Rc::new(|args: Vec<SVal>| { let x = args.get(0).map(|a| a.as_num()).unwrap_or(0.0); let lo = args.get(1).map(|a| a.as_num()).unwrap_or(0.0); let hi = args.get(2).map(|a| a.as_num()).unwrap_or(0.0); SVal::Num(x.max(lo).min(hi)) }));\n"),
+        ("sign.clone()", "    let sign = SVal::Func(Rc::new(|args: Vec<SVal>| { let x = args.get(0).map(|a| a.as_num()).unwrap_or(0.0); SVal::Num(if x > 0.0 { 1.0 } else if x < 0.0 { -1.0 } else { 0.0 }) }));\n"),
+        ("atan2.clone()", "    let atan2 = SVal::Func(Rc::new(|args: Vec<SVal>| SVal::Num(args.get(0).map(|a| a.as_num()).unwrap_or(0.0).atan2(args.get(1).map(|b| b.as_num()).unwrap_or(0.0)))));\n"),
+        ("log.clone()", "    let log = SVal::Func(Rc::new(|args: Vec<SVal>| SVal::Num(args.first().map(|a| a.as_num().ln()).unwrap_or(0.0))));\n"),
+        ("exp.clone()", "    let exp = SVal::Func(Rc::new(|args: Vec<SVal>| SVal::Num(args.first().map(|a| a.as_num().exp()).unwrap_or(0.0))));\n"),
+        ("read_file.clone()", "    let read_file = SVal::Func(Rc::new(|args: Vec<SVal>| { let p = args.get(0).map(|a| a.to_string()).unwrap_or_default(); SVal::Str(std::fs::read_to_string(&p).unwrap_or_default()) }));\n"),
