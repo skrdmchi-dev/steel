@@ -2211,3 +2211,85 @@ fn rs_builtins_preamble(body_code: &str) -> String {
         ("log.clone()", "    let log = SVal::Func(Rc::new(|args: Vec<SVal>| SVal::Num(args.first().map(|a| a.as_num().ln()).unwrap_or(0.0))));\n"),
         ("exp.clone()", "    let exp = SVal::Func(Rc::new(|args: Vec<SVal>| SVal::Num(args.first().map(|a| a.as_num().exp()).unwrap_or(0.0))));\n"),
         ("read_file.clone()", "    let read_file = SVal::Func(Rc::new(|args: Vec<SVal>| { let p = args.get(0).map(|a| a.to_string()).unwrap_or_default(); SVal::Str(std::fs::read_to_string(&p).unwrap_or_default()) }));\n"),
+        ("write_file.clone()", "    let write_file = SVal::Func(Rc::new(|args: Vec<SVal>| { let p = args.get(0).map(|a| a.to_string()).unwrap_or_default(); let c = args.get(1).map(|a| a.to_string()).unwrap_or_default(); SVal::Bool(std::fs::write(&p, c).is_ok()) }));\n"),
+        ("append_file.clone()", "    let append_file = SVal::Func(Rc::new(|args: Vec<SVal>| { use std::io::Write; let p = args.get(0).map(|a| a.to_string()).unwrap_or_default(); let c = args.get(1).map(|a| a.to_string()).unwrap_or_default(); SVal::Bool(std::fs::OpenOptions::new().create(true).append(true).open(&p).and_then(|mut f| f.write_all(c.as_bytes())).is_ok()) }));\n"),
+        ("remove_file.clone()", "    let remove_file = SVal::Func(Rc::new(|args: Vec<SVal>| { let p = args.get(0).map(|a| a.to_string()).unwrap_or_default(); SVal::Bool(std::fs::remove_file(&p).is_ok()) }));\n"),
+        ("file_exists.clone()", "    let file_exists = SVal::Func(Rc::new(|args: Vec<SVal>| { let p = args.get(0).map(|a| a.to_string()).unwrap_or_default(); SVal::Bool(std::path::Path::new(&p).exists()) }));\n"),
+        ("env.clone()", "    let env = SVal::Func(Rc::new(|args: Vec<SVal>| { let k = args.get(0).map(|a| a.to_string()).unwrap_or_default(); match std::env::var(&k) { Ok(v) => SVal::Str(v), Err(_) => SVal::Null } }));\n"),
+        ("time_ms.clone()", "    let time_ms = SVal::Func(Rc::new(|_args: Vec<SVal>| { let ms = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as f64).unwrap_or(0.0); SVal::Num(ms) }));\n"),
+        ("clock.clone()", "    let clock = SVal::Func(Rc::new(|_args: Vec<SVal>| { let s = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs_f64()).unwrap_or(0.0); SVal::Num(s) }));\n"),
+        ("hash.clone()", "    let hash = SVal::Func(Rc::new(|args: Vec<SVal>| { let s = args.first().map(|a| a.to_string()).unwrap_or_default(); let mut h: u64 = 0xcbf29ce484222325; for b in s.as_bytes() { h ^= *b as u64; h = h.wrapping_mul(0x0100000001b3); } SVal::Str(format!(\"{:016x}\", h)) }));\n"),
+        ("json_stringify.clone()", "    fn __rs_json_str(v: &SVal) -> String { match v { SVal::Null => \"null\".into(), SVal::Bool(b) => b.to_string(), SVal::Num(n) => if n.fract() == 0.0 && n.abs() < 1e15 { format!(\"{}\", *n as i64) } else { format!(\"{}\", n) }, SVal::Str(s) => format!(\"\\\"{}\\\"\", s.replace('\\\\', \"\\\\\\\\\").replace('\"', \"\\\\\\\"\").replace('\\n', \"\\\\n\").replace('\\r', \"\\\\r\").replace('\\t', \"\\\\t\")), SVal::Arr(a) => format!(\"[{}]\", a.borrow().iter().map(__rs_json_str).collect::<Vec<_>>().join(\",\")), SVal::Map(m) => format!(\"{{{}}}\", m.borrow().iter().map(|(k, val)| format!(\"\\\"{}\\\": {}\", k.replace('\\\\', \"\\\\\\\\\").replace('\"', \"\\\\\\\"\"), __rs_json_str(val)).replace(\"\\\": \", \"\\\":\")).collect::<Vec<_>>().join(\",\")), SVal::Func(_) => \"null\".into() } }\n    let json_stringify = SVal::Func(Rc::new(|args: Vec<SVal>| SVal::Str(__rs_json_str(args.first().unwrap_or(&SVal::Null)))));\n"),
+        ("json_parse.clone()", "    fn __rs_jp(cs: &[char], i: &mut usize) -> SVal { while *i < cs.len() && cs[*i].is_whitespace() { *i += 1; } if *i >= cs.len() { return SVal::Null; } match cs[*i] { '\"' => { *i += 1; let mut s = String::new(); while *i < cs.len() { let c = cs[*i]; *i += 1; if c == '\"' { break; } if c == '\\\\' && *i < cs.len() { let e = cs[*i]; *i += 1; match e { 'n' => s.push('\\n'), 'r' => s.push('\\r'), 't' => s.push('\\t'), o => s.push(o) } } else { s.push(c); } } SVal::Str(s) } '[' => { *i += 1; let mut a = Vec::new(); loop { while *i < cs.len() && cs[*i].is_whitespace() { *i += 1; } if *i >= cs.len() || cs[*i] == ']' { *i += 1; break; } a.push(__rs_jp(cs, i)); while *i < cs.len() && cs[*i].is_whitespace() { *i += 1; } if *i < cs.len() && cs[*i] == ',' { *i += 1; } } SVal::Arr(Rc::new(RefCell::new(a))) } '{' => { *i += 1; let mut m = BTreeMap::new(); loop { while *i < cs.len() && cs[*i].is_whitespace() { *i += 1; } if *i >= cs.len() || cs[*i] == '}' { *i += 1; break; } let k = __rs_jp(cs, i).to_string(); while *i < cs.len() && (cs[*i].is_whitespace() || cs[*i] == ':') { *i += 1; } let v = __rs_jp(cs, i); m.insert(k, v); while *i < cs.len() && cs[*i].is_whitespace() { *i += 1; } if *i < cs.len() && cs[*i] == ',' { *i += 1; } } SVal::Map(Rc::new(RefCell::new(m))) } 't' => { *i += 4; SVal::Bool(true) } 'f' => { *i += 5; SVal::Bool(false) } 'n' => { *i += 4; SVal::Null } _ => { let st = *i; while *i < cs.len() && (cs[*i].is_ascii_digit() || matches!(cs[*i], '-' | '+' | '.' | 'e' | 'E')) { *i += 1; } let ns: String = cs[st..*i].iter().collect(); SVal::Num(ns.parse().unwrap_or(0.0)) } } }\n    let json_parse = SVal::Func(Rc::new(|args: Vec<SVal>| { let s = args.first().map(|a| a.to_string()).unwrap_or_default(); let cs: Vec<char> = s.chars().collect(); let mut i = 0; __rs_jp(&cs, &mut i) }));\n"),
+        ("split.clone()", "    let split = SVal::Func(Rc::new(|args: Vec<SVal>| { let s = args.get(0).map(|a| a.to_string()).unwrap_or_default(); let sep = args.get(1).map(|a| a.to_string()).unwrap_or_default(); let parts: Vec<SVal> = if sep.is_empty() { s.chars().map(|c| SVal::Str(c.to_string())).collect() } else { s.split(&sep).map(|p| SVal::Str(p.to_string())).collect() }; SVal::Arr(Rc::new(RefCell::new(parts))) }));\n"),
+        ("join.clone()", "    let join = SVal::Func(Rc::new(|args: Vec<SVal>| { if let Some(SVal::Arr(a)) = args.get(0) { let sep = args.get(1).map(|s| s.to_string()).unwrap_or_default(); return SVal::Str(a.borrow().iter().map(|x| x.to_string()).collect::<Vec<_>>().join(&sep)); } SVal::Str(String::new()) }));\n"),
+        ("abs.clone()", "    let abs = SVal::Func(Rc::new(|args: Vec<SVal>| SVal::Num(args.first().map(|a| a.as_num().abs()).unwrap_or(0.0))));\n"),
+        ("sqrt.clone()", "    let sqrt = SVal::Func(Rc::new(|args: Vec<SVal>| SVal::Num(args.first().map(|a| a.as_num().sqrt()).unwrap_or(0.0))));\n"),
+        ("sin.clone()", "    let sin = SVal::Func(Rc::new(|args: Vec<SVal>| SVal::Num(args.first().map(|a| a.as_num().sin()).unwrap_or(0.0))));\n"),
+        ("cos.clone()", "    let cos = SVal::Func(Rc::new(|args: Vec<SVal>| SVal::Num(args.first().map(|a| a.as_num().cos()).unwrap_or(0.0))));\n"),
+        ("tan.clone()", "    let tan = SVal::Func(Rc::new(|args: Vec<SVal>| SVal::Num(args.first().map(|a| a.as_num().tan()).unwrap_or(0.0))));\n"),
+        ("floor.clone()", "    let floor = SVal::Func(Rc::new(|args: Vec<SVal>| SVal::Num(args.first().map(|a| a.as_num().floor()).unwrap_or(0.0))));\n"),
+        ("ceil.clone()", "    let ceil = SVal::Func(Rc::new(|args: Vec<SVal>| SVal::Num(args.first().map(|a| a.as_num().ceil()).unwrap_or(0.0))));\n"),
+        ("round.clone()", "    let round = SVal::Func(Rc::new(|args: Vec<SVal>| SVal::Num(args.first().map(|a| a.as_num().round()).unwrap_or(0.0))));\n"),
+        ("min.clone()", "    let min = SVal::Func(Rc::new(|args: Vec<SVal>| SVal::Num(args.get(0).map(|a| a.as_num()).unwrap_or(0.0).min(args.get(1).map(|b| b.as_num()).unwrap_or(0.0)))));\n"),
+        ("max.clone()", "    let max = SVal::Func(Rc::new(|args: Vec<SVal>| SVal::Num(args.get(0).map(|a| a.as_num()).unwrap_or(0.0).max(args.get(1).map(|b| b.as_num()).unwrap_or(0.0)))));\n"),
+        ("assert.clone()", "    let assert = SVal::Func(Rc::new(|args: Vec<SVal>| { if !args.first().map(|a| a.is_truthy()).unwrap_or(false) { panic!(\"{}\", args.get(1).map(|m| m.to_string()).unwrap_or_else(|| \"Assertion failed\".to_string())); } SVal::Bool(true) }));\n"),
+    ] {
+        if body_code.contains(token) {
+            out.push_str(decl);
+        }
+    }
+    out
+}
+
+fn rs_safe_ident(name: &str) -> String {
+    match name {
+        "as" | "async" | "await" | "box" | "crate" | "dyn" | "enum" | "extern" | "fn" | "impl"
+        | "in" | "loop" | "macro" | "match" | "mod" | "move" | "mut" | "pub" | "ref" | "self"
+        | "Self" | "static" | "struct" | "super" | "trait" | "type" | "unsafe" | "use"
+        | "where" => format!("r#{}", name),
+        _ => name.to_string(),
+    }
+}
+
+fn rs_top_fn(
+    name: &str,
+    params: &[(String, Option<Expr>)],
+    body: &[Stmt],
+    top_fns: &std::collections::HashSet<String>,
+) -> String {
+    let param_sig: Vec<String> = params
+        .iter()
+        .map(|(p, _)| format!("mut {}: SVal", rs_safe_ident(p)))
+        .collect();
+    let mut body_str = String::new();
+    for st in body {
+        body_str.push_str(&rs_stmt(st, 1, top_fns));
+    }
+    let mut s = format!("fn {}({}) -> SVal {{\n", rs_safe_ident(name), param_sig.join(", "));
+    s.push_str(&rs_builtins_preamble(&body_str));
+    s.push_str(&body_str);
+    s.push_str("    SVal::Null\n}\n");
+    let wrap_args: Vec<String> = (0..params.len())
+        .map(|i| format!("__a.get({}).cloned().unwrap_or(SVal::Null)", i))
+        .collect();
+    s.push_str(&format!(
+        "#[allow(dead_code)] fn __steel_fn_{}(__a: Vec<SVal>) -> SVal {{ {}({}) }}\n\n",
+        name,
+        rs_safe_ident(name),
+        wrap_args.join(", ")
+    ));
+    s
+}
+
+fn rs_try_stmt(stmt: &Stmt, lvl: usize, top_fns: &std::collections::HashSet<String>) -> String {
+    let pad = indent(lvl);
+    match stmt {
+        Stmt::Return(val) => {
+            let v = val.as_ref().map(|e| rs_expr(e, lvl, top_fns)).unwrap_or_else(|| "SVal::Null".to_string());
+            format!("{}return Some({});\n", pad, v)
+        }
+        Stmt::If { cond, then_branch, else_branch } => {
+            let mut s = format!("{}if ({}).is_truthy() {{\n", pad, rs_expr(cond, lvl, top_fns));
+            for st in then_branch { s.push_str(&rs_try_stmt(st, lvl + 1, top_fns)); }
+            if let Some(eb) = else_branch {
