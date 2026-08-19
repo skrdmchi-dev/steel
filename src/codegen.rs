@@ -2293,3 +2293,85 @@ fn rs_try_stmt(stmt: &Stmt, lvl: usize, top_fns: &std::collections::HashSet<Stri
             let mut s = format!("{}if ({}).is_truthy() {{\n", pad, rs_expr(cond, lvl, top_fns));
             for st in then_branch { s.push_str(&rs_try_stmt(st, lvl + 1, top_fns)); }
             if let Some(eb) = else_branch {
+                s.push_str(&format!("{}}} else {{\n", pad));
+                for st in eb { s.push_str(&rs_try_stmt(st, lvl + 1, top_fns)); }
+            }
+            s.push_str(&format!("{}}}\n", pad));
+            s
+        }
+        Stmt::While { cond, body } => {
+            let mut s = format!("{}while ({}).is_truthy() {{\n", pad, rs_expr(cond, lvl, top_fns));
+            for st in body { s.push_str(&rs_try_stmt(st, lvl + 1, top_fns)); }
+            s.push_str(&format!("{}}}\n", pad));
+            s
+        }
+        Stmt::TryCatch { try_body, err_var, catch_body } => {
+            let mut s = format!(
+                "{}let __prev_hook = std::panic::take_hook();\n{}std::panic::set_hook(Box::new(|_| {{}}));\n{}let __res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| -> Option<SVal> {{\n",
+                pad, pad, pad
+            );
+            for st in try_body { s.push_str(&rs_try_stmt(st, lvl + 1, top_fns)); }
+            s.push_str(&format!("{}    None\n{}}}));\n{}std::panic::set_hook(__prev_hook);\n", pad, pad, pad));
+            s.push_str(&format!("{}if let Ok(Some(__ret_val)) = __res {{ return Some(__ret_val); }}\n", pad));
+            s.push_str(&format!(
+                "{}if let Err(__err) = __res {{\n{}    let __msg = __err.downcast_ref::<String>().cloned().or_else(|| __err.downcast_ref::<&str>().map(|s| s.to_string())).unwrap_or_else(|| \"Caught error\".to_string());\n{}    let mut {} = SVal::Str(__msg);\n",
+                pad, pad, pad, err_var
+            ));
+            for st in catch_body { s.push_str(&rs_try_stmt(st, lvl + 1, top_fns)); }
+            s.push_str(&format!("{}}}\n", pad));
+            s
+        }
+        other => rs_stmt(other, lvl, top_fns),
+    }
+}
+
+fn rs_stmt(stmt: &Stmt, lvl: usize, top_fns: &std::collections::HashSet<String>) -> String {
+    let pad = indent(lvl);
+    match stmt {
+        Stmt::Import(path) => format!("{}// import \"{}\"\n", pad, escape_str(path)),
+        Stmt::ClassDecl {
+            name,
+            parent,
+            methods,
+        } => rs_stmt(&desugar_class(name, parent, methods), lvl, top_fns),
+        Stmt::TryCatch {
+            try_body,
+            err_var,
+            catch_body,
+        } => {
+            let mut s = format!(
+                "{}let __prev_hook = std::panic::take_hook();\n{}std::panic::set_hook(Box::new(|_| {{}}));\n{}let __res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| -> Option<SVal> {{\n",
+                pad, pad, pad
+            );
+            for st in try_body {
+                s.push_str(&rs_try_stmt(st, lvl + 1, top_fns));
+            }
+            s.push_str(&format!("{}    None\n{}}}));\n{}std::panic::set_hook(__prev_hook);\n", pad, pad, pad));
+            if rs_stmts_have_return(try_body) {
+                s.push_str(&format!("{}if let Ok(Some(__ret_val)) = __res {{ return __ret_val; }}\n", pad));
+            }
+            s.push_str(&format!(
+                "{}if let Err(__err) = __res {{\n{}    let __msg = __err.downcast_ref::<String>().cloned().or_else(|| __err.downcast_ref::<&str>().map(|s| s.to_string())).unwrap_or_else(|| \"Caught error\".to_string());\n{}    let mut {} = SVal::Str(__msg);\n",
+                pad, pad, pad, err_var
+            ));
+            for st in catch_body {
+                s.push_str(&rs_stmt(st, lvl + 1, top_fns));
+            }
+            s.push_str(&format!("{}}}\n", pad));
+            s
+        }
+        Stmt::Throw(e) => format!(
+            "{}panic!(\"{{}}\", {});\n",
+            pad,
+            rs_expr(e, lvl, top_fns)
+        ),
+        Stmt::Test { name, body } => {
+            let mut s = format!("{}// test \"{}\"\n{}{{\n", pad, escape_str(name), pad);
+            for st in body {
+                s.push_str(&rs_stmt(st, lvl + 1, top_fns));
+            }
+            s.push_str(&format!("{}}}\n", pad));
+            s
+        }
+        Stmt::Defer(inner) => rs_stmt(inner, lvl, top_fns),
+        Stmt::Let { name, value, .. } => {
