@@ -2375,3 +2375,85 @@ fn rs_stmt(stmt: &Stmt, lvl: usize, top_fns: &std::collections::HashSet<String>)
         }
         Stmt::Defer(inner) => rs_stmt(inner, lvl, top_fns),
         Stmt::Let { name, value, .. } => {
+            if rs_is_global(name) && lvl == 1 {
+                format!("{}__STEEL_G_{}.with(|__g| *__g.borrow_mut() = {});\n", pad, name, rs_expr(value, lvl, top_fns))
+            } else {
+                format!("{}let mut {} = {};\n", pad, rs_safe_ident(name), rs_expr(value, lvl, top_fns))
+            }
+        }
+        Stmt::Assign { target, value } => match target {
+            AssignTarget::Ident(n) => {
+                if rs_is_global(n) {
+                    format!("{}__STEEL_G_{}.with(|__g| *__g.borrow_mut() = {});\n", pad, n, rs_expr(value, lvl, top_fns))
+                } else {
+                    format!("{}{} = {};\n", pad, rs_safe_ident(n), rs_expr(value, lvl, top_fns))
+                }
+            }
+            AssignTarget::Index { target, index } => format!(
+                "{}{}.set({}, {});\n",
+                pad,
+                rs_expr(target, lvl, top_fns),
+                rs_expr(index, lvl, top_fns),
+                rs_expr(value, lvl, top_fns)
+            ),
+            AssignTarget::Member { target, field } => format!(
+                "{}{}.set(SVal::Str(\"{}\".to_string()), {});\n",
+                pad,
+                rs_expr(target, lvl, top_fns),
+                escape_str(field),
+                rs_expr(value, lvl, top_fns)
+            ),
+        },
+        Stmt::FnDecl { name, params, body } => {
+            let mut s = format!(
+                "{}let mut {} = SVal::Func(Rc::new(move |__args: Vec<SVal>| -> SVal {{\n",
+                pad, name
+            );
+            for (i, (p, def)) in params.iter().enumerate() {
+                let fallback = def
+                    .as_ref()
+                    .map(|d| rs_expr(d, lvl + 1, top_fns))
+                    .unwrap_or_else(|| "SVal::Null".to_string());
+                s.push_str(&format!(
+                    "{}    let mut {} = __args.get({}).cloned().unwrap_or_else(|| {});\n",
+                    pad, p, i, fallback
+                ));
+            }
+            for st in body {
+                s.push_str(&rs_stmt(st, lvl + 1, top_fns));
+            }
+            s.push_str(&format!("{}    SVal::Null\n{}}}));\n", pad, pad));
+            s
+        }
+        Stmt::Return(expr) => match expr {
+            Some(e) => format!("{}return {};\n", pad, rs_expr(e, lvl, top_fns)),
+            None => format!("{}return SVal::Null;\n", pad),
+        },
+        Stmt::If {
+            cond,
+            then_branch,
+            else_branch,
+        } => {
+            let mut s = format!("{}if ({}).is_truthy() {{\n", pad, rs_expr(cond, lvl, top_fns));
+            for st in then_branch {
+                s.push_str(&rs_stmt(st, lvl + 1, top_fns));
+            }
+            if let Some(eb) = else_branch {
+                s.push_str(&format!("{}}} else {{\n", pad));
+                for st in eb {
+                    s.push_str(&rs_stmt(st, lvl + 1, top_fns));
+                }
+            }
+            s.push_str(&format!("{}}}\n", pad));
+            s
+        }
+        Stmt::While { cond, body } => {
+            let mut s = format!(
+                "{}while ({}).is_truthy() {{\n",
+                pad,
+                rs_expr(cond, lvl, top_fns)
+            );
+            for st in body {
+                s.push_str(&rs_stmt(st, lvl + 1, top_fns));
+            }
+            s.push_str(&format!("{}}}\n", pad));
