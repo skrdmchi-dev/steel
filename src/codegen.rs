@@ -2457,3 +2457,85 @@ fn rs_stmt(stmt: &Stmt, lvl: usize, top_fns: &std::collections::HashSet<String>)
                 s.push_str(&rs_stmt(st, lvl + 1, top_fns));
             }
             s.push_str(&format!("{}}}\n", pad));
+            s
+        }
+        Stmt::For {
+            var,
+            iterable,
+            body,
+        } => {
+            let mut s = format!(
+                "{}for mut {} in ({}).iter_vec() {{\n",
+                pad,
+                var,
+                rs_expr(iterable, lvl, top_fns)
+            );
+            for st in body {
+                s.push_str(&rs_stmt(st, lvl + 1, top_fns));
+            }
+            s.push_str(&format!("{}}}\n", pad));
+            s
+        }
+        Stmt::Break => format!("{}break;\n", pad),
+        Stmt::Continue => format!("{}continue;\n", pad),
+        Stmt::Expr(e) => format!("{}{};\n", pad, rs_expr(e, lvl, top_fns)),
+    }
+}
+
+fn rs_expr(expr: &Expr, lvl: usize, top_fns: &std::collections::HashSet<String>) -> String {
+    match expr {
+        Expr::Number(n) => format!("SVal::Num({:.6})", n),
+        Expr::String(s) => format!("SVal::Str(\"{}\".to_string())", escape_str(s)),
+        Expr::Bool(b) => format!("SVal::Bool({})", b),
+        Expr::Null => "SVal::Null".to_string(),
+        Expr::Ident(name) => match name.as_str() {
+            "println" => "print.clone()".to_string(),
+            "str" => "str_fn.clone()".to_string(),
+            "num" => "num_fn.clone()".to_string(),
+            "int" => "int_fn.clone()".to_string(),
+            "bool" => "bool_fn.clone()".to_string(),
+            "type" => "type_fn.clone()".to_string(),
+            other => {
+                if top_fns.contains(other) {
+                    format!("SVal::Func(Rc::new(__steel_fn_{}))", other)
+                } else if rs_is_global(other) {
+                    format!("__STEEL_G_{}.with(|__g| __g.borrow().clone())", other)
+                } else {
+                    format!("{}.clone()", rs_safe_ident(other))
+                }
+            }
+        },
+        Expr::Array(items) => {
+            let inner: Vec<String> = items.iter().map(|e| rs_expr(e, lvl, top_fns)).collect();
+            format!(
+                "SVal::Arr(Rc::new(RefCell::new(vec![{}])))",
+                inner.join(", ")
+            )
+        }
+        Expr::Map(entries) => {
+            let mut s = String::from("{ let mut __m = BTreeMap::new(); ");
+            for (k, v) in entries {
+                s.push_str(&format!(
+                    "__m.insert(\"{}\".to_string(), {}); ",
+                    escape_str(k),
+                    rs_expr(v, lvl, top_fns)
+                ));
+            }
+            s.push_str("SVal::Map(Rc::new(RefCell::new(__m))) }");
+            s
+        }
+        Expr::New { class_name, args } => {
+            let arg_strs: Vec<String> = args.iter().map(|a| rs_expr(a, lvl, top_fns)).collect();
+            if top_fns.contains(class_name) {
+                format!("{}({})", class_name, arg_strs.join(", "))
+            } else {
+                format!("{}.call(vec![{}])", class_name, arg_strs.join(", "))
+            }
+        }
+        Expr::Ternary {
+            cond,
+            then_expr,
+            else_expr,
+        } => format!(
+            "(if ({}).is_truthy() {{ {} }} else {{ {} }})",
+            rs_expr(cond, lvl, top_fns),
