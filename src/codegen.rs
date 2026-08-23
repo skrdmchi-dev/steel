@@ -2702,3 +2702,85 @@ fn c_extra_stdlib(code: &str) -> String {
             "static inline SVal sv_read_file(SVal p) {\n\
              \x20   FILE* f = fopen(p.type == ST_STR ? p.str : \"\", \"rb\"); if (!f) return sv_str(\"\");\n\
              \x20   fseek(f, 0, SEEK_END); long sz = ftell(f); rewind(f);\n\
+             \x20   char* buf = (char*)calloc(1, (size_t)sz + 1); if (sz > 0) fread(buf, 1, (size_t)sz, f);\n\
+             \x20   fclose(f); return sv_str(buf);\n\
+             }\n",
+        );
+    }
+    if code.contains("sv_write_file(") {
+        s.push_str(
+            "static inline SVal sv_write_file(SVal p, SVal c) {\n\
+             \x20   FILE* f = fopen(p.type == ST_STR ? p.str : \"\", \"wb\"); if (!f) return sv_bool(false);\n\
+             \x20   const char* txt = c.type == ST_STR ? c.str : \"\";\n\
+             \x20   fwrite(txt, 1, strlen(txt), f); fclose(f); return sv_bool(true);\n\
+             }\n",
+        );
+    }
+    if code.contains("sv_file_exists(") {
+        s.push_str(
+            "static inline SVal sv_file_exists(SVal p) {\n\
+             \x20   FILE* f = fopen(p.type == ST_STR ? p.str : \"\", \"rb\"); if (f) { fclose(f); return sv_bool(true); } return sv_bool(false);\n\
+             }\n",
+        );
+    }
+    if code.contains("sv_env(") {
+        s.push_str(
+            "static inline SVal sv_env(SVal k) {\n\
+             \x20   const char* v = getenv(k.type == ST_STR ? k.str : \"\"); return v ? sv_str(v) : sv_null();\n\
+             }\n",
+        );
+    }
+    if code.contains("sv_num_cast(") {
+        s.push_str(
+            "static inline SVal sv_num_cast(SVal v) {\n\
+             \x20   if (v.type == ST_NUM || v.type == ST_BOOL) return sv_num(v.num);\n\
+             \x20   if (v.type == ST_STR && v.str) return sv_num(strtod(v.str, NULL));\n\
+             \x20   return sv_num(0.0);\n\
+             }\n",
+        );
+    }
+    if code.contains("sv_upper(") {
+        s.push_str(
+            "static inline SVal sv_upper(SVal v) {\n\
+             \x20   const char* src = v.type == ST_STR ? v.str : \"\"; size_t n = strlen(src);\n\
+             \x20   char* b = (char*)calloc(1, n + 1); for (size_t i = 0; i < n; i++) b[i] = (char)toupper((unsigned char)src[i]); return sv_str(b);\n\
+             }\n",
+        );
+    }
+    if code.contains("sv_lower(") {
+        s.push_str(
+            "static inline SVal sv_lower(SVal v) {\n\
+             \x20   const char* src = v.type == ST_STR ? v.str : \"\"; size_t n = strlen(src);\n\
+             \x20   char* b = (char*)calloc(1, n + 1); for (size_t i = 0; i < n; i++) b[i] = (char)tolower((unsigned char)src[i]); return sv_str(b);\n\
+             }\n",
+        );
+    }
+    if code.contains("sv_trim(") {
+        s.push_str(
+            "static inline SVal sv_trim(SVal v) {\n\
+             \x20   const char* src = v.type == ST_STR ? v.str : \"\"; while (*src && isspace((unsigned char)*src)) src++;\n\
+             \x20   size_t n = strlen(src); while (n > 0 && isspace((unsigned char)src[n - 1])) n--;\n\
+             \x20   char* b = (char*)calloc(1, n + 1); memcpy(b, src, n); return sv_str(b);\n\
+             }\n",
+        );
+    }
+    if code.contains("sv_contains(") {
+        s.push_str(
+            "static inline SVal sv_contains(SVal h, SVal n) {\n\
+             \x20   if (h.type == ST_STR && n.type == ST_STR) return sv_bool(strstr(h.str, n.str) != NULL);\n\
+             \x20   if (h.type == ST_MAP && n.type == ST_STR) { for (int i = 0; i < h.map->len; i++) if (strcmp(h.map->keys[i], n.str) == 0) return sv_bool(true); return sv_bool(false); }\n\
+             \x20   if (h.type == ST_ARR) { for (int i = 0; i < h.arr->len; i++) if (sv_eq(h.arr->data[i], n)) return sv_bool(true); return sv_bool(false); }\n\
+             \x20   return sv_bool(false);\n\
+             }\n",
+        );
+    }
+    if code.contains("sv_starts_with(") {
+        s.push_str(
+            "static inline SVal sv_starts_with(SVal h, SVal p) {\n\
+             \x20   if (h.type != ST_STR || p.type != ST_STR) return sv_bool(false);\n\
+             \x20   size_t pl = strlen(p.str);\n\
+             \x20   return sv_bool(strncmp(h.str, p.str, pl) == 0);\n\
+             }\n",
+        );
+    }
+    if code.contains("sv_ends_with(") {
