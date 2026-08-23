@@ -2621,3 +2621,84 @@ fn rs_expr(expr: &Expr, lvl: usize, top_fns: &std::collections::HashSet<String>)
             let mut bound: std::collections::HashSet<String> =
                 params.iter().map(|(p, _)| rs_safe_ident(p)).collect();
             for (i, (p, def)) in params.iter().enumerate() {
+                let fallback = def
+                    .as_ref()
+                    .map(|d| rs_expr(d, lvl + 1, top_fns))
+                    .unwrap_or_else(|| "SVal::Null".to_string());
+                body_str.push_str(&format!(
+                    "{}    let mut {} = __args.get({}).cloned().unwrap_or_else(|| {});\n",
+                    pad, rs_safe_ident(p), i, fallback
+                ));
+            }
+            for st in body {
+                body_str.push_str(&rs_stmt(st, lvl + 1, top_fns));
+            }
+            let mut local_decls = std::collections::HashSet::new();
+            rs_collect_local_decls(body, &mut local_decls);
+            for d in local_decls {
+                bound.insert(rs_safe_ident(&d));
+            }
+            let mut raw_refs = std::collections::HashSet::new();
+            rs_collect_ident_refs_stmts(body, &mut raw_refs);
+            let mut captures = std::collections::BTreeSet::new();
+            for r in raw_refs {
+                if top_fns.contains(&r) || rs_is_global(&r) {
+                    continue;
+                }
+                let mapped = match r.as_str() {
+                    "println" => "print".to_string(),
+                    "str" => "str_fn".to_string(),
+                    "num" => "num_fn".to_string(),
+                    "int" => "int_fn".to_string(),
+                    "bool" => "bool_fn".to_string(),
+                    "type" => "type_fn".to_string(),
+                    other => rs_safe_ident(other),
+                };
+                if !bound.contains(&mapped) && body_str.contains(&format!("{}.clone()", mapped)) {
+                    captures.insert(mapped);
+                }
+            }
+            if !captures.is_empty() {
+                let clones: Vec<String> = captures
+                    .iter()
+                    .map(|c| format!("let {} = {}.clone();", c, c))
+                    .collect();
+                format!(
+                    "{{ {} SVal::Func(Rc::new(move |__args: Vec<SVal>| -> SVal {{\n{}{}    SVal::Null\n{}}})) }}",
+                    clones.join(" "),
+                    body_str,
+                    pad,
+                    pad
+                )
+            } else {
+                format!(
+                    "SVal::Func(Rc::new(move |__args: Vec<SVal>| -> SVal {{\n{}{}    SVal::Null\n{}}}))",
+                    body_str, pad, pad
+                )
+            }
+        }
+        Expr::Range { start, end } => {
+            format!(
+                "__steel_range({}, {})",
+                rs_expr(start, lvl, top_fns),
+                rs_expr(end, lvl, top_fns)
+            )
+        }
+        Expr::Spread(inner) => rs_expr(inner, lvl, top_fns),
+    }
+}
+
+// 5. C TARGET (On-Demand Minimal Runtime + Unboxed Fast-Path)
+fn c_extra_stdlib(code: &str) -> String {
+    let mut s = String::new();
+    if code.contains("__steel_jmp") {
+        s.push_str("#include <setjmp.h>\n#if defined(__GNUC__) && !defined(__clang__)\n#pragma GCC optimize(\"O0\")\n#endif\nstatic jmp_buf __steel_jmp[32]; static int __steel_try_sp = 0; static SVal __steel_err;\n");
+    }
+    if code.contains("sv_upper(") || code.contains("sv_lower(") || code.contains("sv_trim(") {
+        s.push_str("#include <ctype.h>\n");
+    }
+    if code.contains("sv_read_file(") {
+        s.push_str(
+            "static inline SVal sv_read_file(SVal p) {\n\
+             \x20   FILE* f = fopen(p.type == ST_STR ? p.str : \"\", \"rb\"); if (!f) return sv_str(\"\");\n\
+             \x20   fseek(f, 0, SEEK_END); long sz = ftell(f); rewind(f);\n\
