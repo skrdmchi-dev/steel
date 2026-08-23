@@ -2539,3 +2539,85 @@ fn rs_expr(expr: &Expr, lvl: usize, top_fns: &std::collections::HashSet<String>)
         } => format!(
             "(if ({}).is_truthy() {{ {} }} else {{ {} }})",
             rs_expr(cond, lvl, top_fns),
+            rs_expr(then_expr, lvl, top_fns),
+            rs_expr(else_expr, lvl, top_fns)
+        ),
+        Expr::Binary { left, op, right } => {
+            let l = rs_expr(left, lvl, top_fns);
+            let r = rs_expr(right, lvl, top_fns);
+            match op {
+                BinaryOp::Add => format!("({} + {})", l, r),
+                BinaryOp::Sub => format!("({} - {})", l, r),
+                BinaryOp::Mul => format!("({} * {})", l, r),
+                BinaryOp::Pow => format!("SVal::Num(({}).as_num().powf(({}).as_num()))", l, r),
+                BinaryOp::Div => format!("({} / {})", l, r),
+                BinaryOp::Mod => format!("({} % {})", l, r),
+                BinaryOp::BitAnd => {
+                    format!("SVal::Num(((({}).as_num() as i64) & (({}).as_num() as i64)) as f64)", l, r)
+                }
+                BinaryOp::BitOr => {
+                    format!("SVal::Num(((({}).as_num() as i64) | (({}).as_num() as i64)) as f64)", l, r)
+                }
+                BinaryOp::BitXor => {
+                    format!("SVal::Num(((({}).as_num() as i64) ^ (({}).as_num() as i64)) as f64)", l, r)
+                }
+                BinaryOp::Shl => {
+                    format!("SVal::Num(((({}).as_num() as i64) << (({}).as_num() as i64)) as f64)", l, r)
+                }
+                BinaryOp::Shr => {
+                    format!("SVal::Num(((({}).as_num() as i64) >> (({}).as_num() as i64)) as f64)", l, r)
+                }
+                BinaryOp::NullCoalesce => {
+                    format!("{{ let __v = {}; if __v == SVal::Null {{ {} }} else {{ __v }} }}", l, r)
+                }
+                BinaryOp::Eq => format!("SVal::Bool({} == {})", l, r),
+                BinaryOp::Neq => format!("SVal::Bool({} != {})", l, r),
+                BinaryOp::Lt => format!("SVal::Bool(({}).as_num() < ({}).as_num())", l, r),
+                BinaryOp::Gt => format!("SVal::Bool(({}).as_num() > ({}).as_num())", l, r),
+                BinaryOp::Lte => format!("SVal::Bool(({}).as_num() <= ({}).as_num())", l, r),
+                BinaryOp::Gte => format!("SVal::Bool(({}).as_num() >= ({}).as_num())", l, r),
+                BinaryOp::And => {
+                    format!("SVal::Bool(({}).is_truthy() && ({}).is_truthy())", l, r)
+                }
+                BinaryOp::Or => format!("SVal::Bool(({}).is_truthy() || ({}).is_truthy())", l, r),
+            }
+        }
+        Expr::Unary { op, expr } => {
+            let e = rs_expr(expr, lvl, top_fns);
+            match op {
+                UnaryOp::Neg => format!("(-{})", e),
+                UnaryOp::Not => format!("(!{})", e),
+                UnaryOp::BitNot => format!("SVal::Num((!(({}).as_num() as i64)) as f64)", e),
+            }
+        }
+        Expr::Call { callee, args } => {
+            let arg_strs: Vec<String> = args.iter().map(|a| rs_expr(a, lvl, top_fns)).collect();
+            if let Expr::Ident(name) = &**callee {
+                if top_fns.contains(name) {
+                    return format!("{}({})", name, arg_strs.join(", "));
+                }
+            }
+            format!(
+                "({}).call(vec![{}])",
+                rs_expr(callee, lvl, top_fns),
+                arg_strs.join(", ")
+            )
+        }
+        Expr::Index { target, index } => {
+            format!(
+                "({}).get({})",
+                rs_expr(target, lvl, top_fns),
+                rs_expr(index, lvl, top_fns)
+            )
+        }
+        Expr::Member { target, field } => format!(
+            "({}).get(SVal::Str(\"{}\".to_string()))",
+            rs_expr(target, lvl, top_fns),
+            escape_str(field)
+        ),
+        Expr::FnExpr { params, body } => {
+            let pad = indent(lvl);
+            let mut body_str = String::new();
+            let mut bound: std::collections::HashSet<String> =
+                params.iter().map(|(p, _)| rs_safe_ident(p)).collect();
+            for (i, (p, def)) in params.iter().enumerate() {
