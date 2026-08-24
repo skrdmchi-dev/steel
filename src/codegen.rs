@@ -2784,3 +2784,85 @@ fn c_extra_stdlib(code: &str) -> String {
         );
     }
     if code.contains("sv_ends_with(") {
+        s.push_str(
+            "static inline SVal sv_ends_with(SVal h, SVal p) {\n\
+             \x20   if (h.type != ST_STR || p.type != ST_STR) return sv_bool(false);\n\
+             \x20   size_t hl = strlen(h.str), pl = strlen(p.str);\n\
+             \x20   if (pl > hl) return sv_bool(false);\n\
+             \x20   return sv_bool(strcmp(h.str + (hl - pl), p.str) == 0);\n\
+             }\n",
+        );
+    }
+    if code.contains("sv_split(") {
+        s.push_str(
+            "static inline SVal sv_split(SVal s, SVal sep) {\n\
+             \x20   SVal arr = sv_arr_new(0, NULL);\n\
+             \x20   const char* src = s.type == ST_STR ? s.str : \"\";\n\
+             \x20   const char* sp = sep.type == ST_STR ? sep.str : \"\";\n\
+             \x20   size_t sl = strlen(sp);\n\
+             \x20   if (sl == 0) { for (size_t i = 0; src[i]; i++) { char* c = (char*)calloc(1, 2); c[0] = src[i]; sv_push(arr, sv_str(c)); } return arr; }\n\
+             \x20   const char* cur = src;\n\
+             \x20   const char* hit;\n\
+             \x20   while ((hit = strstr(cur, sp)) != NULL) {\n\
+             \x20       size_t len = (size_t)(hit - cur);\n\
+             \x20       char* part = (char*)calloc(1, len + 1); memcpy(part, cur, len);\n\
+             \x20       sv_push(arr, sv_str(part)); cur = hit + sl;\n\
+             \x20   }\n\
+             \x20   size_t rem = strlen(cur); char* last = (char*)calloc(1, rem + 1); memcpy(last, cur, rem);\n\
+             \x20   sv_push(arr, sv_str(last)); return arr;\n\
+             }\n",
+        );
+    }
+    if code.contains("sv_join(") {
+        s.push_str(
+            "static inline SVal sv_join(SVal arr, SVal sep) {\n\
+             \x20   if (arr.type != ST_ARR) return sv_str(\"\");\n\
+             \x20   const char* sp = sep.type == ST_STR ? sep.str : \"\";\n\
+             \x20   size_t sl = strlen(sp), cap = 64, len = 0;\n\
+             \x20   char* buf = (char*)calloc(1, cap);\n\
+             \x20   for (int i = 0; i < arr.arr->len; i++) {\n\
+             \x20       char tmp[64]; const char* part = \"\";\n\
+             \x20       SVal v = arr.arr->data[i];\n\
+             \x20       if (v.type == ST_STR) part = v.str;\n\
+             \x20       else if (v.type == ST_NUM) { snprintf(tmp, sizeof(tmp), \"%g\", v.num); part = tmp; }\n\
+             \x20       else if (v.type == ST_BOOL) part = v.num != 0.0 ? \"true\" : \"false\";\n\
+             \x20       else if (v.type == ST_NULL) part = \"null\";\n\
+             \x20       size_t pl = strlen(part), need = len + (i > 0 ? sl : 0) + pl + 1;\n\
+             \x20       while (need >= cap) { cap *= 2; buf = (char*)realloc(buf, cap); }\n\
+             \x20       if (i > 0) { memcpy(buf + len, sp, sl); len += sl; }\n\
+             \x20       memcpy(buf + len, part, pl); len += pl; buf[len] = '\\0';\n\
+             \x20   }\n\
+             \x20   return sv_str(buf);\n\
+             }\n",
+        );
+    }
+    if code.contains("sv_replace(") {
+        s.push_str(
+            "static inline SVal sv_replace(SVal s, SVal a, SVal b) {\n\
+             \x20   const char* src = s.type == ST_STR ? s.str : \"\";\n\
+             \x20   const char* old_s = a.type == ST_STR ? a.str : \"\";\n\
+             \x20   const char* new_s = b.type == ST_STR ? b.str : \"\";\n\
+             \x20   size_t ol = strlen(old_s), nl = strlen(new_s);\n\
+             \x20   if (ol == 0) return s;\n\
+             \x20   size_t cap = strlen(src) + 64, len = 0; char* buf = (char*)calloc(1, cap);\n\
+             \x20   const char* cur = src; const char* hit;\n\
+             \x20   while ((hit = strstr(cur, old_s)) != NULL) {\n\
+             \x20       size_t seg = (size_t)(hit - cur);\n\
+             \x20       while (len + seg + nl + 1 >= cap) { cap *= 2; buf = (char*)realloc(buf, cap); }\n\
+             \x20       memcpy(buf + len, cur, seg); len += seg;\n\
+             \x20       memcpy(buf + len, new_s, nl); len += nl; cur = hit + ol;\n\
+             \x20   }\n\
+             \x20   size_t rem = strlen(cur);\n\
+             \x20   while (len + rem + 1 >= cap) { cap *= 2; buf = (char*)realloc(buf, cap); }\n\
+             \x20   memcpy(buf + len, cur, rem); buf[len + rem] = '\\0'; return sv_str(buf);\n\
+             }\n",
+        );
+    }
+    if code.contains("sv_reverse(") {
+        s.push_str(
+            "static inline SVal sv_reverse(SVal v) {\n\
+             \x20   if (v.type == ST_ARR) { SVal out = sv_arr_new(0, NULL); for (int i = v.arr->len - 1; i >= 0; i--) sv_push(out, v.arr->data[i]); return out; }\n\
+             \x20   if (v.type == ST_STR) { size_t n = strlen(v.str); char* b = (char*)calloc(1, n + 1); for (size_t i = 0; i < n; i++) b[i] = v.str[n - 1 - i]; return sv_str(b); }\n\
+             \x20   return sv_null();\n\
+             }\n",
+        );
