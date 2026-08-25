@@ -2866,3 +2866,85 @@ fn c_extra_stdlib(code: &str) -> String {
              \x20   return sv_null();\n\
              }\n",
         );
+    }
+    if code.contains("sv_keys(") {
+        s.push_str(
+            "static inline SVal sv_keys(SVal v) {\n\
+             \x20   SVal out = sv_arr_new(0, NULL);\n\
+             \x20   if (v.type == ST_MAP) { for (int i = 0; i < v.map->len; i++) sv_push(out, sv_str(v.map->keys[i])); }\n\
+             \x20   return out;\n\
+             }\n",
+        );
+    }
+    if code.contains("sv_values(") {
+        s.push_str(
+            "static inline SVal sv_values(SVal v) {\n\
+             \x20   SVal out = sv_arr_new(0, NULL);\n\
+             \x20   if (v.type == ST_MAP) { for (int i = 0; i < v.map->len; i++) sv_push(out, v.map->vals[i]); }\n\
+             \x20   return out;\n\
+             }\n",
+        );
+    }
+    if code.contains("sv_slice(") {
+        s.push_str(
+            "static inline SVal sv_slice(SVal v, SVal s, SVal e) {\n\
+             \x20   int si = (int)s.num;\n\
+             \x20   if (v.type == ST_ARR) {\n\
+             \x20       int ei = (e.type == ST_NUM) ? (int)e.num : v.arr->len;\n\
+             \x20       if (si < 0) si = 0; if (ei > v.arr->len) ei = v.arr->len; if (si > ei) si = ei;\n\
+             \x20       SVal out = sv_arr_new(0, NULL);\n\
+             \x20       for (int i = si; i < ei; i++) sv_push(out, v.arr->data[i]);\n\
+             \x20       return out;\n\
+             \x20   }\n\
+             \x20   if (v.type == ST_STR) {\n\
+             \x20       int n = (int)strlen(v.str); int ei = (e.type == ST_NUM) ? (int)e.num : n;\n\
+             \x20       if (si < 0) si = 0; if (ei > n) ei = n; if (si > ei) si = ei;\n\
+             \x20       char* b = (char*)calloc(1, (size_t)(ei - si) + 1); memcpy(b, v.str + si, (size_t)(ei - si));\n\
+             \x20       return sv_str(b);\n\
+             \x20   }\n\
+             \x20   return sv_null();\n\
+             }\n",
+        );
+    }
+    if code.contains("sv_sort(") {
+        s.push_str(
+            "static inline const char* __sv_sort_key(SVal v, char* buf, size_t n) {\n\
+             \x20   if (v.type == ST_STR && v.str) return v.str;\n\
+             \x20   if (v.type == ST_NUM) { snprintf(buf, n, \"%g\", v.num); return buf; }\n\
+             \x20   if (v.type == ST_BOOL) return v.num != 0.0 ? \"true\" : \"false\";\n\
+             \x20   return \"null\";\n\
+             }\n\
+             static inline SVal sv_sort(SVal v) {\n\
+             \x20   SVal out = sv_arr_new(0, NULL);\n\
+             \x20   if (v.type != ST_ARR) return out;\n\
+             \x20   for (int i = 0; i < v.arr->len; i++) sv_push(out, v.arr->data[i]);\n\
+             \x20   for (int i = 0; i < out.arr->len; i++) {\n\
+             \x20       for (int j = i + 1; j < out.arr->len; j++) {\n\
+             \x20           char bi[64], bj[64];\n\
+             \x20           if (strcmp(__sv_sort_key(out.arr->data[j], bj, sizeof(bj)), __sv_sort_key(out.arr->data[i], bi, sizeof(bi))) < 0) {\n\
+             \x20               SVal tmp = out.arr->data[i]; out.arr->data[i] = out.arr->data[j]; out.arr->data[j] = tmp;\n\
+             \x20           }\n\
+             \x20       }\n\
+             \x20   }\n\
+             \x20   return out;\n\
+             }\n",
+        );
+    }
+    if code.contains("sv_range_step(") {
+        s.push_str(
+            "static inline SVal sv_range_step(SVal a, SVal b, SVal st) {\n\
+             \x20   int s = (int)a.num, e = (int)b.num, step = (int)st.num;\n\
+             \x20   SVal r = sv_arr_new(0, NULL);\n\
+             \x20   if (step > 0) { for (int i = s; i < e; i += step) sv_push(r, sv_num(i)); }\n\
+             \x20   else if (step < 0) { for (int i = s; i > e; i += step) sv_push(r, sv_num(i)); }\n\
+             \x20   return r;\n\
+             }\n",
+        );
+    }
+    if code.contains("sv_type(") {
+        s.push_str(
+            "static inline SVal sv_type(SVal v) {\n\
+             \x20   switch (v.type) {\n\
+             \x20       case ST_NULL: return sv_str(\"null\");\n\
+             \x20       case ST_BOOL: return sv_str(\"boolean\");\n\
+             \x20       case ST_NUM: return sv_str(\"number\");\n\
