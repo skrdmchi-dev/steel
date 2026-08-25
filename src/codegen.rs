@@ -3030,3 +3030,85 @@ fn c_extra_stdlib(code: &str) -> String {
              \x20   size_t sl = strlen(src), pl = strlen(p), ww = (w.num > 0) ? (size_t)w.num : 0;\n\
              \x20   if (sl >= ww || pl == 0) return sv_str(src);\n\
              \x20   size_t need = ww - sl; char* b = (char*)calloc(1, ww + 1);\n\
+             \x20   for (size_t i = 0; i < need; i++) b[i] = p[i % pl];\n\
+             \x20   memcpy(b + need, src, sl); return sv_str(b);\n\
+             }\n",
+        );
+    }
+    if code.contains("sv_pad_end(") {
+        s.push_str(
+            "static inline SVal sv_pad_end(SVal v, SVal w, SVal ch) {\n\
+             \x20   const char* src = (v.type == ST_STR && v.str) ? v.str : \"\"; const char* p = (ch.type == ST_STR && ch.str) ? ch.str : \" \";\n\
+             \x20   size_t sl = strlen(src), pl = strlen(p), ww = (w.num > 0) ? (size_t)w.num : 0;\n\
+             \x20   if (sl >= ww || pl == 0) return sv_str(src);\n\
+             \x20   size_t need = ww - sl; char* b = (char*)calloc(1, ww + 1);\n\
+             \x20   memcpy(b, src, sl); for (size_t i = 0; i < need; i++) b[sl + i] = p[i % pl]; return sv_str(b);\n\
+             }\n",
+        );
+    }
+    if code.contains("sv_char_code(") {
+        s.push_str(
+            "static inline SVal sv_char_code(SVal v) { return (v.type == ST_STR && v.str && v.str[0]) ? sv_num((unsigned char)v.str[0]) : sv_num(0); }\n",
+        );
+    }
+    if code.contains("sv_from_char_code(") {
+        s.push_str(
+            "static inline SVal sv_from_char_code(SVal n) { char* b = (char*)calloc(1, 2); b[0] = (char)((int)n.num); return sv_str(b); }\n",
+        );
+    }
+    if code.contains("sv_find_hof(") {
+        s.push_str(
+            "static inline SVal sv_find_hof(SVal arr, SVal fn) { if (arr.type == ST_ARR) { SVal env_null = sv_null(); for (int i = 0; i < arr.arr->len; i++) { SVal a[1] = { arr.arr->data[i] }; if (sv_truthy(sv_call_fn(fn, 1, a))) return arr.arr->data[i]; } (void)env_null; } return sv_null(); }\n",
+        );
+    }
+    if code.contains("sv_any_hof(") {
+        s.push_str(
+            "static inline SVal sv_any_hof(SVal arr, SVal fn) { if (arr.type == ST_ARR) { for (int i = 0; i < arr.arr->len; i++) { SVal a[1] = { arr.arr->data[i] }; if (sv_truthy(sv_call_fn(fn, 1, a))) return sv_bool(true); } } return sv_bool(false); }\n",
+        );
+    }
+    if code.contains("sv_all_hof(") {
+        s.push_str(
+            "static inline SVal sv_all_hof(SVal arr, SVal fn) { if (arr.type == ST_ARR) { for (int i = 0; i < arr.arr->len; i++) { SVal a[1] = { arr.arr->data[i] }; if (!sv_truthy(sv_call_fn(fn, 1, a))) return sv_bool(false); } return sv_bool(true); } return sv_bool(false); }\n",
+        );
+    }
+    if code.contains("sv_sum(") {
+        s.push_str(
+            "static inline SVal sv_sum(SVal arr) { double t = 0; if (arr.type == ST_ARR) for (int i = 0; i < arr.arr->len; i++) if (arr.arr->data[i].type == ST_NUM) t += arr.arr->data[i].num; return sv_num(t); }\n",
+        );
+    }
+    if code.contains("sv_avg(") {
+        s.push_str(
+            "static inline SVal sv_avg(SVal arr) { if (arr.type != ST_ARR || arr.arr->len == 0) return sv_num(0); double t = 0; for (int i = 0; i < arr.arr->len; i++) if (arr.arr->data[i].type == ST_NUM) t += arr.arr->data[i].num; return sv_num(t / arr.arr->len); }\n",
+        );
+    }
+    if code.contains("sv_unique(") {
+        s.push_str(
+            "static inline SVal sv_unique(SVal arr) { SVal out = sv_arr_new(0, NULL); if (arr.type == ST_ARR) { for (int i = 0; i < arr.arr->len; i++) { bool dup = false; for (int j = 0; j < out.arr->len; j++) if (sv_eq(out.arr->data[j], arr.arr->data[i])) { dup = true; break; } if (!dup) sv_push(out, arr.arr->data[i]); } } return out; }\n",
+        );
+    }
+    if code.contains("sv_flat(") {
+        s.push_str(
+            "static inline SVal sv_flat(SVal arr) { SVal out = sv_arr_new(0, NULL); if (arr.type == ST_ARR) { for (int i = 0; i < arr.arr->len; i++) { SVal it = arr.arr->data[i]; if (it.type == ST_ARR) { for (int j = 0; j < it.arr->len; j++) sv_push(out, it.arr->data[j]); } else sv_push(out, it); } } return out; }\n",
+        );
+    }
+    if code.contains("sv_zip(") {
+        s.push_str(
+            "static inline SVal sv_zip(SVal a, SVal b) { SVal out = sv_arr_new(0, NULL); if (a.type == ST_ARR && b.type == ST_ARR) { int n = a.arr->len < b.arr->len ? a.arr->len : b.arr->len; for (int i = 0; i < n; i++) { SVal pair = sv_arr_new(0, NULL); sv_push(pair, a.arr->data[i]); sv_push(pair, b.arr->data[i]); sv_push(out, pair); } } return out; }\n",
+        );
+    }
+    if code.contains("sv_enumerate(") {
+        s.push_str(
+            "static inline SVal sv_enumerate(SVal a) { SVal out = sv_arr_new(0, NULL); if (a.type == ST_ARR) { for (int i = 0; i < a.arr->len; i++) { SVal pair = sv_arr_new(0, NULL); sv_push(pair, sv_num(i)); sv_push(pair, a.arr->data[i]); sv_push(out, pair); } } return out; }\n",
+        );
+    }
+    if code.contains("sv_append_file(") {
+        s.push_str(
+            "static inline SVal sv_append_file(SVal p, SVal c) { FILE* f = fopen(p.type == ST_STR ? p.str : \"\", \"ab\"); if (!f) return sv_bool(false); const char* txt = c.type == ST_STR ? c.str : \"\"; fwrite(txt, 1, strlen(txt), f); fclose(f); return sv_bool(true); }\n",
+        );
+    }
+    if code.contains("sv_remove_file(") {
+        s.push_str(
+            "static inline SVal sv_remove_file(SVal p) { return sv_bool(remove(p.type == ST_STR ? p.str : \"\") == 0); }\n",
+        );
+    }
+    if code.contains("sv_clock(") {
