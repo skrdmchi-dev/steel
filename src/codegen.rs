@@ -2948,3 +2948,85 @@ fn c_extra_stdlib(code: &str) -> String {
              \x20       case ST_NULL: return sv_str(\"null\");\n\
              \x20       case ST_BOOL: return sv_str(\"boolean\");\n\
              \x20       case ST_NUM: return sv_str(\"number\");\n\
+             \x20       case ST_STR: return sv_str(\"string\");\n\
+             \x20       case ST_ARR: return sv_str(\"array\");\n\
+             \x20       case ST_MAP: return sv_str(\"map\");\n\
+             \x20       default: return sv_str(\"function\");\n\
+             \x20   }\n\
+             }\n",
+        );
+    }
+    if code.contains("sv_int_cast(") {
+        s.push_str(
+            "static inline SVal sv_int_cast(SVal v) {\n\
+             \x20   double d = (v.type == ST_STR && v.str) ? strtod(v.str, NULL) : ((v.type == ST_NUM || v.type == ST_BOOL) ? v.num : 0.0);\n\
+             \x20   return sv_num(trunc(d));\n\
+             }\n",
+        );
+    }
+    if code.contains("sv_assert(") {
+        s.push_str(
+            "static inline SVal sv_assert(SVal c, SVal m) {\n\
+             \x20   if (!sv_truthy(c)) { fprintf(stderr, \"Assertion failed: %s\\n\", (m.type == ST_STR && m.str) ? m.str : \"\"); exit(1); }\n\
+             \x20   return sv_bool(true);\n\
+             }\n",
+        );
+    }
+    if code.contains("sv_has_key(") {
+        s.push_str(
+            "static inline SVal sv_has_key(SVal m, SVal k) {\n\
+             \x20   if (m.type == ST_MAP && k.type == ST_STR) { for (int i = 0; i < m.map->len; i++) if (strcmp(m.map->keys[i], k.str) == 0) return sv_bool(true); }\n\
+             \x20   return sv_bool(false);\n\
+             }\n",
+        );
+    }
+    if code.contains("sv_delete_key(") {
+        s.push_str(
+            "static inline SVal sv_delete_key(SVal m, SVal k) {\n\
+             \x20   if (m.type == ST_MAP && k.type == ST_STR) {\n\
+             \x20       for (int i = 0; i < m.map->len; i++) {\n\
+             \x20           if (strcmp(m.map->keys[i], k.str) == 0) {\n\
+             \x20               for (int j = i; j + 1 < m.map->len; j++) { m.map->keys[j] = m.map->keys[j + 1]; m.map->vals[j] = m.map->vals[j + 1]; }\n\
+             \x20               m.map->len--; return sv_bool(true);\n\
+             \x20           }\n\
+             \x20       }\n\
+             \x20   }\n\
+             \x20   return sv_bool(false);\n\
+             }\n",
+        );
+    }
+    if code.contains("sv_concat(") {
+        s.push_str(
+            "static inline SVal sv_concat(SVal a, SVal b) {\n\
+             \x20   SVal out = sv_arr_new(0, NULL);\n\
+             \x20   if (a.type == ST_ARR) for (int i = 0; i < a.arr->len; i++) sv_push(out, a.arr->data[i]);\n\
+             \x20   if (b.type == ST_ARR) for (int i = 0; i < b.arr->len; i++) sv_push(out, b.arr->data[i]);\n\
+             \x20   return out;\n\
+             }\n",
+        );
+    }
+    if code.contains("sv_index_of(") {
+        s.push_str(
+            "static inline SVal sv_index_of(SVal h, SVal n) {\n\
+             \x20   if (h.type == ST_STR && n.type == ST_STR) { const char* p = strstr(h.str, n.str); return sv_num(p ? (double)(p - h.str) : -1.0); }\n\
+             \x20   if (h.type == ST_ARR) { for (int i = 0; i < h.arr->len; i++) if (sv_eq(h.arr->data[i], n)) return sv_num(i); }\n\
+             \x20   return sv_num(-1.0);\n\
+             }\n",
+        );
+    }
+    if code.contains("sv_repeat(") {
+        s.push_str(
+            "static inline SVal sv_repeat(SVal v, SVal n) {\n\
+             \x20   const char* src = (v.type == ST_STR && v.str) ? v.str : \"\"; int c = (int)n.num; if (c < 0) c = 0;\n\
+             \x20   size_t sl = strlen(src); char* b = (char*)calloc(1, sl * (size_t)c + 1);\n\
+             \x20   for (int i = 0; i < c; i++) memcpy(b + (size_t)i * sl, src, sl); return sv_str(b);\n\
+             }\n",
+        );
+    }
+    if code.contains("sv_pad_start(") {
+        s.push_str(
+            "static inline SVal sv_pad_start(SVal v, SVal w, SVal ch) {\n\
+             \x20   const char* src = (v.type == ST_STR && v.str) ? v.str : \"\"; const char* p = (ch.type == ST_STR && ch.str) ? ch.str : \" \";\n\
+             \x20   size_t sl = strlen(src), pl = strlen(p), ww = (w.num > 0) ? (size_t)w.num : 0;\n\
+             \x20   if (sl >= ww || pl == 0) return sv_str(src);\n\
+             \x20   size_t need = ww - sl; char* b = (char*)calloc(1, ww + 1);\n\
