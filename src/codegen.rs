@@ -3194,3 +3194,85 @@ fn emit_c(program: &Program) -> String {
                 }
                 _ => {}
             }
+        }
+    });
+    C_CUR_LOCALS.with(|l| l.borrow_mut().clear());
+
+    for stmt in &program.statements {
+        match stmt {
+            Stmt::FnDecl { name, params, body } => {
+                let p_sig: Vec<String> = params.iter().map(|(p, _)| format!("SVal {}", c_safe_ident(p))).collect();
+                let sig = if p_sig.is_empty() { "void".to_string() } else { p_sig.join(", ") };
+                top_protos.push_str(&format!("SVal {}({});\n", c_safe_ident(name), sig));
+                top_protos.push_str(&format!("SVal __st_fn_{}(SVal, int, SVal*);\n", c_safe_ident(name)));
+                top_fns.push_str(&c_top_fn(name, params, body, &mut lambdas, &mut lambda_id));
+            }
+            Stmt::ClassDecl {
+                name,
+                parent,
+                methods,
+            } => {
+                if let Stmt::FnDecl { name, params, body } = desugar_class(name, parent, methods) {
+                    let p_sig: Vec<String> = params.iter().map(|(p, _)| format!("SVal {}", c_safe_ident(p))).collect();
+                    let sig = if p_sig.is_empty() { "void".to_string() } else { p_sig.join(", ") };
+                    top_protos.push_str(&format!("SVal {}({});\n", c_safe_ident(&name), sig));
+                    top_protos.push_str(&format!("SVal __st_fn_{}(SVal, int, SVal*);\n", c_safe_ident(&name)));
+                    top_fns.push_str(&c_top_fn(
+                        &name,
+                        &params,
+                        &body,
+                        &mut lambdas,
+                        &mut lambda_id,
+                    ));
+                }
+            }
+            other => {
+                main_body.push_str(&c_stmt(
+                    other,
+                    1,
+                    &mut declared,
+                    &mut lambdas,
+                    &mut lambda_id,
+                ));
+            }
+        }
+    }
+
+    let user_code = format!("{}{}{}", lambdas, top_fns, main_body);
+    let needs_arr = user_code.contains("sv_arr_new")
+        || user_code.contains("sv_push")
+        || user_code.contains("sv_pop")
+        || user_code.contains("sv_range")
+        || user_code.contains(".arr")
+        || user_code.contains("sv_get")
+        || user_code.contains("sv_set")
+        || user_code.contains("sv_map_hof")
+        || user_code.contains("sv_filter_hof")
+        || user_code.contains("sv_reduce_hof");
+    let needs_map = user_code.contains("sv_map_new")
+        || user_code.contains("sv_map_set")
+        || user_code.contains("sv_map_get")
+        || user_code.contains("sv_get")
+        || user_code.contains("sv_set");
+    let needs_add = user_code.contains("sv_add(");
+    let needs_eq = user_code.contains("sv_eq(");
+    let needs_truthy = user_code.contains("sv_truthy(");
+    let needs_len = user_code.contains("sv_len(");
+    let needs_hof = user_code.contains("sv_map_hof")
+        || user_code.contains("sv_filter_hof")
+        || user_code.contains("sv_reduce_hof");
+    let needs_arena = needs_arr || needs_map || needs_add;
+
+    let mut out = String::from(
+        "#include <stdio.h>\n\
+         #include <stdlib.h>\n\
+         #include <string.h>\n\
+         #include <stdbool.h>\n\
+         #include <stdarg.h>\n\
+         #include <math.h>\n\n",
+    );
+
+    if !needs_arr && !needs_map && !needs_hof {
+        // Ultra-clean, minimal C struct when program only uses numbers, strings, and booleans!
+        out.push_str(
+            "typedef enum { ST_NULL, ST_BOOL, ST_NUM, ST_STR } SType;\n\
