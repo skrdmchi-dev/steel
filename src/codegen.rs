@@ -3358,3 +3358,85 @@ fn emit_c(program: &Program) -> String {
              static void* sv_alloc(size_t sz) {\n\
              \x20   void* p = calloc(1, sz);\n\
              \x20   if (__steel_arena_len >= __steel_arena_cap) {\n\
+             \x20       __steel_arena_cap = __steel_arena_cap ? __steel_arena_cap * 2 : 256;\n\
+             \x20       __steel_arena = (void**)realloc(__steel_arena, sizeof(void*) * __steel_arena_cap);\n\
+             \x20   }\n\
+             \x20   __steel_arena[__steel_arena_len++] = p; return p;\n\
+             }\n\
+             static void sv_cleanup(void) { for (int i = 0; i < __steel_arena_len; i++) free(__steel_arena[i]); free(__steel_arena); }\n",
+        );
+    }
+    out.push_str(
+        "static inline SVal sv_null(void) { SVal v; v.type = ST_NULL; v.num = 0; return v; }\n\
+         static inline SVal sv_bool(bool b) { SVal v; v.type = ST_BOOL; v.num = b ? 1.0 : 0.0; return v; }\n\
+         static inline SVal sv_num(double n) { SVal v; v.type = ST_NUM; v.num = n; return v; }\n\
+         static inline SVal sv_str(const char* s) { SVal v; v.type = ST_STR; v.str = s; return v; }\n\
+         static inline SVal sv_fn(SCFn f) { SVal v; v.type = ST_FN; v.env = NULL; v.fn = f; return v; }\n\
+         static inline SVal sv_call_fn(SVal f, int argc, SVal* argv) {\n\
+         \x20   if (f.type != ST_FN || !f.fn) return sv_null();\n\
+         \x20   SVal env; env.type = f.env ? ST_MAP : ST_NULL; env.env = NULL; env.map = f.env;\n\
+         \x20   return f.fn(env, argc, argv);\n\
+         }\n",
+    );
+    if needs_arr {
+        out.push_str(
+            "static SVal sv_arr_new(int count, SVal* init_items) {\n\
+             \x20   SArr* a = (SArr*)sv_alloc(sizeof(SArr)); a->cap = count > 4 ? count * 2 : 8; a->len = count;\n\
+             \x20   a->data = (SVal*)sv_alloc(sizeof(SVal) * a->cap);\n\
+             \x20   for (int i = 0; i < count; i++) a->data[i] = init_items[i];\n\
+             \x20   SVal v; v.type = ST_ARR; v.arr = a; return v;\n\
+             }\n\
+             static SVal sv_push(SVal arr, SVal item) {\n\
+             \x20   if (arr.type != ST_ARR) return arr;\n\
+             \x20   SArr* a = arr.arr;\n\
+             \x20   if (a->len >= a->cap) { int nc = a->cap * 2; SVal* nd = (SVal*)sv_alloc(sizeof(SVal) * nc); memcpy(nd, a->data, sizeof(SVal) * a->len); a->data = nd; a->cap = nc; }\n\
+             \x20   a->data[a->len++] = item; return arr;\n\
+             }\n\
+             static SVal sv_pop(SVal arr) { return (arr.type != ST_ARR || arr.arr->len == 0) ? sv_null() : arr.arr->data[--arr.arr->len]; }\n\
+             static SVal sv_range(SVal a, SVal b) { int s = (int)a.num, e = (int)b.num; SVal r = sv_arr_new(0, NULL); for (int i = s; i < e; i++) sv_push(r, sv_num(i)); return r; }\n",
+        );
+    }
+    if needs_map {
+        out.push_str(
+            "static SVal sv_map_new(void) {\n\
+             \x20   SMap* m = (SMap*)sv_alloc(sizeof(SMap)); m->cap = 16; m->len = 0;\n\
+             \x20   m->keys = (const char**)sv_alloc(sizeof(char*) * m->cap); m->vals = (SVal*)sv_alloc(sizeof(SVal) * m->cap);\n\
+             \x20   SVal v; v.type = ST_MAP; v.map = m; return v;\n\
+             }\n\
+             static void sv_map_set(SVal obj, const char* key, SVal val) {\n\
+             \x20   if (obj.type != ST_MAP) return;\n\
+             \x20   SMap* m = obj.map;\n\
+             \x20   for (int i = 0; i < m->len; i++) if (strcmp(m->keys[i], key) == 0) { m->vals[i] = val; return; }\n\
+             \x20   if (m->len >= m->cap) { int nc = m->cap * 2; const char** nk = (const char**)sv_alloc(sizeof(char*) * nc); SVal* nv = (SVal*)sv_alloc(sizeof(SVal) * nc); memcpy(nk, m->keys, sizeof(char*) * m->len); memcpy(nv, m->vals, sizeof(SVal) * m->len); m->keys = nk; m->vals = nv; m->cap = nc; }\n\
+             \x20   m->keys[m->len] = key; m->vals[m->len] = val; m->len++;\n\
+             }\n\
+             static SVal sv_map_get(SVal obj, const char* key) {\n\
+             \x20   if (obj.type != ST_MAP) return sv_null();\n\
+             \x20   for (int i = 0; i < obj.map->len; i++) if (strcmp(obj.map->keys[i], key) == 0) return obj.map->vals[i];\n\
+             \x20   return sv_null();\n\
+             }\n\
+             static SVal sv_call_method(SVal obj, const char* name, int argc, ...) {\n\
+             \x20   SVal m = sv_map_get(obj, name);\n\
+             \x20   if (m.type != ST_FN || !m.fn) return sv_null();\n\
+             \x20   SVal argv[16]; va_list ap; va_start(ap, argc);\n\
+             \x20   for (int i = 0; i < argc && i < 16; i++) argv[i] = va_arg(ap, SVal);\n\
+             \x20   va_end(ap); return m.fn(obj, argc, argv);\n\
+             }\n\
+             static SVal sv_closure(SCFn fn, int ncap, const char** ks, SVal* vs) {\n\
+             \x20   SVal env = sv_map_new();\n\
+             \x20   for (int i = 0; i < ncap; i++) sv_map_set(env, ks[i], vs[i]);\n\
+             \x20   SVal v = sv_fn(fn); v.env = env.map; return v;\n\
+             }\n",
+        );
+    }
+    if user_code.contains("sv_get(") || user_code.contains("sv_set(") {
+        out.push_str(
+            "static SVal sv_get(SVal t, SVal idx) {\n\
+             \x20   if (t.type == ST_MAP && idx.type == ST_STR) return sv_map_get(t, idx.str);\n\
+             \x20   if (t.type == ST_ARR && idx.type == ST_NUM) { int i = (int)idx.num; if (i < 0) i += t.arr->len; return (i >= 0 && i < t.arr->len) ? t.arr->data[i] : sv_null(); }\n\
+             \x20   return sv_null();\n\
+             }\n\
+             static void sv_set(SVal t, SVal idx, SVal val) { if (t.type == ST_MAP && idx.type == ST_STR) { sv_map_set(t, idx.str, val); return; } if (t.type == ST_ARR && idx.type == ST_NUM) { int i = (int)idx.num; if (i < 0) i += t.arr->len; if (i >= 0 && i < t.arr->len) t.arr->data[i] = val; } }\n",
+        );
+    }
+    out.push_str(
