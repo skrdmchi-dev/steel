@@ -3276,3 +3276,85 @@ fn emit_c(program: &Program) -> String {
         // Ultra-clean, minimal C struct when program only uses numbers, strings, and booleans!
         out.push_str(
             "typedef enum { ST_NULL, ST_BOOL, ST_NUM, ST_STR } SType;\n\
+             typedef struct { SType type; double num; const char* str; } SVal;\n\
+             static inline SVal sv_null(void) { return (SVal){ST_NULL, 0, NULL}; }\n\
+             static inline SVal sv_bool(bool b) { return (SVal){ST_BOOL, b ? 1.0 : 0.0, NULL}; }\n\
+             static inline SVal sv_num(double n) { return (SVal){ST_NUM, n, NULL}; }\n\
+             static inline SVal sv_str(const char* s) { return (SVal){ST_STR, 0, s}; }\n",
+        );
+        if needs_truthy {
+            out.push_str(
+                "static inline bool sv_truthy(SVal v) {\n\
+                 \x20   return v.type == ST_STR ? (v.str && v.str[0] != '\\0') : (v.type != ST_NULL && v.num != 0.0);\n\
+                 }\n",
+            );
+        }
+        if needs_eq {
+            out.push_str(
+                "static inline bool sv_eq(SVal a, SVal b) {\n\
+                 \x20   if (a.type != b.type) return false;\n\
+                 \x20   return a.type == ST_STR ? strcmp(a.str, b.str) == 0 : a.num == b.num;\n\
+                 }\n",
+            );
+        }
+        if needs_add || user_code.contains("sv_str_cast(") {
+            out.push_str(
+                "static SVal sv_str_cast(SVal v) {\n\
+                 \x20   if (v.type == ST_STR) return v;\n\
+                 \x20   char* b = (char*)calloc(1, 64);\n\
+                 \x20   if (v.type == ST_NULL) snprintf(b, 64, \"null\");\n\
+                 \x20   else if (v.type == ST_BOOL) snprintf(b, 64, \"%s\", v.num != 0.0 ? \"true\" : \"false\");\n\
+                 \x20   else snprintf(b, 64, floor(v.num) == v.num ? \"%.0f\" : \"%g\", v.num);\n\
+                 \x20   return sv_str(b);\n\
+                 }\n",
+            );
+        }
+        if needs_add {
+            out.push_str(
+                "static SVal sv_add(SVal a, SVal b) {\n\
+                 \x20   if (a.type == ST_NUM && b.type == ST_NUM) return sv_num(a.num + b.num);\n\
+                 \x20   SVal sa = sv_str_cast(a), sb = sv_str_cast(b);\n\
+                 \x20   char* r = (char*)calloc(1, strlen(sa.str) + strlen(sb.str) + 1);\n\
+                 \x20   strcpy(r, sa.str); strcat(r, sb.str);\n\
+                 \x20   return sv_str(r);\n\
+                 }\n",
+            );
+        }
+        if user_code.contains("sv_print_one(") {
+            out.push_str(
+                "static void sv_print_one(SVal v) {\n\
+                 \x20   if (v.type == ST_STR) printf(\"%s\", v.str);\n\
+                 \x20   else if (v.type == ST_NUM) printf(floor(v.num) == v.num ? \"%.0f\" : \"%g\", v.num);\n\
+                 \x20   else if (v.type == ST_BOOL) printf(\"%s\", v.num != 0.0 ? \"true\" : \"false\");\n\
+                 \x20   else printf(\"null\");\n\
+                 }\n",
+            );
+        }
+        out.push_str(&c_extra_stdlib(&user_code));
+        out.push('\n');
+        out.push_str(&top_protos);
+        out.push_str(&lambdas);
+        out.push_str(&top_fns);
+        out.push_str("int main(void) {\n");
+        out.push_str(&main_body);
+        out.push_str("    return 0;\n}\n");
+        return out;
+    }
+
+    // Full dynamic runtime included only when arrays, maps, or HOFs are actually used
+    out.push_str(
+        "typedef enum { ST_NULL, ST_BOOL, ST_NUM, ST_STR, ST_ARR, ST_MAP, ST_FN } SType;\n\
+         typedef struct SVal SVal;\n\
+         typedef struct SArr SArr;\n\
+         typedef struct SMap SMap;\n\
+         typedef SVal (*SCFn)(SVal __st_this, int argc, SVal* argv);\n\
+         struct SVal { SType type; SMap* env; union { double num; const char* str; SArr* arr; SMap* map; SCFn fn; }; };\n\
+         struct SArr { SVal* data; int len; int cap; };\n\
+         struct SMap { const char** keys; SVal* vals; int len; int cap; };\n",
+    );
+    if needs_arena {
+        out.push_str(
+            "static void** __steel_arena = NULL; static int __steel_arena_len = 0, __steel_arena_cap = 0;\n\
+             static void* sv_alloc(size_t sz) {\n\
+             \x20   void* p = calloc(1, sz);\n\
+             \x20   if (__steel_arena_len >= __steel_arena_cap) {\n\
