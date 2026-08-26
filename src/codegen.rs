@@ -3112,3 +3112,85 @@ fn c_extra_stdlib(code: &str) -> String {
         );
     }
     if code.contains("sv_clock(") {
+        s.push_str("#include <time.h>\nstatic inline SVal sv_clock(void) { return sv_num((double)time(NULL)); }\n");
+    }
+    if code.contains("sv_hash(") {
+        s.push_str(
+            "#include <stdint.h>\nstatic inline SVal sv_hash(SVal v) {\n\
+             \x20   const char* src = (v.type == ST_STR && v.str) ? v.str : \"\";\n\
+             \x20   uint64_t h = 0xcbf29ce484222325ULL;\n\
+             \x20   for (const unsigned char* p = (const unsigned char*)src; *p; p++) { h ^= (uint64_t)(*p); h *= 0x0100000001b3ULL; }\n\
+             \x20   char* out = (char*)calloc(1, 17); snprintf(out, 17, \"%016llx\", (unsigned long long)h); return sv_str(out);\n\
+             }\n",
+        );
+    }
+    if code.contains("sv_json_stringify(") {
+        s.push_str(
+            "static void __sv_js_app(char** buf, size_t* len, size_t* cap, const char* s) {\n\
+             \x20   size_t sl = strlen(s); while (*len + sl + 1 >= *cap) { *cap *= 2; *buf = (char*)realloc(*buf, *cap); }\n\
+             \x20   memcpy(*buf + *len, s, sl); *len += sl; (*buf)[*len] = '\\0';\n\
+             }\n\
+             static void __sv_js_esc(char** buf, size_t* len, size_t* cap, const char* s) {\n\
+             \x20   __sv_js_app(buf, len, cap, \"\\\"\");\n\
+             \x20   for (; *s; s++) { char c = *s; if (c == '\\\\') __sv_js_app(buf, len, cap, \"\\\\\\\\\"); else if (c == '\"') __sv_js_app(buf, len, cap, \"\\\\\\\"\"); else if (c == '\\n') __sv_js_app(buf, len, cap, \"\\\\n\"); else if (c == '\\r') __sv_js_app(buf, len, cap, \"\\\\r\"); else if (c == '\\t') __sv_js_app(buf, len, cap, \"\\\\t\"); else { char t[2] = {c, 0}; __sv_js_app(buf, len, cap, t); } }\n\
+             \x20   __sv_js_app(buf, len, cap, \"\\\"\");\n\
+             }\n\
+             static void __sv_js_val(char** buf, size_t* len, size_t* cap, SVal v) {\n\
+             \x20   if (v.type == ST_NULL) __sv_js_app(buf, len, cap, \"null\");\n\
+             \x20   else if (v.type == ST_BOOL) __sv_js_app(buf, len, cap, v.num != 0.0 ? \"true\" : \"false\");\n\
+             \x20   else if (v.type == ST_NUM) { char t[64]; snprintf(t, sizeof(t), \"%g\", v.num); __sv_js_app(buf, len, cap, t); }\n\
+             \x20   else if (v.type == ST_STR) __sv_js_esc(buf, len, cap, v.str ? v.str : \"\");\n\
+             \x20   else if (v.type == ST_ARR) { __sv_js_app(buf, len, cap, \"[\"); for (int i = 0; i < v.arr->len; i++) { if (i > 0) __sv_js_app(buf, len, cap, \",\"); __sv_js_val(buf, len, cap, v.arr->data[i]); } __sv_js_app(buf, len, cap, \"]\"); }\n\
+             \x20   else if (v.type == ST_MAP) { __sv_js_app(buf, len, cap, \"{\"); for (int i = 0; i < v.map->len; i++) { if (i > 0) __sv_js_app(buf, len, cap, \",\"); __sv_js_esc(buf, len, cap, v.map->keys[i]); __sv_js_app(buf, len, cap, \":\"); __sv_js_val(buf, len, cap, v.map->vals[i]); } __sv_js_app(buf, len, cap, \"}\"); }\n\
+             \x20   else __sv_js_app(buf, len, cap, \"null\");\n\
+             }\n\
+             static inline SVal sv_json_stringify(SVal v) { size_t cap = 64, len = 0; char* buf = (char*)calloc(1, cap); __sv_js_val(&buf, &len, &cap, v); return sv_str(buf); }\n",
+        );
+    }
+    if code.contains("sv_json_parse(") {
+        s.push_str(
+            "static void __sv_jp_ws(const char* s, size_t* i) { while (s[*i] && (s[*i]==' '||s[*i]=='\\t'||s[*i]=='\\n'||s[*i]=='\\r')) (*i)++; }\n\
+             static SVal __sv_jp_val(const char* s, size_t* i);\n\
+             static char* __sv_jp_str(const char* s, size_t* i) {\n\
+             \x20   (*i)++; size_t cap = 32, len = 0; char* out = (char*)calloc(1, cap);\n\
+             \x20   while (s[*i]) { char c = s[(*i)++]; if (c == '\"') break; if (c == '\\\\' && s[*i]) { char e = s[(*i)++]; if (e=='n') c='\\n'; else if (e=='r') c='\\r'; else if (e=='t') c='\\t'; else c=e; } if (len + 2 >= cap) { cap *= 2; out = (char*)realloc(out, cap); } out[len++] = c; out[len] = '\\0'; }\n\
+             \x20   return out;\n\
+             }\n\
+             static SVal __sv_jp_val(const char* s, size_t* i) {\n\
+             \x20   __sv_jp_ws(s, i); char c = s[*i]; if (!c) return sv_null();\n\
+             \x20   if (c == '\"') return sv_str(__sv_jp_str(s, i));\n\
+             \x20   if (c == '[') { (*i)++; SVal arr = sv_arr_new(0, NULL); __sv_jp_ws(s, i); if (s[*i]==']') { (*i)++; return arr; } while (s[*i]) { sv_push(arr, __sv_jp_val(s, i)); __sv_jp_ws(s, i); if (s[*i]==',') { (*i)++; continue; } if (s[*i]==']') (*i)++; break; } return arr; }\n\
+             \x20   if (c == '{') { (*i)++; SVal mp = sv_map_new(); __sv_jp_ws(s, i); if (s[*i]=='}') { (*i)++; return mp; } while (s[*i]) { __sv_jp_ws(s, i); char* k = __sv_jp_str(s, i); __sv_jp_ws(s, i); if (s[*i]==':') (*i)++; sv_map_set(mp, k, __sv_jp_val(s, i)); __sv_jp_ws(s, i); if (s[*i]==',') { (*i)++; continue; } if (s[*i]=='}') (*i)++; break; } return mp; }\n\
+             \x20   if (strncmp(s + *i, \"true\", 4) == 0) { *i += 4; return sv_bool(true); }\n\
+             \x20   if (strncmp(s + *i, \"false\", 5) == 0) { *i += 5; return sv_bool(false); }\n\
+             \x20   if (strncmp(s + *i, \"null\", 4) == 0) { *i += 4; return sv_null(); }\n\
+             \x20   char* end = NULL; double d = strtod(s + *i, &end); if (end && end > s + *i) { *i = (size_t)(end - s); return sv_num(d); } return sv_null();\n\
+             }\n\
+             static inline SVal sv_json_parse(SVal v) { const char* src = (v.type == ST_STR && v.str) ? v.str : \"null\"; size_t i = 0; return __sv_jp_val(src, &i); }\n",
+        );
+    }
+    s
+}
+
+fn emit_c(program: &Program) -> String {
+    if let Some(pure_c) = try_emit_human_c(program) {
+        return pure_c;
+    }
+
+    let mut lambdas = String::new();
+    let mut lambda_id = 0;
+    let mut top_protos = String::new();
+    let mut top_fns = String::new();
+    let mut main_body = String::new();
+    let mut declared = std::collections::HashSet::new();
+
+    C_TOP_FNS.with(|f| {
+        let mut set = f.borrow_mut();
+        set.clear();
+        for stmt in &program.statements {
+            match stmt {
+                Stmt::FnDecl { name, .. } | Stmt::ClassDecl { name, .. } => {
+                    set.insert(name.clone());
+                }
+                _ => {}
+            }
