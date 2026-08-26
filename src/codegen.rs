@@ -3440,3 +3440,85 @@ fn emit_c(program: &Program) -> String {
         );
     }
     out.push_str(
+        "static inline bool sv_truthy(SVal v) {\n\
+         \x20   if (v.type == ST_NULL) return false;\n\
+         \x20   if (v.type == ST_BOOL || v.type == ST_NUM) return v.num != 0.0;\n\
+         \x20   if (v.type == ST_STR) return v.str && v.str[0] != '\\0';\n\
+         \x20   return true;\n\
+         }\n\
+         static bool sv_eq(SVal a, SVal b) {\n\
+         \x20   if (a.type != b.type) return false;\n\
+         \x20   return a.type == ST_STR ? strcmp(a.str, b.str) == 0 : a.num == b.num;\n\
+         }\n\
+         static SVal sv_str_cast(SVal v) {\n\
+         \x20   if (v.type == ST_STR) return v;\n\
+         \x20   char* buf = (char*)sv_alloc(128);\n\
+         \x20   if (v.type == ST_NULL) snprintf(buf, 128, \"null\");\n\
+         \x20   else if (v.type == ST_BOOL) snprintf(buf, 128, \"%s\", v.num != 0.0 ? \"true\" : \"false\");\n\
+         \x20   else snprintf(buf, 128, floor(v.num) == v.num ? \"%.0f\" : \"%g\", v.num);\n\
+         \x20   return sv_str(buf);\n\
+         }\n\
+         static SVal sv_add(SVal a, SVal b) {\n\
+         \x20   if (a.type == ST_NUM && b.type == ST_NUM) return sv_num(a.num + b.num);\n\
+         \x20   SVal sa = sv_str_cast(a), sb = sv_str_cast(b);\n\
+         \x20   char* res = (char*)sv_alloc(strlen(sa.str) + strlen(sb.str) + 1);\n\
+         \x20   strcpy(res, sa.str); strcat(res, sb.str);\n\
+         \x20   return sv_str(res);\n\
+         }\n",
+    );
+    if needs_len {
+        out.push_str(
+            "static SVal sv_len(SVal v) {\n\
+             \x20   if (v.type == ST_ARR) return sv_num(v.arr->len);\n\
+             \x20   if (v.type == ST_STR) return sv_num((double)strlen(v.str));\n\
+             \x20   if (v.type == ST_MAP) return sv_num(v.map->len);\n\
+             \x20   return sv_num(0);\n\
+             }\n",
+        );
+    }
+    if needs_hof {
+        out.push_str(
+            "static SVal sv_map_hof(SVal arr, SVal fn) { SVal out = sv_arr_new(0, NULL); SVal env; env.type = fn.env ? ST_MAP : ST_NULL; env.env = NULL; env.map = fn.env; for (int i = 0; i < arr.arr->len; i++) sv_push(out, fn.fn(env, 1, &arr.arr->data[i])); return out; }\n\
+             static SVal sv_filter_hof(SVal arr, SVal fn) { SVal out = sv_arr_new(0, NULL); SVal env; env.type = fn.env ? ST_MAP : ST_NULL; env.env = NULL; env.map = fn.env; for (int i = 0; i < arr.arr->len; i++) if (sv_truthy(fn.fn(env, 1, &arr.arr->data[i]))) sv_push(out, arr.arr->data[i]); return out; }\n\
+             static SVal sv_reduce_hof(SVal arr, SVal fn, SVal init) { SVal acc = init; SVal env; env.type = fn.env ? ST_MAP : ST_NULL; env.env = NULL; env.map = fn.env; for (int i = 0; i < arr.arr->len; i++) { SVal a[2] = { acc, arr.arr->data[i] }; acc = fn.fn(env, 2, a); } return acc; }\n",
+        );
+    }
+    out.push_str(
+        "static void sv_print_one(SVal v) {\n\
+         \x20   if (v.type == ST_ARR) { printf(\"[\"); for (int i = 0; i < v.arr->len; i++) { if (i > 0) printf(\", \"); sv_print_one(v.arr->data[i]); } printf(\"]\"); }\n\
+         \x20   else printf(\"%s\", sv_str_cast(v).str);\n\
+         }\n\n",
+    );
+
+    out.push_str(&c_extra_stdlib(&user_code));
+    out.push_str(&top_protos);
+    out.push_str(&lambdas);
+    out.push_str(&top_fns);
+    out.push_str("int main(void) {\n");
+    out.push_str(&main_body);
+    if needs_arena {
+        out.push_str("    sv_cleanup();\n");
+    }
+    out.push_str("    return 0;\n}\n");
+    out
+}
+
+/// Attempts to emit 100% pure, human-written C (`const char*`, `double`, `bool`, `printf`)
+/// with ZERO `SVal` runtime header whenever a program's types are statically resolvable!
+fn try_emit_human_c(program: &Program) -> Option<String> {
+    use crate::typecheck::{analyze_program, InferredType};
+    let report = analyze_program(program);
+
+    // Check if any statement uses dynamic arrays, maps, classes, or unresolved `Any`
+    let mut fn_sigs: std::collections::BTreeMap<String, (Vec<InferredType>, InferredType)> =
+        std::collections::BTreeMap::new();
+
+    for stmt in &program.statements {
+        match stmt {
+            Stmt::ClassDecl { .. } | Stmt::TryCatch { .. } | Stmt::Throw(_) => return None,
+            Stmt::FnDecl { name, params, body } => {
+                // Infer parameter types from how they are compared/used in the function body
+                let mut local_env = report.symbols.clone();
+                let mut p_types = Vec::new();
+                for (p, def) in params {
+                    let guessed = guess_param_type_in_body(p, def.as_ref(), body)?;
