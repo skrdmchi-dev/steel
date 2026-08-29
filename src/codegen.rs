@@ -3604,3 +3604,85 @@ fn try_emit_human_c(program: &Program) -> Option<String> {
 fn c_native_type(ty: &crate::typecheck::InferredType) -> Option<&'static str> {
     use crate::typecheck::InferredType;
     match ty {
+        InferredType::Num => Some("double"),
+        InferredType::Str => Some("const char*"),
+        InferredType::Bool => Some("bool"),
+        InferredType::Null => Some("void"),
+        _ => None,
+    }
+}
+
+fn guess_param_type_in_body(
+    param: &str,
+    default: Option<&Expr>,
+    body: &[Stmt],
+) -> Option<crate::typecheck::InferredType> {
+    use crate::typecheck::InferredType;
+    if let Some(d) = default {
+        match d {
+            Expr::Number(_) => return Some(InferredType::Num),
+            Expr::String(_) => return Some(InferredType::Str),
+            Expr::Bool(_) => return Some(InferredType::Bool),
+            _ => {}
+        }
+    }
+    for st in body {
+        if let Some(t) = scan_stmt_for_param(param, st) {
+            return Some(t);
+        }
+    }
+    Some(InferredType::Num)
+}
+
+fn scan_stmt_for_param(
+    param: &str,
+    stmt: &Stmt,
+) -> Option<crate::typecheck::InferredType> {
+    match stmt {
+        Stmt::If {
+            cond,
+            then_branch,
+            else_branch,
+        } => {
+            if let Some(t) = scan_expr_for_param(param, cond) {
+                return Some(t);
+            }
+            for s in then_branch {
+                if let Some(t) = scan_stmt_for_param(param, s) {
+                    return Some(t);
+                }
+            }
+            if let Some(eb) = else_branch {
+                for s in eb {
+                    if let Some(t) = scan_stmt_for_param(param, s) {
+                        return Some(t);
+                    }
+                }
+            }
+            None
+        }
+        Stmt::Return(Some(e)) | Stmt::Expr(e) | Stmt::Let { value: e, .. } => {
+            scan_expr_for_param(param, e)
+        }
+        Stmt::While { cond, body } => {
+            scan_expr_for_param(param, cond).or_else(|| {
+                body.iter().find_map(|s| scan_stmt_for_param(param, s))
+            })
+        }
+        _ => None,
+    }
+}
+
+fn scan_expr_for_param(
+    param: &str,
+    expr: &Expr,
+) -> Option<crate::typecheck::InferredType> {
+    use crate::typecheck::InferredType;
+    match expr {
+        Expr::Binary { left, op, right } => {
+            if matches!(&**left, Expr::Ident(n) if n == param) {
+                match &**right {
+                    Expr::String(_) => return Some(InferredType::Str),
+                    Expr::Number(_) => return Some(InferredType::Num),
+                    Expr::Bool(_) => return Some(InferredType::Bool),
+                    _ => {}
