@@ -3686,3 +3686,85 @@ fn scan_expr_for_param(
                     Expr::Number(_) => return Some(InferredType::Num),
                     Expr::Bool(_) => return Some(InferredType::Bool),
                     _ => {}
+                }
+            }
+            if matches!(&**right, Expr::Ident(n) if n == param) {
+                match &**left {
+                    Expr::String(_) => return Some(InferredType::Str),
+                    Expr::Number(_) => return Some(InferredType::Num),
+                    Expr::Bool(_) => return Some(InferredType::Bool),
+                    _ => {}
+                }
+            }
+            if matches!(op, BinaryOp::Sub | BinaryOp::Mul | BinaryOp::Div | BinaryOp::Mod)
+                && (matches!(&**left, Expr::Ident(n) if n == param)
+                    || matches!(&**right, Expr::Ident(n) if n == param))
+            {
+                return Some(InferredType::Num);
+            }
+            scan_expr_for_param(param, left).or_else(|| scan_expr_for_param(param, right))
+        }
+        _ => None,
+    }
+}
+
+fn infer_fn_return_type(
+    body: &[Stmt],
+    env: &std::collections::BTreeMap<String, crate::typecheck::InferredType>,
+) -> Option<crate::typecheck::InferredType> {
+    use crate::typecheck::{infer_expr, InferredType};
+    for st in body {
+        match st {
+            Stmt::Return(Some(e)) => {
+                let t = infer_expr(e, env);
+                if matches!(t, InferredType::Num | InferredType::Str | InferredType::Bool) {
+                    return Some(t);
+                }
+                return None;
+            }
+            Stmt::If {
+                then_branch,
+                else_branch,
+                ..
+            } => {
+                if let Some(t) = infer_fn_return_type(then_branch, env) {
+                    return Some(t);
+                }
+                if let Some(eb) = else_branch {
+                    if let Some(t) = infer_fn_return_type(eb, env) {
+                        return Some(t);
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    Some(InferredType::Null)
+}
+
+fn human_c_stmt(
+    stmt: &Stmt,
+    lvl: usize,
+    env: &mut std::collections::BTreeMap<String, crate::typecheck::InferredType>,
+    declared: &mut std::collections::HashSet<String>,
+    fn_sigs: &std::collections::BTreeMap<
+        String,
+        (Vec<crate::typecheck::InferredType>, crate::typecheck::InferredType),
+    >,
+) -> Option<String> {
+    use crate::typecheck::{infer_expr, InferredType};
+    let pad = indent(lvl);
+    match stmt {
+        Stmt::Let { name, value, .. } => {
+            let ty = infer_expr(value, env);
+            let c_ty = c_native_type(&ty)?;
+            let val_s = human_c_expr(value, env, fn_sigs)?;
+            env.insert(name.clone(), ty);
+            declared.insert(name.clone());
+            Some(format!("{}{} {} = {};\n", pad, c_ty, name, val_s))
+        }
+        Stmt::Assign {
+            target: AssignTarget::Ident(name),
+            value,
+        } => {
+            let ty = infer_expr(value, env);
