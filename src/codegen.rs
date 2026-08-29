@@ -3522,3 +3522,85 @@ fn try_emit_human_c(program: &Program) -> Option<String> {
                 let mut p_types = Vec::new();
                 for (p, def) in params {
                     let guessed = guess_param_type_in_body(p, def.as_ref(), body)?;
+                    local_env.insert(p.clone(), guessed.clone());
+                    p_types.push(guessed);
+                }
+                let ret_ty = infer_fn_return_type(body, &local_env)?;
+                fn_sigs.insert(name.clone(), (p_types, ret_ty));
+            }
+            _ => {}
+        }
+    }
+
+    let mut env: std::collections::BTreeMap<String, InferredType> = std::collections::BTreeMap::new();
+    for (k, (_, r)) in &fn_sigs {
+        env.insert(
+            k.clone(),
+            InferredType::Func {
+                params: 0,
+                ret: Box::new(r.clone()),
+            },
+        );
+    }
+
+    let mut fns_out = String::new();
+    let mut main_out = String::new();
+    let mut declared = std::collections::HashSet::new();
+
+    for stmt in &program.statements {
+        if let Stmt::FnDecl { name, params, body } = stmt {
+            let (p_types, ret_ty) = fn_sigs.get(name)?;
+            let mut local_env = env.clone();
+            let mut local_decl = std::collections::HashSet::new();
+            let mut sig_parts = Vec::new();
+            for ((p_name, _), p_ty) in params.iter().zip(p_types.iter()) {
+                local_env.insert(p_name.clone(), p_ty.clone());
+                local_decl.insert(p_name.clone());
+                sig_parts.push(format!("{} {}", c_native_type(p_ty)?, p_name));
+            }
+            fns_out.push_str(&format!(
+                "{} {}({}) {{\n",
+                c_native_type(ret_ty)?,
+                name,
+                if sig_parts.is_empty() {
+                    "void".to_string()
+                } else {
+                    sig_parts.join(", ")
+                }
+            ));
+            for st in body {
+                fns_out.push_str(&human_c_stmt(
+                    st,
+                    1,
+                    &mut local_env,
+                    &mut local_decl,
+                    &fn_sigs,
+                )?);
+            }
+            fns_out.push_str("}\n\n");
+        } else {
+            main_out.push_str(&human_c_stmt(
+                stmt,
+                1,
+                &mut env,
+                &mut declared,
+                &fn_sigs,
+            )?);
+        }
+    }
+
+    let mut out = String::from("#include <stdio.h>\n#include <string.h>\n#include <stdbool.h>\n");
+    if fns_out.contains("pow(") || fns_out.contains("fmod(") || main_out.contains("pow(") || main_out.contains("fmod(") {
+        out.push_str("#include <math.h>\n");
+    }
+    out.push('\n');
+    out.push_str(&fns_out);
+    out.push_str("int main(void) {\n");
+    out.push_str(&main_out);
+    out.push_str("    return 0;\n}\n");
+    Some(out)
+}
+
+fn c_native_type(ty: &crate::typecheck::InferredType) -> Option<&'static str> {
+    use crate::typecheck::InferredType;
+    match ty {
