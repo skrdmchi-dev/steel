@@ -3768,3 +3768,85 @@ fn human_c_stmt(
             value,
         } => {
             let ty = infer_expr(value, env);
+            let c_ty = c_native_type(&ty)?;
+            let val_s = human_c_expr(value, env, fn_sigs)?;
+            // If user wrote `emotion = emotion(...)` where `emotion` is a function name, rename var to `emotion_val`!
+            let var_name = if fn_sigs.contains_key(name) {
+                format!("{}_val", name)
+            } else {
+                name.clone()
+            };
+            env.insert(name.clone(), ty.clone());
+            env.insert(var_name.clone(), ty);
+            if !declared.contains(&var_name) {
+                declared.insert(var_name.clone());
+                Some(format!("{}{} {} = {};\n", pad, c_ty, var_name, val_s))
+            } else {
+                Some(format!("{}{} = {};\n", pad, var_name, val_s))
+            }
+        }
+        Stmt::Return(Some(e)) => Some(format!("{}return {};\n", pad, human_c_expr(e, env, fn_sigs)?)),
+        Stmt::Return(None) => Some(format!("{}return;\n", pad)),
+        Stmt::If {
+            cond,
+            then_branch,
+            else_branch,
+        } => {
+            let mut s = format!("{}if ({}) {{\n", pad, human_c_expr(cond, env, fn_sigs)?);
+            for st in then_branch {
+                s.push_str(&human_c_stmt(st, lvl + 1, env, declared, fn_sigs)?);
+            }
+            if let Some(eb) = else_branch {
+                s.push_str(&format!("{}}} else {{\n", pad));
+                for st in eb {
+                    s.push_str(&human_c_stmt(st, lvl + 1, env, declared, fn_sigs)?);
+                }
+            }
+            s.push_str(&format!("{}}}\n", pad));
+            Some(s)
+        }
+        Stmt::While { cond, body } => {
+            let mut s = format!("{}while ({}) {{\n", pad, human_c_expr(cond, env, fn_sigs)?);
+            for st in body {
+                s.push_str(&human_c_stmt(st, lvl + 1, env, declared, fn_sigs)?);
+            }
+            s.push_str(&format!("{}}}\n", pad));
+            Some(s)
+        }
+        Stmt::For {
+            var,
+            iterable: Expr::Range { start, end },
+            body,
+        } => {
+            let s_val = human_c_expr(start, env, fn_sigs)?;
+            let e_val = human_c_expr(end, env, fn_sigs)?;
+            env.insert(var.clone(), InferredType::Num);
+            declared.insert(var.clone());
+            let mut s = format!(
+                "{}for (int {} = (int)({}); {} < (int)({}); {}++) {{\n",
+                pad, var, s_val, var, e_val, var
+            );
+            for st in body {
+                s.push_str(&human_c_stmt(st, lvl + 1, env, declared, fn_sigs)?);
+            }
+            s.push_str(&format!("{}}}\n", pad));
+            Some(s)
+        }
+        Stmt::Expr(Expr::Call { callee, args }) => {
+            if let Expr::Ident(name) = &**callee {
+                if name == "print" || name == "println" {
+                    let mut fmt_parts = Vec::new();
+                    let mut c_args = Vec::new();
+                    for a in args {
+                        let ty = infer_expr(a, env);
+                        let expr_s = human_c_expr(a, env, fn_sigs)?;
+                        match ty {
+                            InferredType::Str => {
+                                fmt_parts.push("%s");
+                                c_args.push(expr_s);
+                            }
+                            InferredType::Num => {
+                                fmt_parts.push("%g");
+                                c_args.push(expr_s);
+                            }
+                            InferredType::Bool => {
