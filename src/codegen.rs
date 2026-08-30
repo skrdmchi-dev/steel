@@ -3850,3 +3850,85 @@ fn human_c_stmt(
                                 c_args.push(expr_s);
                             }
                             InferredType::Bool => {
+                                fmt_parts.push("%s");
+                                c_args.push(format!("({} ? \"true\" : \"false\")", expr_s));
+                            }
+                            _ => return None,
+                        }
+                    }
+                    let fmt_str = format!("{}\\n", fmt_parts.join(" "));
+                    if c_args.is_empty() {
+                        return Some(format!("{}printf(\"\\n\");\n", pad));
+                    } else {
+                        return Some(format!(
+                            "{}printf(\"{}\", {});\n",
+                            pad,
+                            fmt_str,
+                            c_args.join(", ")
+                        ));
+                    }
+                }
+            }
+            Some(format!(
+                "{}{};\n",
+                pad,
+                human_c_expr(
+                    &Expr::Call {
+                        callee: callee.clone(),
+                        args: args.clone()
+                    },
+                    env,
+                    fn_sigs
+                )?
+            ))
+        }
+        _ => None,
+    }
+}
+
+fn human_c_expr(
+    expr: &Expr,
+    env: &std::collections::BTreeMap<String, crate::typecheck::InferredType>,
+    fn_sigs: &std::collections::BTreeMap<
+        String,
+        (Vec<crate::typecheck::InferredType>, crate::typecheck::InferredType),
+    >,
+) -> Option<String> {
+    use crate::typecheck::{infer_expr, InferredType};
+    match expr {
+        Expr::Number(n) => Some(fmt_num(*n)),
+        Expr::String(s) => Some(format!("\"{}\"", escape_str(s))),
+        Expr::Bool(b) => Some(b.to_string()),
+        Expr::Ident(n) => {
+            let actual = if env.contains_key(&format!("{}_val", n)) {
+                format!("{}_val", n)
+            } else {
+                n.clone()
+            };
+            if env.contains_key(n) || fn_sigs.contains_key(n) {
+                Some(actual)
+            } else {
+                // Unquoted identifier fallback if user wrote `emotion(sad)` instead of `emotion("sad")`
+                Some(format!("\"{}\"", escape_str(n)))
+            }
+        }
+        Expr::Unary { op, expr: inner } => {
+            let e = human_c_expr(inner, env, fn_sigs)?;
+            match op {
+                UnaryOp::Neg => Some(format!("(-{})", e)),
+                UnaryOp::Not => Some(format!("(!{})", e)),
+                UnaryOp::BitNot => Some(format!("(~(long){})", e)),
+            }
+        }
+        Expr::Binary { left, op, right } => {
+            let lt = infer_expr(left, env);
+            let rt = infer_expr(right, env);
+            let l = human_c_expr(left, env, fn_sigs)?;
+            let r = human_c_expr(right, env, fn_sigs)?;
+            match op {
+                BinaryOp::Eq if lt == InferredType::Str || rt == InferredType::Str => {
+                    Some(format!("(strcmp({}, {}) == 0)", l, r))
+                }
+                BinaryOp::Neq if lt == InferredType::Str || rt == InferredType::Str => {
+                    Some(format!("(strcmp({}, {}) != 0)", l, r))
+                }
