@@ -4014,3 +4014,85 @@ fn collect_expr_idents(expr: &Expr, out: &mut std::collections::HashSet<String>)
         Expr::Map(es) => for (_, v) in es { collect_expr_idents(v, out); },
         Expr::Unary { expr, .. } | Expr::Spread(expr) => collect_expr_idents(expr, out),
         Expr::Binary { left, right, .. } => { collect_expr_idents(left, out); collect_expr_idents(right, out); }
+        Expr::Ternary { cond, then_expr, else_expr } => {
+            collect_expr_idents(cond, out); collect_expr_idents(then_expr, out); collect_expr_idents(else_expr, out);
+        }
+        Expr::Call { callee, args } => {
+            collect_expr_idents(callee, out);
+            for a in args { collect_expr_idents(a, out); }
+        }
+        Expr::New { args, .. } => for a in args { collect_expr_idents(a, out); },
+        Expr::Index { target, index } => { collect_expr_idents(target, out); collect_expr_idents(index, out); }
+        Expr::Member { target, .. } => collect_expr_idents(target, out),
+        Expr::Range { start, end } => { collect_expr_idents(start, out); collect_expr_idents(end, out); }
+        Expr::FnExpr { body, .. } => for s in body { collect_stmt_idents(s, out); },
+        _ => {}
+    }
+}
+
+fn collect_stmt_idents(stmt: &Stmt, out: &mut std::collections::HashSet<String>) {
+    match stmt {
+        Stmt::Let { value, .. } => collect_expr_idents(value, out),
+        Stmt::Assign { target, value } => {
+            match target {
+                AssignTarget::Ident(n) => { out.insert(c_safe_ident(n)); }
+                AssignTarget::Index { target, index } => { collect_expr_idents(target, out); collect_expr_idents(index, out); }
+                AssignTarget::Member { target, .. } => collect_expr_idents(target, out),
+            }
+            collect_expr_idents(value, out);
+        }
+        Stmt::Return(Some(e)) | Stmt::Expr(e) | Stmt::Throw(e) => collect_expr_idents(e, out),
+        Stmt::If { cond, then_branch, else_branch } => {
+            collect_expr_idents(cond, out);
+            for s in then_branch { collect_stmt_idents(s, out); }
+            if let Some(eb) = else_branch { for s in eb { collect_stmt_idents(s, out); } }
+        }
+        Stmt::While { cond, body } => {
+            collect_expr_idents(cond, out);
+            for s in body { collect_stmt_idents(s, out); }
+        }
+        Stmt::For { iterable, body, .. } => {
+            collect_expr_idents(iterable, out);
+            for s in body { collect_stmt_idents(s, out); }
+        }
+        Stmt::TryCatch { try_body, catch_body, .. } => {
+            for s in try_body { collect_stmt_idents(s, out); }
+            for s in catch_body { collect_stmt_idents(s, out); }
+        }
+        _ => {}
+    }
+}
+
+fn c_top_fn(
+    name: &str,
+    params: &[(String, Option<Expr>)],
+    body: &[Stmt],
+    lambdas: &mut String,
+    lambda_id: &mut usize,
+) -> String {
+    let safe_name = c_safe_ident(name);
+    // Check if function is purely numeric (ideal for hardware-register double fast-path!)
+    if is_pure_numeric_fn(name, params, body) {
+        let raw_params: Vec<String> = params.iter().map(|(p, _)| format!("double {}", c_safe_ident(p))).collect();
+        let sval_params: Vec<String> = params.iter().map(|(p, _)| format!("SVal {}", c_safe_ident(p))).collect();
+        let raw_call_args: Vec<String> = params.iter().map(|(p, _)| format!("{}.num", c_safe_ident(p))).collect();
+
+        let mut s = format!(
+            "static inline double __raw_{}({}) {{\n",
+            safe_name,
+            if raw_params.is_empty() {
+                "void".to_string()
+            } else {
+                raw_params.join(", ")
+            }
+        );
+        for st in body {
+            s.push_str(&c_raw_num_stmt(st, 1, name));
+        }
+        s.push_str("    return 0.0;\n}\n");
+        s.push_str(&format!(
+            "SVal {}({}) {{\n    return sv_num(__raw_{}({}));\n}}\n",
+            safe_name,
+            if sval_params.is_empty() {
+                "void".to_string()
+            } else {
