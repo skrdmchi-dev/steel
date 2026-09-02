@@ -3932,3 +3932,85 @@ fn human_c_expr(
                 BinaryOp::Neq if lt == InferredType::Str || rt == InferredType::Str => {
                     Some(format!("(strcmp({}, {}) != 0)", l, r))
                 }
+                BinaryOp::Add if lt == InferredType::Str || rt == InferredType::Str => None,
+                BinaryOp::Add => Some(format!("({} + {})", l, r)),
+                BinaryOp::Sub => Some(format!("({} - {})", l, r)),
+                BinaryOp::Mul => Some(format!("({} * {})", l, r)),
+                BinaryOp::Div => Some(format!("({} / {})", l, r)),
+                BinaryOp::Mod => Some(format!("fmod({}, {})", l, r)),
+                BinaryOp::Pow => Some(format!("pow({}, {})", l, r)),
+                BinaryOp::Eq => Some(format!("({} == {})", l, r)),
+                BinaryOp::Neq => Some(format!("({} != {})", l, r)),
+                BinaryOp::Lt => Some(format!("({} < {})", l, r)),
+                BinaryOp::Gt => Some(format!("({} > {})", l, r)),
+                BinaryOp::Lte => Some(format!("({} <= {})", l, r)),
+                BinaryOp::Gte => Some(format!("({} >= {})", l, r)),
+                BinaryOp::And => Some(format!("({} && {})", l, r)),
+                BinaryOp::Or => Some(format!("({} || {})", l, r)),
+                _ => None,
+            }
+        }
+        Expr::Ternary {
+            cond,
+            then_expr,
+            else_expr,
+        } => {
+            let c = human_c_expr(cond, env, fn_sigs)?;
+            let t = human_c_expr(then_expr, env, fn_sigs)?;
+            let e = human_c_expr(else_expr, env, fn_sigs)?;
+            Some(format!("({} ? {} : {})", c, t, e))
+        }
+        Expr::Call { callee, args } => {
+            if let Expr::Ident(name) = &**callee {
+                if fn_sigs.contains_key(name) {
+                    let mut a_strs = Vec::new();
+                    for a in args {
+                        a_strs.push(human_c_expr(a, env, fn_sigs)?);
+                    }
+                    return Some(format!("{}({})", name, a_strs.join(", ")));
+                }
+            }
+            None
+        }
+        _ => None,
+    }
+}
+
+fn c_safe_ident(name: &str) -> String {
+    match name {
+        "this" | "self" => "__st_this".to_string(),
+        "auto" | "char" | "const" | "default" | "do" | "double" | "enum" | "extern"
+        | "float" | "goto" | "int" | "long" | "register" | "short" | "signed" | "sizeof"
+        | "static" | "struct" | "switch" | "typedef" | "union" | "unsigned" | "void"
+        | "volatile" | "class" | "delete" | "namespace" | "new" | "operator" | "private"
+        | "protected" | "public" | "template" | "typename" | "virtual" => {
+            format!("_st_{}", name)
+        }
+        _ => name.to_string(),
+    }
+}
+
+thread_local! {
+    static C_TOP_FNS: std::cell::RefCell<std::collections::HashSet<String>> = std::cell::RefCell::new(std::collections::HashSet::new());
+    static C_CUR_LOCALS: std::cell::RefCell<std::collections::HashSet<String>> = std::cell::RefCell::new(std::collections::HashSet::new());
+}
+
+fn c_fn_wrapper(safe_name: &str, arity: usize) -> String {
+    let args: Vec<String> = (0..arity)
+        .map(|i| format!("(_st_argc > {} ? _st_argv[{}] : sv_null())", i, i))
+        .collect();
+    format!(
+        "SVal __st_fn_{}(SVal __st_this, int _st_argc, SVal* _st_argv) {{ (void)__st_this; (void)_st_argc; (void)_st_argv; return {}({}); }}\n\n",
+        safe_name,
+        safe_name,
+        args.join(", ")
+    )
+}
+
+fn collect_expr_idents(expr: &Expr, out: &mut std::collections::HashSet<String>) {
+    match expr {
+        Expr::Ident(n) => { out.insert(c_safe_ident(n)); }
+        Expr::Array(xs) => for x in xs { collect_expr_idents(x, out); },
+        Expr::Map(es) => for (_, v) in es { collect_expr_idents(v, out); },
+        Expr::Unary { expr, .. } | Expr::Spread(expr) => collect_expr_idents(expr, out),
+        Expr::Binary { left, right, .. } => { collect_expr_idents(left, out); collect_expr_idents(right, out); }
