@@ -4096,3 +4096,85 @@ fn c_top_fn(
             if sval_params.is_empty() {
                 "void".to_string()
             } else {
+                sval_params.join(", ")
+            },
+            safe_name,
+            raw_call_args.join(", ")
+        ));
+        s.push_str(&c_fn_wrapper(&safe_name, params.len()));
+        return s;
+    }
+
+    let mut declared = std::collections::HashSet::new();
+    let sig: Vec<String> = params
+        .iter()
+        .map(|(p, _)| {
+            let sp = c_safe_ident(p);
+            declared.insert(sp.clone());
+            format!("SVal {}", sp)
+        })
+        .collect();
+    C_CUR_LOCALS.with(|l| *l.borrow_mut() = declared.clone());
+    let mut s = format!(
+        "SVal {}({}) {{\n",
+        safe_name,
+        if sig.is_empty() {
+            "void".to_string()
+        } else {
+            sig.join(", ")
+        }
+    );
+    for st in body {
+        s.push_str(&c_stmt(st, 1, &mut declared, lambdas, lambda_id));
+        C_CUR_LOCALS.with(|l| *l.borrow_mut() = declared.clone());
+    }
+    C_CUR_LOCALS.with(|l| l.borrow_mut().clear());
+    if !matches!(body.last(), Some(Stmt::Return(_))) {
+        s.push_str("    return sv_null();\n");
+    }
+    s.push_str("}\n");
+    s.push_str(&c_fn_wrapper(&safe_name, params.len()));
+    s
+}
+
+fn is_pure_numeric_fn(fn_name: &str, params: &[(String, Option<Expr>)], body: &[Stmt]) -> bool {
+    if params.is_empty() || body.is_empty() {
+        return false;
+    }
+    let mut locals: std::collections::HashSet<String> =
+        params.iter().map(|(p, _)| p.clone()).collect();
+    let mut has_return = false;
+    for st in body {
+        if !check_numeric_stmt(st, fn_name, &mut locals, &mut has_return) {
+            return false;
+        }
+    }
+    has_return
+}
+
+fn check_numeric_stmt(
+    stmt: &Stmt,
+    fn_name: &str,
+    locals: &mut std::collections::HashSet<String>,
+    has_return: &mut bool,
+) -> bool {
+    match stmt {
+        Stmt::Let { name, value, .. } => {
+            if check_numeric_expr(value, fn_name, locals) {
+                locals.insert(name.clone());
+                true
+            } else {
+                false
+            }
+        }
+        Stmt::Assign {
+            target: AssignTarget::Ident(name),
+            value,
+        } => locals.contains(name) && check_numeric_expr(value, fn_name, locals),
+        Stmt::Return(Some(e)) => {
+            *has_return = true;
+            check_numeric_expr(e, fn_name, locals)
+        }
+        Stmt::If {
+            cond,
+            then_branch,
