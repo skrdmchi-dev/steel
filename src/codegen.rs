@@ -4423,3 +4423,85 @@ fn c_num_expr(expr: &Expr, lambdas: &mut String, lambda_id: &mut usize) -> Strin
                 format!(
                     "({} + {})",
                     c_num_expr(left, lambdas, lambda_id),
+                    c_num_expr(right, lambdas, lambda_id)
+                )
+            }
+            BinaryOp::Sub => format!(
+                "({} - {})",
+                c_num_expr(left, lambdas, lambda_id),
+                c_num_expr(right, lambdas, lambda_id)
+            ),
+            BinaryOp::Mul => format!(
+                "({} * {})",
+                c_num_expr(left, lambdas, lambda_id),
+                c_num_expr(right, lambdas, lambda_id)
+            ),
+            BinaryOp::Div => format!(
+                "({} / {})",
+                c_num_expr(left, lambdas, lambda_id),
+                c_num_expr(right, lambdas, lambda_id)
+            ),
+            BinaryOp::Mod => format!(
+                "fmod({}, {})",
+                c_num_expr(left, lambdas, lambda_id),
+                c_num_expr(right, lambdas, lambda_id)
+            ),
+            BinaryOp::Pow => format!(
+                "pow({}, {})",
+                c_num_expr(left, lambdas, lambda_id),
+                c_num_expr(right, lambdas, lambda_id)
+            ),
+            _ => format!("({}).num", c_expr(expr, lambdas, lambda_id)),
+        },
+        _ => format!("({}).num", c_expr(expr, lambdas, lambda_id)),
+    }
+}
+
+fn self_might_be_string(expr: &Expr) -> bool {
+    match expr {
+        Expr::String(_) => true,
+        Expr::Call { callee, .. } => {
+            matches!(&**callee, Expr::Ident(n) if n == "str" || n == "upper" || n == "lower" || n == "join" || n == "trim")
+        }
+        Expr::Binary { left, op: BinaryOp::Add, right } => {
+            self_might_be_string(left) || self_might_be_string(right)
+        }
+        _ => false,
+    }
+}
+
+fn c_stmt(
+    stmt: &Stmt,
+    lvl: usize,
+    declared: &mut std::collections::HashSet<String>,
+    lambdas: &mut String,
+    lambda_id: &mut usize,
+) -> String {
+    let pad = indent(lvl);
+    match stmt {
+        Stmt::Import(p) => format!("{}/* import \"{}\" */\n", pad, escape_str(p)),
+        Stmt::ClassDecl {
+            name,
+            parent,
+            methods,
+        } => c_stmt(
+            &desugar_class(name, parent, methods),
+            lvl,
+            declared,
+            lambdas,
+            lambda_id,
+        ),
+        Stmt::TryCatch {
+            try_body,
+            err_var,
+            catch_body,
+        } => {
+            let mut s = format!("{}if (setjmp(__steel_jmp[__steel_try_sp++]) == 0) {{\n", pad);
+            for st in try_body {
+                s.push_str(&c_stmt(st, lvl + 1, declared, lambdas, lambda_id));
+            }
+            s.push_str(&format!("{}    __steel_try_sp--;\n{}}} else {{\n{}    SVal {} = __steel_err;\n", pad, pad, pad, c_safe_ident(err_var)));
+            declared.insert(c_safe_ident(err_var));
+            for st in catch_body {
+                s.push_str(&c_stmt(st, lvl + 1, declared, lambdas, lambda_id));
+            }
