@@ -4178,3 +4178,85 @@ fn check_numeric_stmt(
         Stmt::If {
             cond,
             then_branch,
+            else_branch,
+        } => {
+            if !check_numeric_expr(cond, fn_name, locals) {
+                return false;
+            }
+            for s in then_branch {
+                if !check_numeric_stmt(s, fn_name, locals, has_return) {
+                    return false;
+                }
+            }
+            if let Some(eb) = else_branch {
+                for s in eb {
+                    if !check_numeric_stmt(s, fn_name, locals, has_return) {
+                        return false;
+                    }
+                }
+            }
+            true
+        }
+        Stmt::While { cond, body } => {
+            if !check_numeric_expr(cond, fn_name, locals) {
+                return false;
+            }
+            for s in body {
+                if !check_numeric_stmt(s, fn_name, locals, has_return) {
+                    return false;
+                }
+            }
+            true
+        }
+        _ => false,
+    }
+}
+
+fn check_numeric_expr(
+    expr: &Expr,
+    fn_name: &str,
+    locals: &std::collections::HashSet<String>,
+) -> bool {
+    match expr {
+        Expr::Number(_) => true,
+        Expr::Ident(n) => locals.contains(n),
+        Expr::Unary {
+            op: UnaryOp::Neg,
+            expr: inner,
+        } => check_numeric_expr(inner, fn_name, locals),
+        Expr::Binary { left, op, right } => {
+            matches!(
+                op,
+                BinaryOp::Add
+                    | BinaryOp::Sub
+                    | BinaryOp::Mul
+                    | BinaryOp::Div
+                    | BinaryOp::Mod
+                    | BinaryOp::Pow
+                    | BinaryOp::Lt
+                    | BinaryOp::Gt
+                    | BinaryOp::Lte
+                    | BinaryOp::Gte
+                    | BinaryOp::Eq
+                    | BinaryOp::Neq
+                    | BinaryOp::And
+                    | BinaryOp::Or
+            ) && check_numeric_expr(left, fn_name, locals)
+                && check_numeric_expr(right, fn_name, locals)
+        }
+        Expr::Call { callee, args } => {
+            if let Expr::Ident(c) = &**callee {
+                if c == fn_name
+                    || matches!(
+                        c.as_str(),
+                        "sqrt" | "sin" | "cos" | "floor" | "ceil" | "round" | "abs"
+                    )
+                {
+                    return args.iter().all(|a| check_numeric_expr(a, fn_name, locals));
+                }
+            }
+            false
+        }
+        _ => false,
+    }
+}
