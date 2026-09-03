@@ -4260,3 +4260,85 @@ fn check_numeric_expr(
         _ => false,
     }
 }
+
+fn c_raw_num_stmt(stmt: &Stmt, lvl: usize, fn_name: &str) -> String {
+    let pad = indent(lvl);
+    match stmt {
+        Stmt::Let { name, value, .. } => {
+            format!("{}double {} = {};\n", pad, name, c_raw_num_expr(value, fn_name))
+        }
+        Stmt::Assign {
+            target: AssignTarget::Ident(name),
+            value,
+        } => format!("{}{} = {};\n", pad, name, c_raw_num_expr(value, fn_name)),
+        Stmt::Return(Some(e)) => format!("{}return {};\n", pad, c_raw_num_expr(e, fn_name)),
+        Stmt::If {
+            cond,
+            then_branch,
+            else_branch,
+        } => {
+            let mut s = format!("{}if ({}) {{\n", pad, c_raw_num_expr(cond, fn_name));
+            for st in then_branch {
+                s.push_str(&c_raw_num_stmt(st, lvl + 1, fn_name));
+            }
+            if let Some(eb) = else_branch {
+                s.push_str(&format!("{}}} else {{\n", pad));
+                for st in eb {
+                    s.push_str(&c_raw_num_stmt(st, lvl + 1, fn_name));
+                }
+            }
+            s.push_str(&format!("{}}}\n", pad));
+            s
+        }
+        Stmt::While { cond, body } => {
+            let mut s = format!("{}while ({}) {{\n", pad, c_raw_num_expr(cond, fn_name));
+            for st in body {
+                s.push_str(&c_raw_num_stmt(st, lvl + 1, fn_name));
+            }
+            s.push_str(&format!("{}}}\n", pad));
+            s
+        }
+        _ => String::new(),
+    }
+}
+
+fn c_raw_num_expr(expr: &Expr, fn_name: &str) -> String {
+    match expr {
+        Expr::Number(n) => fmt_num(*n),
+        Expr::Ident(n) => n.clone(),
+        Expr::Unary {
+            op: UnaryOp::Neg,
+            expr: inner,
+        } => format!("(-{})", c_raw_num_expr(inner, fn_name)),
+        Expr::Binary { left, op, right } => {
+            let l = c_raw_num_expr(left, fn_name);
+            let r = c_raw_num_expr(right, fn_name);
+            match op {
+                BinaryOp::Add => format!("({} + {})", l, r),
+                BinaryOp::Sub => format!("({} - {})", l, r),
+                BinaryOp::Mul => format!("({} * {})", l, r),
+                BinaryOp::Div => format!("({} / {})", l, r),
+                BinaryOp::Mod => format!("fmod({}, {})", l, r),
+                BinaryOp::Pow => format!("pow({}, {})", l, r),
+                BinaryOp::Lt => format!("({} < {})", l, r),
+                BinaryOp::Gt => format!("({} > {})", l, r),
+                BinaryOp::Lte => format!("({} <= {})", l, r),
+                BinaryOp::Gte => format!("({} >= {})", l, r),
+                BinaryOp::Eq => format!("({} == {})", l, r),
+                BinaryOp::Neq => format!("({} != {})", l, r),
+                BinaryOp::And => format!("({} && {})", l, r),
+                BinaryOp::Or => format!("({} || {})", l, r),
+                _ => format!("({} + {})", l, r),
+            }
+        }
+        Expr::Call { callee, args } => {
+            let arg_strs: Vec<String> = args.iter().map(|a| c_raw_num_expr(a, fn_name)).collect();
+            if let Expr::Ident(c) = &**callee {
+                if c == fn_name {
+                    return format!("__raw_{}({})", fn_name, arg_strs.join(", "));
+                }
+                if c == "abs" {
+                    return format!("fabs({})", arg_strs.join(", "));
+                }
+                return format!("{}({})", c, arg_strs.join(", "));
+            }
