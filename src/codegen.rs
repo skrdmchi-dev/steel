@@ -4342,3 +4342,84 @@ fn c_raw_num_expr(expr: &Expr, fn_name: &str) -> String {
                 }
                 return format!("{}({})", c, arg_strs.join(", "));
             }
+            "0.0".to_string()
+        }
+        _ => "0.0".to_string(),
+    }
+}
+
+/// Emits an unboxed C boolean condition (`bool`) directly when possible, avoiding
+/// redundant `sv_truthy(sv_bool(...))` boxing/unboxing layers!
+fn c_cond_expr(expr: &Expr, lambdas: &mut String, lambda_id: &mut usize) -> String {
+    match expr {
+        Expr::Binary { left, op, right } => match op {
+            BinaryOp::Lt => format!(
+                "({} < {})",
+                c_num_expr(left, lambdas, lambda_id),
+                c_num_expr(right, lambdas, lambda_id)
+            ),
+            BinaryOp::Gt => format!(
+                "({} > {})",
+                c_num_expr(left, lambdas, lambda_id),
+                c_num_expr(right, lambdas, lambda_id)
+            ),
+            BinaryOp::Lte => format!(
+                "({} <= {})",
+                c_num_expr(left, lambdas, lambda_id),
+                c_num_expr(right, lambdas, lambda_id)
+            ),
+            BinaryOp::Gte => format!(
+                "({} >= {})",
+                c_num_expr(left, lambdas, lambda_id),
+                c_num_expr(right, lambdas, lambda_id)
+            ),
+            BinaryOp::Eq => format!(
+                "sv_eq({}, {})",
+                c_expr(left, lambdas, lambda_id),
+                c_expr(right, lambdas, lambda_id)
+            ),
+            BinaryOp::Neq => format!(
+                "(!sv_eq({}, {}))",
+                c_expr(left, lambdas, lambda_id),
+                c_expr(right, lambdas, lambda_id)
+            ),
+            BinaryOp::And => format!(
+                "({} && {})",
+                c_cond_expr(left, lambdas, lambda_id),
+                c_cond_expr(right, lambdas, lambda_id)
+            ),
+            BinaryOp::Or => format!(
+                "({} || {})",
+                c_cond_expr(left, lambdas, lambda_id),
+                c_cond_expr(right, lambdas, lambda_id)
+            ),
+            _ => format!("sv_truthy({})", c_expr(expr, lambdas, lambda_id)),
+        },
+        Expr::Unary {
+            op: UnaryOp::Not,
+            expr: inner,
+        } => format!("(!{})", c_cond_expr(inner, lambdas, lambda_id)),
+        Expr::Bool(b) => b.to_string(),
+        _ => format!("sv_truthy({})", c_expr(expr, lambdas, lambda_id)),
+    }
+}
+
+/// Emits an unboxed C `double` expression directly for arithmetic chains, eliminating
+/// intermediate `sv_num(...)` struct wrapping/unwrapping inside math formulas!
+fn c_num_expr(expr: &Expr, lambdas: &mut String, lambda_id: &mut usize) -> String {
+    match expr {
+        Expr::Number(n) => fmt_num(*n),
+        Expr::Ident(name) => match name.as_str() {
+            "PI" => "3.14159265358979323846".to_string(),
+            "E" => "2.71828182845904523536".to_string(),
+            _ => format!("{}.num", c_safe_ident(name)),
+        },
+        Expr::Unary {
+            op: UnaryOp::Neg,
+            expr: inner,
+        } => format!("(-{})", c_num_expr(inner, lambdas, lambda_id)),
+        Expr::Binary { left, op, right } => match op {
+            BinaryOp::Add if !self_might_be_string(left) && !self_might_be_string(right) => {
+                format!(
+                    "({} + {})",
+                    c_num_expr(left, lambdas, lambda_id),
