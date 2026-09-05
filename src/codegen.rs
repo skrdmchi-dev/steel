@@ -4669,3 +4669,85 @@ fn c_stmt(
 fn c_expr(expr: &Expr, lambdas: &mut String, lambda_id: &mut usize) -> String {
     match expr {
         Expr::Number(n) => format!("sv_num({})", fmt_num(*n)),
+        Expr::String(s) => format!("sv_str(\"{}\")", escape_str(s)),
+        Expr::Bool(b) => format!("sv_bool({})", b),
+        Expr::Null => "sv_null()".to_string(),
+        Expr::Ident(name) => match name.as_str() {
+            "PI" => "sv_num(3.141592653589793)".to_string(),
+            "E" => "sv_num(2.718281828459045)".to_string(),
+            _ => {
+                let sn = c_safe_ident(name);
+                let is_top = C_TOP_FNS.with(|f| f.borrow().contains(name));
+                let is_local = C_CUR_LOCALS.with(|l| l.borrow().contains(&sn));
+                if is_top && !is_local {
+                    format!("sv_fn(__st_fn_{})", sn)
+                } else {
+                    sn
+                }
+            }
+        },
+        Expr::Array(items) => {
+            if items.is_empty() {
+                "sv_arr_new(0, NULL)".to_string()
+            } else {
+                let inner: Vec<String> =
+                    items.iter().map(|e| c_expr(e, lambdas, lambda_id)).collect();
+                format!(
+                    "sv_arr_new({}, (SVal[]){{{}}})",
+                    items.len(),
+                    inner.join(", ")
+                )
+            }
+        }
+        Expr::Map(entries) => {
+            if entries.is_empty() {
+                "sv_map_new()".to_string()
+            } else {
+                let mut s = String::from("({ SVal __m = sv_map_new(); ");
+                for (k, v) in entries {
+                    s.push_str(&format!(
+                        "sv_map_set(__m, \"{}\", {}); ",
+                        escape_str(k),
+                        c_expr(v, lambdas, lambda_id)
+                    ));
+                }
+                s.push_str("__m; })");
+                s
+            }
+        }
+        Expr::New { class_name, args } => {
+            let arg_strs: Vec<String> =
+                args.iter().map(|a| c_expr(a, lambdas, lambda_id)).collect();
+            format!("{}({})", class_name, arg_strs.join(", "))
+        }
+        Expr::Ternary {
+            cond,
+            then_expr,
+            else_expr,
+        } => format!(
+            "({} ? ({}) : ({}))",
+            c_cond_expr(cond, lambdas, lambda_id),
+            c_expr(then_expr, lambdas, lambda_id),
+            c_expr(else_expr, lambdas, lambda_id)
+        ),
+        Expr::Binary { left, op, right } => match op {
+            BinaryOp::Add => format!(
+                "sv_add({}, {})",
+                c_expr(left, lambdas, lambda_id),
+                c_expr(right, lambdas, lambda_id)
+            ),
+            BinaryOp::Sub | BinaryOp::Mul | BinaryOp::Div | BinaryOp::Mod | BinaryOp::Pow => {
+                format!("sv_num({})", c_num_expr(expr, lambdas, lambda_id))
+            }
+            BinaryOp::BitAnd => format!(
+                "sv_num((long){} & (long){})",
+                c_num_expr(left, lambdas, lambda_id),
+                c_num_expr(right, lambdas, lambda_id)
+            ),
+            BinaryOp::BitOr => format!(
+                "sv_num((long){} | (long){})",
+                c_num_expr(left, lambdas, lambda_id),
+                c_num_expr(right, lambdas, lambda_id)
+            ),
+            BinaryOp::BitXor => format!(
+                "sv_num((long){} ^ (long){})",
