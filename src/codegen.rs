@@ -4587,3 +4587,85 @@ fn c_stmt(
                 c_cond_expr(cond, lambdas, lambda_id)
             );
             for st in body {
+                s.push_str(&c_stmt(st, lvl + 1, declared, lambdas, lambda_id));
+            }
+            s.push_str(&format!("{}}}\n", pad));
+            s
+        }
+        Stmt::For {
+            var,
+            iterable,
+            body,
+        } => {
+            declared.insert(var.clone());
+            // Zero-allocation fast path for `for i in start..end`!
+            if let Expr::Range { start, end } = iterable {
+                let idx_var = format!("__i_{}", var);
+                let end_var = format!("__end_{}", var);
+                let mut s = format!(
+                    "{}for (int {} = (int)({}), {} = (int)({}); {} < {}; {}++) {{\n",
+                    pad,
+                    idx_var,
+                    c_num_expr(start, lambdas, lambda_id),
+                    end_var,
+                    c_num_expr(end, lambdas, lambda_id),
+                    idx_var,
+                    end_var,
+                    idx_var
+                );
+                s.push_str(&format!("{}    SVal {} = sv_num({});\n", pad, var, idx_var));
+                for st in body {
+                    s.push_str(&c_stmt(st, lvl + 1, declared, lambdas, lambda_id));
+                }
+                s.push_str(&format!("{}}}\n", pad));
+                return s;
+            }
+
+            let it_var = format!("__it_{}", var);
+            let idx_var = format!("__i_{}", var);
+            let mut s = format!(
+                "{}SVal {} = {};\n",
+                pad,
+                it_var,
+                c_expr(iterable, lambdas, lambda_id)
+            );
+            s.push_str(&format!(
+                "{}for (int {} = 0; {} < {}.arr->len; {}++) {{\n",
+                pad, idx_var, idx_var, it_var, idx_var
+            ));
+            s.push_str(&format!(
+                "{}    SVal {} = {}.arr->data[{}];\n",
+                pad, var, it_var, idx_var
+            ));
+            for st in body {
+                s.push_str(&c_stmt(st, lvl + 1, declared, lambdas, lambda_id));
+            }
+            s.push_str(&format!("{}}}\n", pad));
+            s
+        }
+        Stmt::Break => format!("{}break;\n", pad),
+        Stmt::Continue => format!("{}continue;\n", pad),
+        Stmt::Expr(e) => {
+            if let Expr::Call { callee, args } = e {
+                if let Expr::Ident(name) = &**callee {
+                    if name == "print" || name == "println" {
+                        let mut s = pad.clone();
+                        for (i, a) in args.iter().enumerate() {
+                            if i > 0 {
+                                s.push_str("printf(\" \"); ");
+                            }
+                            s.push_str(&format!("sv_print_one({}); ", c_expr(a, lambdas, lambda_id)));
+                        }
+                        s.push_str("printf(\"\\n\");\n");
+                        return s;
+                    }
+                }
+            }
+            format!("{}{};\n", pad, c_expr(e, lambdas, lambda_id))
+        }
+    }
+}
+
+fn c_expr(expr: &Expr, lambdas: &mut String, lambda_id: &mut usize) -> String {
+    match expr {
+        Expr::Number(n) => format!("sv_num({})", fmt_num(*n)),
