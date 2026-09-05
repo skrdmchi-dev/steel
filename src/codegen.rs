@@ -4505,3 +4505,85 @@ fn c_stmt(
             for st in catch_body {
                 s.push_str(&c_stmt(st, lvl + 1, declared, lambdas, lambda_id));
             }
+            s.push_str(&format!("{}}}\n", pad));
+            s
+        }
+        Stmt::Throw(e) => format!(
+            "{}{{ __steel_err = {}; if (__steel_try_sp > 0) longjmp(__steel_jmp[--__steel_try_sp], 1); fprintf(stderr, \"Uncaught error: %s\\n\", sv_str_cast(__steel_err).str); exit(1); }}\n",
+            pad,
+            c_expr(e, lambdas, lambda_id)
+        ),
+        Stmt::Test { name, body } => {
+            let mut s = format!("{}/* test \"{}\" */ {{\n", pad, escape_str(name));
+            for st in body {
+                s.push_str(&c_stmt(st, lvl + 1, declared, lambdas, lambda_id));
+            }
+            s.push_str(&format!("{}}}\n", pad));
+            s
+        }
+        Stmt::Defer(inner) => c_stmt(inner, lvl, declared, lambdas, lambda_id),
+        Stmt::Let { name, value, .. } => {
+            let cname = c_safe_ident(name);
+            declared.insert(cname.clone());
+            format!(
+                "{}SVal {} = {};\n",
+                pad,
+                cname,
+                c_expr(value, lambdas, lambda_id)
+            )
+        }
+        Stmt::Assign { target, value } => match target {
+            AssignTarget::Ident(n) => {
+                let cname = c_safe_ident(n);
+                if !declared.contains(&cname) {
+                    declared.insert(cname.clone());
+                    format!("{}SVal {} = {};\n", pad, cname, c_expr(value, lambdas, lambda_id))
+                } else {
+                    format!("{}{} = {};\n", pad, cname, c_expr(value, lambdas, lambda_id))
+                }
+            }
+            AssignTarget::Index { target, index } => format!(
+                "{}sv_set({}, {}, {});\n",
+                pad,
+                c_expr(target, lambdas, lambda_id),
+                c_expr(index, lambdas, lambda_id),
+                c_expr(value, lambdas, lambda_id)
+            ),
+            AssignTarget::Member { target, field } => format!(
+                "{}sv_map_set({}, \"{}\", {});\n",
+                pad,
+                c_expr(target, lambdas, lambda_id),
+                escape_str(field),
+                c_expr(value, lambdas, lambda_id)
+            ),
+        },
+        Stmt::FnDecl { name, params, body } => c_top_fn(name, params, body, lambdas, lambda_id),
+        Stmt::Return(expr) => match expr {
+            Some(e) => format!("{}return {};\n", pad, c_expr(e, lambdas, lambda_id)),
+            None => format!("{}return sv_null();\n", pad),
+        },
+        Stmt::If {
+            cond,
+            then_branch,
+            else_branch,
+        } => {
+            let mut s = format!("{}if ({}) {{\n", pad, c_cond_expr(cond, lambdas, lambda_id));
+            for st in then_branch {
+                s.push_str(&c_stmt(st, lvl + 1, declared, lambdas, lambda_id));
+            }
+            if let Some(eb) = else_branch {
+                s.push_str(&format!("{}}} else {{\n", pad));
+                for st in eb {
+                    s.push_str(&c_stmt(st, lvl + 1, declared, lambdas, lambda_id));
+                }
+            }
+            s.push_str(&format!("{}}}\n", pad));
+            s
+        }
+        Stmt::While { cond, body } => {
+            let mut s = format!(
+                "{}while ({}) {{\n",
+                pad,
+                c_cond_expr(cond, lambdas, lambda_id)
+            );
+            for st in body {
