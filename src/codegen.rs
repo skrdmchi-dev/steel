@@ -4915,3 +4915,85 @@ fn c_expr(expr: &Expr, lambdas: &mut String, lambda_id: &mut usize) -> String {
                             c_expr(&args[0], lambdas, lambda_id),
                             c_expr(&args[1], lambdas, lambda_id)
                         )
+                    }
+                    "ends_with" if args.len() == 2 => {
+                        return format!(
+                            "sv_ends_with({}, {})",
+                            c_expr(&args[0], lambdas, lambda_id),
+                            c_expr(&args[1], lambdas, lambda_id)
+                        )
+                    }
+                    "split" if args.len() == 2 => {
+                        return format!(
+                            "sv_split({}, {})",
+                            c_expr(&args[0], lambdas, lambda_id),
+                            c_expr(&args[1], lambdas, lambda_id)
+                        )
+                    }
+                    "join" if args.len() == 2 => {
+                        return format!(
+                            "sv_join({}, {})",
+                            c_expr(&args[0], lambdas, lambda_id),
+                            c_expr(&args[1], lambdas, lambda_id)
+                        )
+                    }
+                    "replace" if args.len() == 3 => {
+                        return format!(
+                            "sv_replace({}, {}, {})",
+                            c_expr(&args[0], lambdas, lambda_id),
+                            c_expr(&args[1], lambdas, lambda_id),
+                            c_expr(&args[2], lambdas, lambda_id)
+                        )
+                    }
+                    "reverse" if args.len() == 1 => {
+                        return format!("sv_reverse({})", c_expr(&args[0], lambdas, lambda_id))
+                    }
+                    "keys" if args.len() == 1 => {
+                        return format!("sv_keys({})", c_expr(&args[0], lambdas, lambda_id))
+                    }
+                    "values" if args.len() == 1 => {
+                        return format!("sv_values({})", c_expr(&args[0], lambdas, lambda_id))
+                    }
+                    "slice" if args.len() >= 2 => {
+                        let e = args.get(2).map(|a| c_expr(a, lambdas, lambda_id)).unwrap_or_else(|| "sv_null()".to_string());
+                        return format!("sv_slice({}, {}, {})", c_expr(&args[0], lambdas, lambda_id), c_expr(&args[1], lambdas, lambda_id), e);
+                    }
+                    "sort" if args.len() == 1 => {
+                        return format!("sv_sort({})", c_expr(&args[0], lambdas, lambda_id))
+                    }
+                    "int" if args.len() == 1 => {
+                        return format!("sv_int_cast({})", c_expr(&args[0], lambdas, lambda_id))
+                    }
+                    "bool" if args.len() == 1 => {
+                        return format!("sv_bool(sv_truthy({}))", c_expr(&args[0], lambdas, lambda_id))
+                    }
+                    "type" if args.len() == 1 => {
+                        return format!("sv_type({})", c_expr(&args[0], lambdas, lambda_id))
+                    }
+                    "assert" if !args.is_empty() => {
+                        let m = args.get(1).map(|a| c_expr(a, lambdas, lambda_id)).unwrap_or_else(|| "sv_str(\"Assertion failed\")".to_string());
+                        return format!("sv_assert({}, {})", c_expr(&args[0], lambdas, lambda_id), m);
+                    }
+                    "has_key" if args.len() == 2 => {
+                        return format!("sv_has_key({}, {})", c_expr(&args[0], lambdas, lambda_id), c_expr(&args[1], lambdas, lambda_id))
+                    }
+                    "delete_key" if args.len() == 2 => {
+                        return format!("sv_delete_key({}, {})", c_expr(&args[0], lambdas, lambda_id), c_expr(&args[1], lambdas, lambda_id))
+                    }
+                    "concat" if args.len() == 2 => {
+                        return format!("sv_concat({}, {})", c_expr(&args[0], lambdas, lambda_id), c_expr(&args[1], lambdas, lambda_id))
+                    }
+                    "index_of" if args.len() == 2 => {
+                        return format!("sv_index_of({}, {})", c_expr(&args[0], lambdas, lambda_id), c_expr(&args[1], lambdas, lambda_id))
+                    }
+                    "repeat" if args.len() == 2 => {
+                        return format!("sv_repeat({}, {})", c_expr(&args[0], lambdas, lambda_id), c_expr(&args[1], lambdas, lambda_id))
+                    }
+                    "pad_start" if args.len() >= 2 => {
+                        let ch = args.get(2).map(|a| c_expr(a, lambdas, lambda_id)).unwrap_or_else(|| "sv_str(\" \")".to_string());
+                        return format!("sv_pad_start({}, {}, {})", c_expr(&args[0], lambdas, lambda_id), c_expr(&args[1], lambdas, lambda_id), ch);
+                    }
+                    "pad_end" if args.len() >= 2 => {
+                        let ch = args.get(2).map(|a| c_expr(a, lambdas, lambda_id)).unwrap_or_else(|| "sv_str(\" \")".to_string());
+                        return format!("sv_pad_end({}, {}, {})", c_expr(&args[0], lambdas, lambda_id), c_expr(&args[1], lambdas, lambda_id), ch);
+                    }
