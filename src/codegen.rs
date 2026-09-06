@@ -4751,3 +4751,85 @@ fn c_expr(expr: &Expr, lambdas: &mut String, lambda_id: &mut usize) -> String {
             ),
             BinaryOp::BitXor => format!(
                 "sv_num((long){} ^ (long){})",
+                c_num_expr(left, lambdas, lambda_id),
+                c_num_expr(right, lambdas, lambda_id)
+            ),
+            BinaryOp::Shl => format!(
+                "sv_num((long){} << (long){})",
+                c_num_expr(left, lambdas, lambda_id),
+                c_num_expr(right, lambdas, lambda_id)
+            ),
+            BinaryOp::Shr => format!(
+                "sv_num((long){} >> (long){})",
+                c_num_expr(left, lambdas, lambda_id),
+                c_num_expr(right, lambdas, lambda_id)
+            ),
+            BinaryOp::NullCoalesce => {
+                let l = c_expr(left, lambdas, lambda_id);
+                let r = c_expr(right, lambdas, lambda_id);
+                format!("(({}).type != ST_NULL ? ({}) : ({}))", l, l, r)
+            }
+            BinaryOp::Eq
+            | BinaryOp::Neq
+            | BinaryOp::Lt
+            | BinaryOp::Gt
+            | BinaryOp::Lte
+            | BinaryOp::Gte
+            | BinaryOp::And
+            | BinaryOp::Or => format!("sv_bool({})", c_cond_expr(expr, lambdas, lambda_id)),
+        },
+        Expr::Unary { op, expr: inner } => match op {
+            UnaryOp::Neg => format!("sv_num(-{})", c_num_expr(inner, lambdas, lambda_id)),
+            UnaryOp::Not => format!("sv_bool(!{})", c_cond_expr(inner, lambdas, lambda_id)),
+            UnaryOp::BitNot => format!("sv_num(~(long){})", c_num_expr(inner, lambdas, lambda_id)),
+        },
+        Expr::Call { callee, args } => {
+            if let Expr::Ident(name) = &**callee {
+                match name.as_str() {
+                    "str" => {
+                        return format!(
+                            "sv_str_cast({})",
+                            args.first()
+                                .map(|a| c_expr(a, lambdas, lambda_id))
+                                .unwrap_or_else(|| "sv_null()".to_string())
+                        )
+                    }
+                    "len" => {
+                        return format!(
+                            "sv_len({})",
+                            args.first()
+                                .map(|a| c_expr(a, lambdas, lambda_id))
+                                .unwrap_or_else(|| "sv_null()".to_string())
+                        )
+                    }
+                    "num" if args.len() == 1 => {
+                        return format!("sv_num_cast({})", c_expr(&args[0], lambdas, lambda_id))
+                    }
+                    "push" if args.len() == 2 => {
+                        return format!(
+                            "sv_push({}, {})",
+                            c_expr(&args[0], lambdas, lambda_id),
+                            c_expr(&args[1], lambdas, lambda_id)
+                        )
+                    }
+                    "pop" if args.len() == 1 => {
+                        return format!("sv_pop({})", c_expr(&args[0], lambdas, lambda_id))
+                    }
+                    "map" if args.len() == 2 => {
+                        return format!(
+                            "sv_map_hof({}, {})",
+                            c_expr(&args[0], lambdas, lambda_id),
+                            c_expr(&args[1], lambdas, lambda_id)
+                        )
+                    }
+                    "filter" if args.len() == 2 => {
+                        return format!(
+                            "sv_filter_hof({}, {})",
+                            c_expr(&args[0], lambdas, lambda_id),
+                            c_expr(&args[1], lambdas, lambda_id)
+                        )
+                    }
+                    "reduce" if args.len() >= 2 => {
+                        let init = args
+                            .get(2)
+                            .map(|a| c_expr(a, lambdas, lambda_id))
