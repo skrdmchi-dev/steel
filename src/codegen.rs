@@ -4833,3 +4833,85 @@ fn c_expr(expr: &Expr, lambdas: &mut String, lambda_id: &mut usize) -> String {
                         let init = args
                             .get(2)
                             .map(|a| c_expr(a, lambdas, lambda_id))
+                            .unwrap_or_else(|| "sv_num(0)".to_string());
+                        return format!(
+                            "sv_reduce_hof({}, {}, {})",
+                            c_expr(&args[0], lambdas, lambda_id),
+                            c_expr(&args[1], lambdas, lambda_id),
+                            init
+                        );
+                    }
+                    "sqrt" | "sin" | "cos" | "tan" | "floor" | "ceil" | "round" | "fabs"
+                        if args.len() == 1 =>
+                    {
+                        return format!(
+                            "sv_num({}({}))",
+                            name,
+                            c_num_expr(&args[0], lambdas, lambda_id)
+                        )
+                    }
+                    "pow" if args.len() == 2 => {
+                        return format!(
+                            "sv_num(pow({}, {}))",
+                            c_num_expr(&args[0], lambdas, lambda_id),
+                            c_num_expr(&args[1], lambdas, lambda_id)
+                        )
+                    }
+                    "min" if args.len() == 2 => {
+                        return format!(
+                            "sv_num(fmin({}, {}))",
+                            c_num_expr(&args[0], lambdas, lambda_id),
+                            c_num_expr(&args[1], lambdas, lambda_id)
+                        )
+                    }
+                    "max" if args.len() == 2 => {
+                        return format!(
+                            "sv_num(fmax({}, {}))",
+                            c_num_expr(&args[0], lambdas, lambda_id),
+                            c_num_expr(&args[1], lambdas, lambda_id)
+                        )
+                    }
+                    "abs" if args.len() == 1 => {
+                        return format!(
+                            "sv_num(fabs({}))",
+                            c_num_expr(&args[0], lambdas, lambda_id)
+                        )
+                    }
+                    "read_file" if args.len() == 1 => {
+                        return format!("sv_read_file({})", c_expr(&args[0], lambdas, lambda_id))
+                    }
+                    "write_file" if args.len() == 2 => {
+                        return format!(
+                            "sv_write_file({}, {})",
+                            c_expr(&args[0], lambdas, lambda_id),
+                            c_expr(&args[1], lambdas, lambda_id)
+                        )
+                    }
+                    "file_exists" if args.len() == 1 => {
+                        return format!("sv_file_exists({})", c_expr(&args[0], lambdas, lambda_id))
+                    }
+                    "env" if args.len() == 1 => {
+                        return format!("sv_env({})", c_expr(&args[0], lambdas, lambda_id))
+                    }
+                    "upper" if args.len() == 1 => {
+                        return format!("sv_upper({})", c_expr(&args[0], lambdas, lambda_id))
+                    }
+                    "lower" if args.len() == 1 => {
+                        return format!("sv_lower({})", c_expr(&args[0], lambdas, lambda_id))
+                    }
+                    "trim" if args.len() == 1 => {
+                        return format!("sv_trim({})", c_expr(&args[0], lambdas, lambda_id))
+                    }
+                    "contains" if args.len() == 2 => {
+                        return format!(
+                            "sv_contains({}, {})",
+                            c_expr(&args[0], lambdas, lambda_id),
+                            c_expr(&args[1], lambdas, lambda_id)
+                        )
+                    }
+                    "starts_with" if args.len() == 2 => {
+                        return format!(
+                            "sv_starts_with({}, {})",
+                            c_expr(&args[0], lambdas, lambda_id),
+                            c_expr(&args[1], lambdas, lambda_id)
+                        )
