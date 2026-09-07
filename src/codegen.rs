@@ -5161,3 +5161,85 @@ fn c_expr(expr: &Expr, lambdas: &mut String, lambda_id: &mut usize) -> String {
                     .collect()
             });
             captures.sort();
+            let mut fn_code = format!(
+                "static SVal {}(SVal __st_this, int _st_argc, SVal* _st_argv) {{\n    (void)__st_this;\n",
+                fn_name
+            );
+            for cap in &captures {
+                decl.insert(cap.clone());
+                fn_code.push_str(&format!("    SVal {} = sv_map_get(__st_this, \"{}\");\n", cap, cap));
+            }
+            for (i, (p, def)) in params.iter().enumerate() {
+                let sp = c_safe_ident(p);
+                decl.insert(sp.clone());
+                let fallback = def
+                    .as_ref()
+                    .map(|d| c_expr(d, lambdas, lambda_id))
+                    .unwrap_or_else(|| "sv_null()".to_string());
+                fn_code.push_str(&format!(
+                    "    SVal {} = (_st_argc > {}) ? _st_argv[{}] : {};\n",
+                    sp, i, i, fallback
+                ));
+            }
+            let prev_locals = C_CUR_LOCALS.with(|l| l.borrow().clone());
+            C_CUR_LOCALS.with(|l| *l.borrow_mut() = decl.clone());
+            for st in body {
+                fn_code.push_str(&c_stmt(st, 1, &mut decl, lambdas, lambda_id));
+            }
+            C_CUR_LOCALS.with(|l| *l.borrow_mut() = prev_locals);
+            if !matches!(body.last(), Some(Stmt::Return(_))) {
+                fn_code.push_str("    return sv_null();\n");
+            }
+            fn_code.push_str("}\n\n");
+            lambdas.push_str(&fn_code);
+            if captures.is_empty() {
+                format!("sv_fn({})", fn_name)
+            } else {
+                let cap_keys: Vec<String> = captures.iter().map(|c| format!("\"{}\"", c)).collect();
+                let cap_vals: Vec<String> = captures.clone();
+                format!(
+                    "sv_closure({}, {}, (const char*[]){{{}}}, (SVal[]){{{}}})",
+                    fn_name,
+                    captures.len(),
+                    cap_keys.join(", "),
+                    cap_vals.join(", ")
+                )
+            }
+        }
+        Expr::Range { start, end } => format!(
+            "sv_range({}, {})",
+            c_expr(start, lambdas, lambda_id),
+            c_expr(end, lambdas, lambda_id)
+        ),
+        Expr::Spread(inner) => c_expr(inner, lambdas, lambda_id),
+    }
+}
+
+// 6. GO TARGET (On-Demand Minimal Runtime + Unboxed Math & Range Loops)
+fn emit_go(program: &Program) -> String {
+    let mut go_top_vars = std::collections::HashSet::new();
+    let mut go_top_fns = std::collections::HashSet::new();
+    for stmt in &program.statements {
+        match stmt {
+            Stmt::FnDecl { name, .. } | Stmt::ClassDecl { name, .. } => { go_top_fns.insert(name.clone()); }
+            Stmt::Let { name, .. } => { go_top_vars.insert(name.clone()); }
+            Stmt::Assign { target: AssignTarget::Ident(name), .. } => { go_top_vars.insert(name.clone()); }
+            _ => {}
+        }
+    }
+    let mut go_pkg_globals = std::collections::BTreeSet::new();
+    for stmt in &program.statements {
+        if let Stmt::FnDecl { params, body, .. } = stmt {
+            let mut locals: std::collections::HashSet<String> = params.iter().map(|(p, _)| p.clone()).collect();
+            rs_collect_local_decls(body, &mut locals);
+            let mut refs = std::collections::HashSet::new();
+            rs_collect_ident_refs_stmts(body, &mut refs);
+            for r in refs {
+                if go_top_vars.contains(&r) && !locals.contains(&r) && !go_top_fns.contains(&r) {
+                    go_pkg_globals.insert(r);
+                }
+            }
+        }
+    }
+    let mut top_fns = String::new();
+    for g in &go_pkg_globals {
