@@ -5079,3 +5079,85 @@ fn c_expr(expr: &Expr, lambdas: &mut String, lambda_id: &mut usize) -> String {
                             .map(|a| c_expr(a, lambdas, lambda_id))
                             .unwrap_or_else(|| "sv_num(0)".to_string());
                         let b = args
+                            .get(1)
+                            .map(|a| c_expr(a, lambdas, lambda_id))
+                            .unwrap_or_else(|| "sv_num(0)".to_string());
+                        if let Some(st) = args.get(2) {
+                            return format!("sv_range_step({}, {}, {})", a, b, c_expr(st, lambdas, lambda_id));
+                        }
+                        return format!("sv_range({}, {})", a, b);
+                    }
+                    _ => {}
+                }
+            }
+            if let Expr::Member { target, field } = &**callee {
+                let obj_s = c_expr(target, lambdas, lambda_id);
+                let arg_strs: Vec<String> =
+                    args.iter().map(|a| c_expr(a, lambdas, lambda_id)).collect();
+                if arg_strs.is_empty() {
+                    return format!(
+                        "sv_call_method({}, \"{}\", 0)",
+                        obj_s,
+                        escape_str(field)
+                    );
+                } else {
+                    return format!(
+                        "sv_call_method({}, \"{}\", {}, {})",
+                        obj_s,
+                        escape_str(field),
+                        arg_strs.len(),
+                        arg_strs.join(", ")
+                    );
+                }
+            }
+            let arg_strs: Vec<String> =
+                args.iter().map(|a| c_expr(a, lambdas, lambda_id)).collect();
+            if let Expr::Ident(name) = &**callee {
+                let sn = c_safe_ident(name);
+                let is_top = C_TOP_FNS.with(|f| f.borrow().contains(name));
+                let is_local = C_CUR_LOCALS.with(|l| l.borrow().contains(&sn));
+                if is_top && !is_local {
+                    return format!("{}({})", sn, arg_strs.join(", "));
+                }
+                if arg_strs.is_empty() {
+                    return format!("sv_call_fn({}, 0, NULL)", sn);
+                }
+                return format!("sv_call_fn({}, {}, (SVal[]){{{}}})", sn, arg_strs.len(), arg_strs.join(", "));
+            }
+            if arg_strs.is_empty() {
+                format!("sv_call_fn({}, 0, NULL)", c_expr(callee, lambdas, lambda_id))
+            } else {
+                format!("sv_call_fn({}, {}, (SVal[]){{{}}})", c_expr(callee, lambdas, lambda_id), arg_strs.len(), arg_strs.join(", "))
+            }
+        }
+        Expr::Index { target, index } => format!(
+            "sv_get({}, {})",
+            c_expr(target, lambdas, lambda_id),
+            c_expr(index, lambdas, lambda_id)
+        ),
+        Expr::Member { target, field } => format!(
+            "sv_map_get({}, \"{}\")",
+            c_expr(target, lambdas, lambda_id),
+            escape_str(field)
+        ),
+        Expr::FnExpr { params, body } => {
+            *lambda_id += 1;
+            let fn_name = format!("__steel_lambda_{}", *lambda_id);
+            let mut decl = std::collections::HashSet::new();
+            decl.insert("__st_this".to_string());
+            let mut param_set = std::collections::HashSet::new();
+            for (p, _) in params {
+                param_set.insert(c_safe_ident(p));
+            }
+            let mut used = std::collections::HashSet::new();
+            for st in body {
+                collect_stmt_idents(st, &mut used);
+            }
+            let mut captures: Vec<String> = C_CUR_LOCALS.with(|l| {
+                l.borrow()
+                    .iter()
+                    .filter(|v| *v != "__st_this" && !param_set.contains(*v) && used.contains(*v))
+                    .cloned()
+                    .collect()
+            });
+            captures.sort();
