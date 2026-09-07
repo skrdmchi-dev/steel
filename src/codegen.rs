@@ -5243,3 +5243,85 @@ fn emit_go(program: &Program) -> String {
     }
     let mut top_fns = String::new();
     for g in &go_pkg_globals {
+        top_fns.push_str(&format!("var {} any\n", go_safe_ident(g)));
+    }
+    if !go_pkg_globals.is_empty() {
+        top_fns.push('\n');
+    }
+    let mut main_body = String::new();
+    for stmt in &program.statements {
+        match stmt {
+            Stmt::FnDecl { name, params, body } => {
+                let p_sig: Vec<String> = params.iter().map(|(p, _)| format!("{} any", go_safe_ident(p))).collect();
+                top_fns.push_str(&format!("func {}({}) any {{\n", go_safe_ident(name), p_sig.join(", ")));
+                for st in body {
+                    top_fns.push_str(&go_stmt(st, 1));
+                }
+                if !matches!(body.last(), Some(Stmt::Return(_))) {
+                    top_fns.push_str("    return nil\n");
+                }
+                top_fns.push_str("}\n\n");
+            }
+            Stmt::ClassDecl {
+                name,
+                parent,
+                methods,
+            } => {
+                if let Stmt::FnDecl { name, params, body } = desugar_class(name, parent, methods) {
+                    let p_sig: Vec<String> =
+                        params.iter().map(|(p, _)| format!("{} any", go_safe_ident(p))).collect();
+                    top_fns.push_str(&format!("func {}({}) any {{\n", go_safe_ident(&name), p_sig.join(", ")));
+                    for st in &body {
+                        top_fns.push_str(&go_stmt(st, 1));
+                    }
+                    if !matches!(body.last(), Some(Stmt::Return(_))) {
+                        top_fns.push_str("    return nil\n");
+                    }
+                    top_fns.push_str("}\n\n");
+                }
+            }
+            Stmt::Let { name, value, .. } if go_pkg_globals.contains(name) => {
+                main_body.push_str(&format!("    {} = {}\n", go_safe_ident(name), go_expr(value, 1)));
+            }
+            other => {
+                main_body.push_str(&go_stmt(other, 1));
+            }
+        }
+    }
+
+    let user_code = format!("{}{}", top_fns, main_body);
+    let (go_imports, rt) = go_runtime_helpers(&user_code);
+    let mut out = String::from("package main\n\n");
+    if !go_imports.is_empty() {
+        out.push_str(&format!("import (\n    {}\n)\n\n", go_imports.join("\n    ")));
+    }
+    out.push_str(&rt);
+    out.push('\n');
+    out.push_str(&top_fns);
+    out.push_str("func main() {\n");
+    out.push_str(&main_body);
+    out.push_str("}\n");
+    out
+}
+
+fn go_runtime_helpers(user_code: &str) -> (Vec<&'static str>, String) {
+    let mut rt = String::new();
+    let needs_arr = user_code.contains("__SteelArr")
+        || user_code.contains("__steel_range")
+        || user_code.contains("__steel_push")
+        || user_code.contains("__steel_pop")
+        || user_code.contains("__steel_get")
+        || user_code.contains("__steel_set")
+        || user_code.contains("__steel_iter")
+        || user_code.contains("__steel_split")
+        || user_code.contains("__steel_reverse")
+        || user_code.contains("__steel_keys")
+        || user_code.contains("__steel_values")
+        || user_code.contains("__steel_concat")
+        || user_code.contains("__steel_unique")
+        || user_code.contains("__steel_flat")
+        || user_code.contains("__steel_zip")
+        || user_code.contains("__steel_enumerate")
+        || user_code.contains("__steel_json_")
+        || user_code.contains("__steel_type")
+        || user_code.contains("__steel_len")
