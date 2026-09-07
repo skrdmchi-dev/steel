@@ -4997,3 +4997,85 @@ fn c_expr(expr: &Expr, lambdas: &mut String, lambda_id: &mut usize) -> String {
                         let ch = args.get(2).map(|a| c_expr(a, lambdas, lambda_id)).unwrap_or_else(|| "sv_str(\" \")".to_string());
                         return format!("sv_pad_end({}, {}, {})", c_expr(&args[0], lambdas, lambda_id), c_expr(&args[1], lambdas, lambda_id), ch);
                     }
+                    "char_code" if args.len() == 1 => {
+                        return format!("sv_char_code({})", c_expr(&args[0], lambdas, lambda_id))
+                    }
+                    "from_char_code" if args.len() == 1 => {
+                        return format!("sv_from_char_code({})", c_expr(&args[0], lambdas, lambda_id))
+                    }
+                    "find" if args.len() == 2 => {
+                        return format!("sv_find_hof({}, {})", c_expr(&args[0], lambdas, lambda_id), c_expr(&args[1], lambdas, lambda_id))
+                    }
+                    "any" if args.len() == 2 => {
+                        return format!("sv_any_hof({}, {})", c_expr(&args[0], lambdas, lambda_id), c_expr(&args[1], lambdas, lambda_id))
+                    }
+                    "all" if args.len() == 2 => {
+                        return format!("sv_all_hof({}, {})", c_expr(&args[0], lambdas, lambda_id), c_expr(&args[1], lambdas, lambda_id))
+                    }
+                    "sum" if args.len() == 1 => {
+                        return format!("sv_sum({})", c_expr(&args[0], lambdas, lambda_id))
+                    }
+                    "avg" if args.len() == 1 => {
+                        return format!("sv_avg({})", c_expr(&args[0], lambdas, lambda_id))
+                    }
+                    "unique" if args.len() == 1 => {
+                        return format!("sv_unique({})", c_expr(&args[0], lambdas, lambda_id))
+                    }
+                    "flat" if args.len() == 1 => {
+                        return format!("sv_flat({})", c_expr(&args[0], lambdas, lambda_id))
+                    }
+                    "zip" if args.len() == 2 => {
+                        return format!("sv_zip({}, {})", c_expr(&args[0], lambdas, lambda_id), c_expr(&args[1], lambdas, lambda_id))
+                    }
+                    "enumerate" if args.len() == 1 => {
+                        return format!("sv_enumerate({})", c_expr(&args[0], lambdas, lambda_id))
+                    }
+                    "clamp" if args.len() == 3 => {
+                        return format!(
+                            "sv_num(fmin(fmax({}, {}), {}))",
+                            c_num_expr(&args[0], lambdas, lambda_id),
+                            c_num_expr(&args[1], lambdas, lambda_id),
+                            c_num_expr(&args[2], lambdas, lambda_id)
+                        )
+                    }
+                    "sign" if args.len() == 1 => {
+                        let x = c_num_expr(&args[0], lambdas, lambda_id);
+                        return format!("sv_num((({}) > 0.0) ? 1.0 : ((({}) < 0.0) ? -1.0 : 0.0))", x, x);
+                    }
+                    "atan2" if args.len() == 2 => {
+                        return format!(
+                            "sv_num(atan2({}, {}))",
+                            c_num_expr(&args[0], lambdas, lambda_id),
+                            c_num_expr(&args[1], lambdas, lambda_id)
+                        )
+                    }
+                    "log" if args.len() == 1 => {
+                        return format!("sv_num(log({}))", c_num_expr(&args[0], lambdas, lambda_id))
+                    }
+                    "exp" if args.len() == 1 => {
+                        return format!("sv_num(exp({}))", c_num_expr(&args[0], lambdas, lambda_id))
+                    }
+                    "json_stringify" if args.len() == 1 => {
+                        return format!("sv_json_stringify({})", c_expr(&args[0], lambdas, lambda_id))
+                    }
+                    "json_parse" if args.len() == 1 => {
+                        return format!("sv_json_parse({})", c_expr(&args[0], lambdas, lambda_id))
+                    }
+                    "hash" if args.len() == 1 => {
+                        return format!("sv_hash({})", c_expr(&args[0], lambdas, lambda_id))
+                    }
+                    "append_file" if args.len() == 2 => {
+                        return format!("sv_append_file({}, {})", c_expr(&args[0], lambdas, lambda_id), c_expr(&args[1], lambdas, lambda_id))
+                    }
+                    "remove_file" if args.len() == 1 => {
+                        return format!("sv_remove_file({})", c_expr(&args[0], lambdas, lambda_id))
+                    }
+                    "clock" if args.is_empty() => {
+                        return "sv_clock()".to_string()
+                    }
+                    "range" => {
+                        let a = args
+                            .first()
+                            .map(|a| c_expr(a, lambdas, lambda_id))
+                            .unwrap_or_else(|| "sv_num(0)".to_string());
+                        let b = args
