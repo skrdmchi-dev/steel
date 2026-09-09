@@ -5325,3 +5325,85 @@ fn go_runtime_helpers(user_code: &str) -> (Vec<&'static str>, String) {
         || user_code.contains("__steel_json_")
         || user_code.contains("__steel_type")
         || user_code.contains("__steel_len")
+        || user_code.contains("__steel_sum")
+        || user_code.contains("__steel_avg")
+        || user_code.contains("__steel_index_of")
+        || user_code.contains("__steel_find")
+        || user_code.contains("__steel_any")
+        || user_code.contains("__steel_all")
+        || user_code.contains("__steel_map")
+        || user_code.contains("__steel_filter")
+        || user_code.contains("__steel_reduce")
+        || user_code.contains("__steel_sort")
+        || user_code.contains("__steel_slice")
+        || user_code.contains("__steel_contains")
+        || user_code.contains("__steel_join");
+
+    if user_code.contains("__steel_print(") {
+        rt.push_str("func __steel_print(args ...any) { parts := make([]string, len(args)); for i, a := range args { if a == nil { parts[i] = \"null\" } else { parts[i] = fmt.Sprint(a) } }; fmt.Println(strings.Join(parts, \" \")) }\n");
+    }
+    if user_code.contains("__steel_read_file") {
+        rt.push_str("func __steel_read_file(p any) any { b, err := os.ReadFile(fmt.Sprint(p)); if err != nil { return \"\" }; return string(b) }\n");
+    }
+    if user_code.contains("__steel_write_file") {
+        rt.push_str("func __steel_write_file(p, c any) any { return os.WriteFile(fmt.Sprint(p), []byte(fmt.Sprint(c)), 0644) == nil }\n");
+    }
+    if user_code.contains("__steel_append_file") {
+        rt.push_str("func __steel_append_file(p, c any) any { f, err := os.OpenFile(fmt.Sprint(p), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644); if err != nil { return false }; defer f.Close(); _, err = f.WriteString(fmt.Sprint(c)); return err == nil }\n");
+    }
+    if user_code.contains("__steel_remove_file") {
+        rt.push_str("func __steel_remove_file(p any) any { return os.Remove(fmt.Sprint(p)) == nil }\n");
+    }
+    if user_code.contains("__steel_file_exists") {
+        rt.push_str("func __steel_file_exists(p any) any { _, err := os.Stat(fmt.Sprint(p)); return err == nil }\n");
+    }
+    if user_code.contains("__steel_env") {
+        rt.push_str("func __steel_env(k any) any { v, ok := os.LookupEnv(fmt.Sprint(k)); if !ok { return nil }; return v }\n");
+    }
+    if user_code.contains("__steel_clock") {
+        rt.push_str("func __steel_clock() float64 { return float64(time.Now().UnixNano()) / 1e9 }\n");
+    }
+    if user_code.contains("__steel_truthy") || user_code.contains("__steel_filter") || user_code.contains("__steel_find") || user_code.contains("__steel_any") || user_code.contains("__steel_all") || user_code.contains("__steel_assert") {
+        rt.push_str(
+            "func __steel_truthy(v any) bool {\n\
+             \x20   if v == nil { return false }\n\
+             \x20   if b, ok := v.(bool); ok { return b }\n\
+             \x20   if n, ok := v.(float64); ok { return n != 0 }\n\
+             \x20   if s, ok := v.(string); ok { return len(s) > 0 }\n\
+             \x20   return true\n\
+             }\n",
+        );
+    }
+    if user_code.contains("__steel_assert") {
+        rt.push_str("func __steel_assert(c any, m ...any) any { if !__steel_truthy(c) { msg := \"Assertion failed\"; if len(m) > 0 { msg = fmt.Sprint(m[0]) }; panic(msg) }; return true }\n");
+    }
+    if user_code.contains("__steel_num") || user_code.contains("__steel_add") || user_code.contains("__steel_range") || user_code.contains("__steel_get") || user_code.contains("__steel_set") || user_code.contains("__steel_slice") || user_code.contains("__steel_int") || user_code.contains("__steel_clamp") || user_code.contains("__steel_sign") || user_code.contains("__steel_repeat") || user_code.contains("__steel_pad_") || user_code.contains("__steel_from_char_code") || user_code.contains("__steel_sum") || user_code.contains("__steel_avg") {
+        rt.push_str(
+            "func __steel_num(v any) float64 {\n\
+             \x20   if n, ok := v.(float64); ok { return n }\n\
+             \x20   if n, ok := v.(int); ok { return float64(n) }\n\
+             \x20   if b, ok := v.(bool); ok { if b { return 1 }; return 0 }\n\
+             \x20   return 0\n\
+             }\n",
+        );
+    }
+    if user_code.contains("__steel_num_cast") || user_code.contains("__steel_int") {
+        rt.push_str("func __steel_num_cast(v any) float64 { if s, ok := v.(string); ok { f, err := strconv.ParseFloat(strings.TrimSpace(s), 64); if err == nil { return f } }; return __steel_num(v) }\n");
+    }
+    if user_code.contains("__steel_int") {
+        rt.push_str("func __steel_int(v any) float64 { return math.Trunc(__steel_num_cast(v)) }\n");
+    }
+    if user_code.contains("__steel_add") {
+        rt.push_str(
+            "func __steel_add(a, b any) any {\n\
+             \x20   _, aStr := a.(string)\n\
+             \x20   _, bStr := b.(string)\n\
+             \x20   if aStr || bStr { return fmt.Sprintf(\"%v%v\", a, b) }\n\
+             \x20   return __steel_num(a) + __steel_num(b)\n\
+             }\n",
+        );
+    }
+    if needs_arr {
+        rt.push_str(
+            "type __SteelArr struct { items []any }\n\
+             func (a *__SteelArr) String() string { return fmt.Sprint(a.items) }\n\
