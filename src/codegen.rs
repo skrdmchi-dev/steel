@@ -5489,3 +5489,85 @@ fn go_runtime_helpers(user_code: &str) -> (Vec<&'static str>, String) {
     if user_code.contains("__steel_clamp") {
         rt.push_str("func __steel_clamp(x, lo, hi float64) float64 { if x < lo { return lo }; if x > hi { return hi }; return x }\n");
     }
+    if user_code.contains("__steel_sign") {
+        rt.push_str("func __steel_sign(x float64) float64 { if x > 0 { return 1 }; if x < 0 { return -1 }; return 0 }\n");
+    }
+    if user_code.contains("__steel_json_stringify") {
+        rt.push_str("func __steel_to_plain(v any) any { if a, ok := v.(*__SteelArr); ok { out := make([]any, len(a.items)); for i, it := range a.items { out[i] = __steel_to_plain(it) }; return out }; if m, ok := v.(map[string]any); ok { out := make(map[string]any, len(m)); for k, val := range m { out[k] = __steel_to_plain(val) }; return out }; return v }\nfunc __steel_json_stringify(v any) string { b, err := json.Marshal(__steel_to_plain(v)); if err != nil { return \"null\" }; return string(b) }\n");
+    }
+    if user_code.contains("__steel_json_parse") {
+        rt.push_str("func __steel_from_plain(v any) any { if a, ok := v.([]any); ok { out := make([]any, len(a)); for i, it := range a { out[i] = __steel_from_plain(it) }; return &__SteelArr{items: out} }; if m, ok := v.(map[string]any); ok { for k, val := range m { m[k] = __steel_from_plain(val) }; return m }; return v }\nfunc __steel_json_parse(s any) any { var out any; _ = json.Unmarshal([]byte(fmt.Sprint(s)), &out); return __steel_from_plain(out) }\n");
+    }
+    if user_code.contains("__steel_hash") {
+        rt.push_str("func __steel_hash(v any) string { var h uint64 = 0xcbf29ce484222325; for _, b := range []byte(fmt.Sprint(v)) { h ^= uint64(b); h *= 0x0100000001b3 }; return fmt.Sprintf(\"%016x\", h) }\n");
+    }
+    if user_code.contains("__steel_call") || user_code.contains("__steel_map") || user_code.contains("__steel_filter") || user_code.contains("__steel_reduce") || user_code.contains("__steel_find") || user_code.contains("__steel_any") || user_code.contains("__steel_all") {
+        rt.push_str(
+            "func __steel_call(fn any, args ...any) any {\n\
+             \x20   a := func(i int) any { if i < len(args) { return args[i] }; return nil }\n\
+             \x20   switch f := fn.(type) {\n\
+             \x20   case func(...any) any: return f(args...)\n\
+             \x20   case func() any: return f()\n\
+             \x20   case func(any) any: return f(a(0))\n\
+             \x20   case func(any, any) any: return f(a(0), a(1))\n\
+             \x20   case func(any, any, any) any: return f(a(0), a(1), a(2))\n\
+             \x20   case func(any, any, any, any) any: return f(a(0), a(1), a(2), a(3))\n\
+             \x20   case func(any, any, any, any, any) any: return f(a(0), a(1), a(2), a(3), a(4))\n\
+             \x20   case func(any, any, any, any, any, any) any: return f(a(0), a(1), a(2), a(3), a(4), a(5))\n\
+             \x20   case func(any, any, any, any, any, any, any) any: return f(a(0), a(1), a(2), a(3), a(4), a(5), a(6))\n\
+             \x20   case func(any, any, any, any, any, any, any, any) any: return f(a(0), a(1), a(2), a(3), a(4), a(5), a(6), a(7))\n\
+             \x20   }\n\
+             \x20   return nil\n\
+             }\n",
+        );
+    }
+    if user_code.contains("__steel_len") {
+        rt.push_str(
+            "func __steel_len(v any) float64 {\n\
+             \x20   if a, ok := v.(*__SteelArr); ok { return float64(len(a.items)) }\n\
+             \x20   if s, ok := v.(string); ok { return float64(len([]rune(s))) }\n\
+             \x20   if m, ok := v.(map[string]any); ok { return float64(len(m)) }\n\
+             \x20   return 0\n\
+             }\n",
+        );
+    }
+    if user_code.contains("__steel_map") || user_code.contains("__steel_filter") || user_code.contains("__steel_reduce") || user_code.contains("__steel_find") || user_code.contains("__steel_any") || user_code.contains("__steel_all") {
+        rt.push_str(
+            "func __steel_map(arr any, fn any) *__SteelArr { out := &__SteelArr{items: []any{}}; for _, v := range __steel_iter(arr) { out.items = append(out.items, __steel_call(fn, v)) }; return out }\n\
+             func __steel_filter(arr any, fn any) *__SteelArr { out := &__SteelArr{items: []any{}}; for _, v := range __steel_iter(arr) { if __steel_truthy(__steel_call(fn, v)) { out.items = append(out.items, v) } }; return out }\n\
+             func __steel_reduce(arr any, fn any, init any) any { its := __steel_iter(arr); start := 0; acc := init; if acc == nil && len(its) > 0 { acc = its[0]; start = 1 }; for i := start; i < len(its); i++ { acc = __steel_call(fn, acc, its[i]) }; return acc }\n\
+             func __steel_find(arr any, fn any) any { for _, v := range __steel_iter(arr) { if __steel_truthy(__steel_call(fn, v)) { return v } }; return nil }\n\
+             func __steel_any(arr any, fn any) bool { for _, v := range __steel_iter(arr) { if __steel_truthy(__steel_call(fn, v)) { return true } }; return false }\n\
+             func __steel_all(arr any, fn any) bool { for _, v := range __steel_iter(arr) { if !__steel_truthy(__steel_call(fn, v)) { return false } }; return true }\n",
+        );
+    }
+    if user_code.contains("__steel_range") {
+        rt.push_str(
+            "func __steel_range(a, b any, stepArg ...any) *__SteelArr {\n\
+             \x20   s, e, step := int(__steel_num(a)), int(__steel_num(b)), 1\n\
+             \x20   if len(stepArg) > 0 && stepArg[0] != nil { step = int(__steel_num(stepArg[0])) }\n\
+             \x20   out := []any{}\n\
+             \x20   if step > 0 { for i := s; i < e; i += step { out = append(out, float64(i)) } } else if step < 0 { for i := s; i > e; i += step { out = append(out, float64(i)) } }\n\
+             \x20   return &__SteelArr{items: out}\n\
+             }\n",
+        );
+    }
+
+    let combined = format!("{}\n{}", user_code, rt);
+    let mut imports = Vec::new();
+    if combined.contains("fmt.") { imports.push("\"fmt\""); }
+    if combined.contains("math.") { imports.push("\"math\""); }
+    if combined.contains("os.") { imports.push("\"os\""); }
+    if combined.contains("strings.") { imports.push("\"strings\""); }
+    if combined.contains("sort.") { imports.push("\"sort\""); }
+    if combined.contains("strconv.") { imports.push("\"strconv\""); }
+    if combined.contains("json.") { imports.push("\"encoding/json\""); }
+    if combined.contains("time.") { imports.push("\"time\""); }
+    (imports, rt)
+}
+
+fn go_num_expr(expr: &Expr, lvl: usize) -> String {
+    match expr {
+        Expr::Number(n) => format!("float64({})", fmt_num(*n)),
+        Expr::Unary {
+            op: UnaryOp::Neg,
