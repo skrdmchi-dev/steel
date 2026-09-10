@@ -5407,3 +5407,85 @@ fn go_runtime_helpers(user_code: &str) -> (Vec<&'static str>, String) {
         rt.push_str(
             "type __SteelArr struct { items []any }\n\
              func (a *__SteelArr) String() string { return fmt.Sprint(a.items) }\n\
+             func __steel_push(arr any, v any) any { if a, ok := arr.(*__SteelArr); ok { a.items = append(a.items, v) }; return arr }\n\
+             func __steel_pop(arr any) any { if a, ok := arr.(*__SteelArr); ok && len(a.items) > 0 { v := a.items[len(a.items)-1]; a.items = a.items[:len(a.items)-1]; return v }; return nil }\n\
+             func __steel_get(arr any, idx any) any { if m, ok := arr.(map[string]any); ok { return m[fmt.Sprint(idx)] }; if a, ok := arr.(*__SteelArr); ok { i := int(__steel_num(idx)); if i < 0 { i += len(a.items) }; if i >= 0 && i < len(a.items) { return a.items[i] } }; return nil }\n\
+             func __steel_set(arr any, idx any, v any) { if m, ok := arr.(map[string]any); ok { m[fmt.Sprint(idx)] = v; return }; if a, ok := arr.(*__SteelArr); ok { i := int(__steel_num(idx)); if i < 0 { i += len(a.items) }; if i >= 0 && i < len(a.items) { a.items[i] = v } } }\n\
+             func __steel_iter(arr any) []any { if a, ok := arr.(*__SteelArr); ok { return a.items }; return nil }\n",
+        );
+    }
+    if user_code.contains("__steel_type") {
+        rt.push_str("func __steel_type(v any) string { if v == nil { return \"null\" }; switch v.(type) { case float64, int: return \"number\"; case string: return \"string\"; case bool: return \"boolean\"; case *__SteelArr: return \"array\"; case map[string]any: return \"map\"; default: return \"function\" } }\n");
+    }
+    if user_code.contains("__steel_has_key") {
+        rt.push_str("func __steel_has_key(x, k any) bool { if m, ok := x.(map[string]any); ok { _, ex := m[fmt.Sprint(k)]; return ex }; return false }\n");
+    }
+    if user_code.contains("__steel_delete_key") {
+        rt.push_str("func __steel_delete_key(x, k any) bool { if m, ok := x.(map[string]any); ok { ks := fmt.Sprint(k); if _, ex := m[ks]; ex { delete(m, ks); return true } }; return false }\n");
+    }
+    if user_code.contains("__steel_concat") {
+        rt.push_str("func __steel_concat(a, b any) *__SteelArr { ai, bi := __steel_iter(a), __steel_iter(b); out := make([]any, 0, len(ai)+len(bi)); out = append(out, ai...); out = append(out, bi...); return &__SteelArr{items: out} }\n");
+    }
+    if user_code.contains("__steel_contains") {
+        rt.push_str("func __steel_contains(x, v any) any { if m, ok := x.(map[string]any); ok { _, ex := m[fmt.Sprint(v)]; return ex }; if a, ok := x.(*__SteelArr); ok { for _, it := range a.items { if fmt.Sprint(it) == fmt.Sprint(v) { return true } }; return false }; return strings.Contains(fmt.Sprint(x), fmt.Sprint(v)) }\n");
+    }
+    if user_code.contains("__steel_index_of") {
+        rt.push_str("func __steel_index_of(x, v any) float64 { if a, ok := x.(*__SteelArr); ok { for i, it := range a.items { if fmt.Sprint(it) == fmt.Sprint(v) { return float64(i) } }; return -1 }; s := fmt.Sprint(x); sub := fmt.Sprint(v); idx := strings.Index(s, sub); if idx < 0 { return -1 }; return float64(len([]rune(s[:idx]))) }\n");
+    }
+    if user_code.contains("__steel_repeat") {
+        rt.push_str("func __steel_repeat(s, n any) string { c := int(__steel_num(n)); if c <= 0 { return \"\" }; return strings.Repeat(fmt.Sprint(s), c) }\n");
+    }
+    if user_code.contains("__steel_pad_start") {
+        rt.push_str("func __steel_pad_start(s, w, ch any) string { ss := fmt.Sprint(s); cs := fmt.Sprint(ch); rs := []rune(ss); ww := int(__steel_num(w)); if len(rs) >= ww || len(cs) == 0 { return ss }; pr := []rune(cs); need := ww - len(rs); out := make([]rune, 0, ww); for i := 0; i < need; i++ { out = append(out, pr[i%len(pr)]) }; out = append(out, rs...); return string(out) }\n");
+    }
+    if user_code.contains("__steel_pad_end") {
+        rt.push_str("func __steel_pad_end(s, w, ch any) string { ss := fmt.Sprint(s); cs := fmt.Sprint(ch); rs := []rune(ss); ww := int(__steel_num(w)); if len(rs) >= ww || len(cs) == 0 { return ss }; pr := []rune(cs); need := ww - len(rs); out := make([]rune, 0, ww); out = append(out, rs...); for i := 0; i < need; i++ { out = append(out, pr[i%len(pr)]) }; return string(out) }\n");
+    }
+    if user_code.contains("__steel_char_code") {
+        rt.push_str("func __steel_char_code(s any) float64 { rs := []rune(fmt.Sprint(s)); if len(rs) == 0 { return 0 }; return float64(rs[0]) }\n");
+    }
+    if user_code.contains("__steel_from_char_code") {
+        rt.push_str("func __steel_from_char_code(n any) string { c := int(__steel_num(n)); if c < 0 { c = 0 }; return string(rune(c)) }\n");
+    }
+    if user_code.contains("__steel_split") {
+        rt.push_str("func __steel_split(s, sep any) *__SteelArr { ps := strings.Split(fmt.Sprint(s), fmt.Sprint(sep)); out := make([]any, len(ps)); for i, p := range ps { out[i] = p }; return &__SteelArr{items: out} }\n");
+    }
+    if user_code.contains("__steel_join") {
+        rt.push_str("func __steel_join(arr, sep any) any { its := __steel_iter(arr); ps := make([]string, len(its)); for i, v := range its { ps[i] = fmt.Sprint(v) }; return strings.Join(ps, fmt.Sprint(sep)) }\n");
+    }
+    if user_code.contains("__steel_reverse") {
+        rt.push_str("func __steel_reverse(x any) any { if a, ok := x.(*__SteelArr); ok { n := len(a.items); out := make([]any, n); for i := 0; i < n; i++ { out[i] = a.items[n-1-i] }; return &__SteelArr{items: out} }; rs := []rune(fmt.Sprint(x)); for i, j := 0, len(rs)-1; i < j; i, j = i+1, j-1 { rs[i], rs[j] = rs[j], rs[i] }; return string(rs) }\n");
+    }
+    if user_code.contains("__steel_keys") {
+        rt.push_str("func __steel_keys(x any) *__SteelArr { out := []any{}; if m, ok := x.(map[string]any); ok { for k := range m { out = append(out, k) } }; return &__SteelArr{items: out} }\n");
+    }
+    if user_code.contains("__steel_values") {
+        rt.push_str("func __steel_values(x any) *__SteelArr { out := []any{}; if m, ok := x.(map[string]any); ok { for _, v := range m { out = append(out, v) } }; return &__SteelArr{items: out} }\n");
+    }
+    if user_code.contains("__steel_slice") {
+        rt.push_str("func __steel_slice(x, s, e any) any { si := int(__steel_num(s)); if a, ok := x.(*__SteelArr); ok { ei := len(a.items); if e != nil { ei = int(__steel_num(e)) }; if si < 0 { si = 0 }; if ei > len(a.items) { ei = len(a.items) }; if si > ei { si = ei }; cp := make([]any, ei-si); copy(cp, a.items[si:ei]); return &__SteelArr{items: cp} }; rs := []rune(fmt.Sprint(x)); ei := len(rs); if e != nil { ei = int(__steel_num(e)) }; if si < 0 { si = 0 }; if ei > len(rs) { ei = len(rs) }; if si > ei { si = ei }; return string(rs[si:ei]) }\n");
+    }
+    if user_code.contains("__steel_sort") {
+        rt.push_str("func __steel_sort(x any) *__SteelArr { out := []any{}; if a, ok := x.(*__SteelArr); ok { out = append(out, a.items...); sort.Slice(out, func(i, j int) bool { return fmt.Sprint(out[i]) < fmt.Sprint(out[j]) }) }; return &__SteelArr{items: out} }\n");
+    }
+    if user_code.contains("__steel_sum") {
+        rt.push_str("func __steel_sum(x any) float64 { s := 0.0; for _, v := range __steel_iter(x) { if n, ok := v.(float64); ok { s += n } }; return s }\n");
+    }
+    if user_code.contains("__steel_avg") {
+        rt.push_str("func __steel_avg(x any) float64 { its := __steel_iter(x); if len(its) == 0 { return 0 }; s := 0.0; for _, v := range its { if n, ok := v.(float64); ok { s += n } }; return s / float64(len(its)) }\n");
+    }
+    if user_code.contains("__steel_unique") {
+        rt.push_str("func __steel_unique(x any) *__SteelArr { out := []any{}; for _, v := range __steel_iter(x) { dup := false; for _, u := range out { if fmt.Sprint(u) == fmt.Sprint(v) { dup = true; break } }; if !dup { out = append(out, v) } }; return &__SteelArr{items: out} }\n");
+    }
+    if user_code.contains("__steel_flat") {
+        rt.push_str("func __steel_flat(x any) *__SteelArr { out := []any{}; for _, v := range __steel_iter(x) { if a, ok := v.(*__SteelArr); ok { out = append(out, a.items...) } else { out = append(out, v) } }; return &__SteelArr{items: out} }\n");
+    }
+    if user_code.contains("__steel_zip") {
+        rt.push_str("func __steel_zip(a, b any) *__SteelArr { ai, bi := __steel_iter(a), __steel_iter(b); n := len(ai); if len(bi) < n { n = len(bi) }; out := make([]any, n); for i := 0; i < n; i++ { out[i] = &__SteelArr{items: []any{ai[i], bi[i]}} }; return &__SteelArr{items: out} }\n");
+    }
+    if user_code.contains("__steel_enumerate") {
+        rt.push_str("func __steel_enumerate(a any) *__SteelArr { ai := __steel_iter(a); out := make([]any, len(ai)); for i, v := range ai { out[i] = &__SteelArr{items: []any{float64(i), v}} }; return &__SteelArr{items: out} }\n");
+    }
+    if user_code.contains("__steel_clamp") {
+        rt.push_str("func __steel_clamp(x, lo, hi float64) float64 { if x < lo { return lo }; if x > hi { return hi }; return x }\n");
+    }
