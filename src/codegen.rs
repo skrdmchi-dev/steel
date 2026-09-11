@@ -5571,3 +5571,85 @@ fn go_num_expr(expr: &Expr, lvl: usize) -> String {
         Expr::Number(n) => format!("float64({})", fmt_num(*n)),
         Expr::Unary {
             op: UnaryOp::Neg,
+            expr: inner,
+        } => format!("(-{})", go_num_expr(inner, lvl)),
+        Expr::Binary { left, op, right } => match op {
+            BinaryOp::Add if !self_might_be_string(left) && !self_might_be_string(right) => {
+                format!("({} + {})", go_num_expr(left, lvl), go_num_expr(right, lvl))
+            }
+            BinaryOp::Sub => format!("({} - {})", go_num_expr(left, lvl), go_num_expr(right, lvl)),
+            BinaryOp::Mul => format!("({} * {})", go_num_expr(left, lvl), go_num_expr(right, lvl)),
+            BinaryOp::Div => format!("({} / {})", go_num_expr(left, lvl), go_num_expr(right, lvl)),
+            BinaryOp::Mod => format!(
+                "float64(int({}) % int({}))",
+                go_num_expr(left, lvl),
+                go_num_expr(right, lvl)
+            ),
+            BinaryOp::Pow => format!(
+                "math.Pow({}, {})",
+                go_num_expr(left, lvl),
+                go_num_expr(right, lvl)
+            ),
+            _ => format!("__steel_num({})", go_expr(expr, lvl)),
+        },
+        _ => format!("__steel_num({})", go_expr(expr, lvl)),
+    }
+}
+
+fn go_cond_expr(expr: &Expr, lvl: usize) -> String {
+    match expr {
+        Expr::Binary { left, op, right } => match op {
+            BinaryOp::Lt => format!("({} < {})", go_num_expr(left, lvl), go_num_expr(right, lvl)),
+            BinaryOp::Gt => format!("({} > {})", go_num_expr(left, lvl), go_num_expr(right, lvl)),
+            BinaryOp::Lte => format!("({} <= {})", go_num_expr(left, lvl), go_num_expr(right, lvl)),
+            BinaryOp::Gte => format!("({} >= {})", go_num_expr(left, lvl), go_num_expr(right, lvl)),
+            BinaryOp::Eq => format!("(any({}) == any({}))", go_expr(left, lvl), go_expr(right, lvl)),
+            BinaryOp::Neq => format!("(any({}) != any({}))", go_expr(left, lvl), go_expr(right, lvl)),
+            BinaryOp::And => format!(
+                "({} && {})",
+                go_cond_expr(left, lvl),
+                go_cond_expr(right, lvl)
+            ),
+            BinaryOp::Or => format!(
+                "({} || {})",
+                go_cond_expr(left, lvl),
+                go_cond_expr(right, lvl)
+            ),
+            _ => format!("__steel_truthy({})", go_expr(expr, lvl)),
+        },
+        Expr::Unary {
+            op: UnaryOp::Not,
+            expr: inner,
+        } => format!("(!{})", go_cond_expr(inner, lvl)),
+        Expr::Bool(b) => b.to_string(),
+        _ => format!("__steel_truthy({})", go_expr(expr, lvl)),
+    }
+}
+
+fn go_safe_ident(name: &str) -> String {
+    match name {
+        "break" | "case" | "chan" | "const" | "continue" | "default" | "defer" | "else"
+        | "fallthrough" | "for" | "func" | "go" | "goto" | "if" | "import" | "interface"
+        | "map" | "package" | "range" | "return" | "select" | "struct" | "switch" | "type"
+        | "var" | "string" | "int" | "float64" | "bool" | "byte" | "rune" | "error" | "any" => {
+            format!("_st_{}", name)
+        }
+        _ => name.to_string(),
+    }
+}
+
+fn go_try_stmt(stmt: &Stmt, lvl: usize) -> String {
+    let pad = indent(lvl);
+    match stmt {
+        Stmt::Return(val) => {
+            let v = val.as_ref().map(|e| go_expr(e, lvl)).unwrap_or_else(|| "nil".to_string());
+            format!("{}__try_ret = {}\n{}__try_has_ret = true\n{}return\n", pad, v, pad, pad)
+        }
+        Stmt::If { cond, then_branch, else_branch } => {
+            let mut s = format!("{}if __steel_truthy({}) {{\n", pad, go_expr(cond, lvl));
+            for st in then_branch { s.push_str(&go_try_stmt(st, lvl + 1)); }
+            if let Some(eb) = else_branch {
+                s.push_str(&format!("{}}} else {{\n", pad));
+                for st in eb { s.push_str(&go_try_stmt(st, lvl + 1)); }
+            }
+            s.push_str(&format!("{}}}\n", pad));
