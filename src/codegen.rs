@@ -5735,3 +5735,85 @@ fn go_stmt(stmt: &Stmt, lvl: usize) -> String {
             )
         }
         Stmt::Assign { target, value } => match target {
+            AssignTarget::Ident(n) => format!("{}{} = {}\n", pad, go_safe_ident(n), go_expr(value, lvl)),
+            AssignTarget::Index { target, index } => format!(
+                "{}__steel_set({}, {}, {})\n",
+                pad,
+                go_expr(target, lvl),
+                go_expr(index, lvl),
+                go_expr(value, lvl)
+            ),
+            AssignTarget::Member { target, field } => format!(
+                "{}{}.(map[string]any)[\"{}\"] = {}\n",
+                pad,
+                go_expr(target, lvl),
+                escape_str(field),
+                go_expr(value, lvl)
+            ),
+        },
+        Stmt::FnDecl { name, params, body } => {
+            let p_sig: Vec<String> = params.iter().map(|(p, _)| format!("{} any", p)).collect();
+            let mut s = format!(
+                "{}var {} = func({}) any {{\n",
+                pad,
+                name,
+                p_sig.join(", ")
+            );
+            for st in body {
+                s.push_str(&go_stmt(st, lvl + 1));
+            }
+            s.push_str(&format!("{}    return nil\n{}}}\n", pad, pad));
+            s
+        }
+        Stmt::Return(expr) => match expr {
+            Some(e) => format!("{}return {}\n", pad, go_expr(e, lvl)),
+            None => format!("{}return nil\n", pad),
+        },
+        Stmt::If {
+            cond,
+            then_branch,
+            else_branch,
+        } => {
+            let mut s = format!("{}if {} {{\n", pad, go_cond_expr(cond, lvl));
+            for st in then_branch {
+                s.push_str(&go_stmt(st, lvl + 1));
+            }
+            if let Some(eb) = else_branch {
+                s.push_str(&format!("{}}} else {{\n", pad));
+                for st in eb {
+                    s.push_str(&go_stmt(st, lvl + 1));
+                }
+            }
+            s.push_str(&format!("{}}}\n", pad));
+            s
+        }
+        Stmt::While { cond, body } => {
+            let mut s = format!("{}for {} {{\n", pad, go_cond_expr(cond, lvl));
+            for st in body {
+                s.push_str(&go_stmt(st, lvl + 1));
+            }
+            s.push_str(&format!("{}}}\n", pad));
+            s
+        }
+        Stmt::For {
+            var,
+            iterable,
+            body,
+        } => {
+            if let Expr::Range { start, end } = iterable {
+                let idx_var = format!("__i_{}", var);
+                let mut s = format!(
+                    "{}for {} := int({}); {} < int({}); {}++ {{\n{}    var {} any = float64({})\n{}    _ = {}\n",
+                    pad,
+                    idx_var,
+                    go_num_expr(start, lvl),
+                    idx_var,
+                    go_num_expr(end, lvl),
+                    idx_var,
+                    pad,
+                    var,
+                    idx_var,
+                    pad,
+                    var
+                );
+                for st in body {
