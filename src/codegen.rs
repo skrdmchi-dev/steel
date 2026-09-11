@@ -5653,3 +5653,85 @@ fn go_try_stmt(stmt: &Stmt, lvl: usize) -> String {
                 for st in eb { s.push_str(&go_try_stmt(st, lvl + 1)); }
             }
             s.push_str(&format!("{}}}\n", pad));
+            s
+        }
+        Stmt::While { cond, body } => {
+            let mut s = format!("{}for __steel_truthy({}) {{\n", pad, go_expr(cond, lvl));
+            for st in body { s.push_str(&go_try_stmt(st, lvl + 1)); }
+            s.push_str(&format!("{}}}\n", pad));
+            s
+        }
+        other => go_stmt(other, lvl),
+    }
+}
+
+fn go_stmt(stmt: &Stmt, lvl: usize) -> String {
+    let pad = indent(lvl);
+    match stmt {
+        Stmt::Import(p) => format!("{}// import \"{}\"\n", pad, escape_str(p)),
+        Stmt::ClassDecl {
+            name,
+            parent,
+            methods,
+        } => go_stmt(&desugar_class(name, parent, methods), lvl),
+        Stmt::TryCatch {
+            try_body,
+            err_var,
+            catch_body,
+        } => {
+            let mut try_code = String::new();
+            for st in try_body {
+                try_code.push_str(&go_try_stmt(st, lvl + 1));
+            }
+            let mut catch_code = String::new();
+            for st in catch_body {
+                catch_code.push_str(&go_stmt(st, lvl + 1));
+            }
+            let has_ret = try_code.contains("__try_has_ret");
+            let mut s = String::new();
+            s.push_str(&format!(
+                "{}{{\n{}    var __has_err bool\n{}    var __caught any\n",
+                pad, pad, pad
+            ));
+            if has_ret {
+                s.push_str(&format!("{}    var __try_ret any\n{}    var __try_has_ret bool\n", pad, pad));
+            }
+            s.push_str(&format!(
+                "{}    func() {{\n{}        defer func() {{\n{}            if __r := recover(); __r != nil {{\n{}                __has_err = true\n{}                __caught = fmt.Sprint(__r)\n{}            }}\n{}        }}()\n",
+                pad, pad, pad, pad, pad, pad, pad
+            ));
+            s.push_str(&try_code);
+            s.push_str(&format!("{}    }}()\n", pad));
+            if has_ret {
+                s.push_str(&format!("{}    if __try_has_ret {{ return __try_ret }}\n", pad));
+            }
+            s.push_str(&format!(
+                "{}    if __has_err {{\n{}        var {} any = __caught\n{}        _ = {}\n",
+                pad, pad, go_safe_ident(err_var), pad, go_safe_ident(err_var)
+            ));
+            s.push_str(&catch_code);
+            s.push_str(&format!("{}    }}\n{}}}\n", pad, pad));
+            s
+        }
+        Stmt::Throw(e) => format!("{}panic({})\n", pad, go_expr(e, lvl)),
+        Stmt::Test { name, body } => {
+            let mut s = format!("{}// test \"{}\"\n{}{{\n", pad, escape_str(name), pad);
+            for st in body {
+                s.push_str(&go_stmt(st, lvl + 1));
+            }
+            s.push_str(&format!("{}}}\n", pad));
+            s
+        }
+        Stmt::Defer(inner) => format!("{}defer func() {{\n{}{}}}()\n", pad, go_stmt(inner, lvl + 1), pad),
+        Stmt::Let { name, value, .. } => {
+            let sn = go_safe_ident(name);
+            format!(
+                "{}var {} any = {}\n{}_ = {}\n",
+                pad,
+                sn,
+                go_expr(value, lvl),
+                pad,
+                sn
+            )
+        }
+        Stmt::Assign { target, value } => match target {
