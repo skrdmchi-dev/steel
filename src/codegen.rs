@@ -5817,3 +5817,85 @@ fn go_stmt(stmt: &Stmt, lvl: usize) -> String {
                     var
                 );
                 for st in body {
+                    s.push_str(&go_stmt(st, lvl + 1));
+                }
+                s.push_str(&format!("{}}}\n", pad));
+                return s;
+            }
+            let mut s = format!(
+                "{}for _, {} := range __steel_iter({}) {{\n{}    _ = {}\n",
+                pad,
+                var,
+                go_expr(iterable, lvl),
+                pad,
+                var
+            );
+            for st in body {
+                s.push_str(&go_stmt(st, lvl + 1));
+            }
+            s.push_str(&format!("{}}}\n", pad));
+            s
+        }
+        Stmt::Break => format!("{}break\n", pad),
+        Stmt::Continue => format!("{}continue\n", pad),
+        Stmt::Expr(e) => format!("{}{}\n", pad, go_expr(e, lvl)),
+    }
+}
+
+fn go_expr(expr: &Expr, lvl: usize) -> String {
+    match expr {
+        Expr::Number(n) => format!("float64({})", fmt_num(*n)),
+        Expr::String(s) => format!("\"{}\"", escape_str(s)),
+        Expr::Bool(b) => b.to_string(),
+        Expr::Null => "nil".to_string(),
+        Expr::Ident(name) => match name.as_str() {
+            "print" | "println" => "fmt.Println".to_string(),
+            "str" => "fmt.Sprint".to_string(),
+            "range" => "__steel_range".to_string(),
+            "PI" => "math.Pi".to_string(),
+            "E" => "math.E".to_string(),
+            _ => go_safe_ident(name),
+        },
+        Expr::Array(items) => {
+            let inner: Vec<String> = items.iter().map(|e| go_expr(e, lvl)).collect();
+            format!("&__SteelArr{{items: []any{{{}}}}}", inner.join(", "))
+        }
+        Expr::Map(entries) => {
+            let inner: Vec<String> = entries
+                .iter()
+                .map(|(k, v)| format!("\"{}\": {}", escape_str(k), go_expr(v, lvl)))
+                .collect();
+            format!("map[string]any{{{}}}", inner.join(", "))
+        }
+        Expr::New { class_name, args } => {
+            let arg_strs: Vec<String> = args.iter().map(|a| go_expr(a, lvl)).collect();
+            format!("{}({})", class_name, arg_strs.join(", "))
+        }
+        Expr::Ternary {
+            cond,
+            then_expr,
+            else_expr,
+        } => format!(
+            "func() any {{ if {} {{ return {} }}; return {} }}()",
+            go_cond_expr(cond, lvl),
+            go_expr(then_expr, lvl),
+            go_expr(else_expr, lvl)
+        ),
+        Expr::Binary { left, op, right } => match op {
+            BinaryOp::Add => format!("__steel_add({}, {})", go_expr(left, lvl), go_expr(right, lvl)),
+            BinaryOp::Sub | BinaryOp::Mul | BinaryOp::Div | BinaryOp::Mod | BinaryOp::Pow => {
+                go_num_expr(expr, lvl)
+            }
+            BinaryOp::BitAnd => format!(
+                "float64(int({}) & int({}))",
+                go_num_expr(left, lvl),
+                go_num_expr(right, lvl)
+            ),
+            BinaryOp::BitOr => format!(
+                "float64(int({}) | int({}))",
+                go_num_expr(left, lvl),
+                go_num_expr(right, lvl)
+            ),
+            BinaryOp::BitXor => format!(
+                "float64(int({}) ^ int({}))",
+                go_num_expr(left, lvl),
