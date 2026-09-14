@@ -5981,3 +5981,85 @@ fn go_expr(expr: &Expr, lvl: usize) -> String {
                         return format!("__steel_index_of({}, {})", go_expr(&args[0], lvl), go_expr(&args[1], lvl));
                     }
                     "repeat" if args.len() == 2 => {
+                        return format!("__steel_repeat({}, {})", go_expr(&args[0], lvl), go_expr(&args[1], lvl));
+                    }
+                    "pad_start" if args.len() >= 2 => {
+                        let ch = args.get(2).map(|a| go_expr(a, lvl)).unwrap_or_else(|| "\" \"".to_string());
+                        return format!("__steel_pad_start({}, {}, {})", go_expr(&args[0], lvl), go_expr(&args[1], lvl), ch);
+                    }
+                    "pad_end" if args.len() >= 2 => {
+                        let ch = args.get(2).map(|a| go_expr(a, lvl)).unwrap_or_else(|| "\" \"".to_string());
+                        return format!("__steel_pad_end({}, {}, {})", go_expr(&args[0], lvl), go_expr(&args[1], lvl), ch);
+                    }
+                    "char_code" if args.len() == 1 => {
+                        return format!("__steel_char_code({})", go_expr(&args[0], lvl));
+                    }
+                    "from_char_code" if args.len() == 1 => {
+                        return format!("__steel_from_char_code({})", go_expr(&args[0], lvl));
+                    }
+                    "range" if args.len() >= 2 => {
+                        let a: Vec<String> = args.iter().map(|x| go_expr(x, lvl)).collect();
+                        return format!("__steel_range({})", a.join(", "));
+                    }
+                    "map" if args.len() == 2 => {
+                        return format!("__steel_map({}, {})", go_expr(&args[0], lvl), go_expr(&args[1], lvl));
+                    }
+                    "filter" if args.len() == 2 => {
+                        return format!("__steel_filter({}, {})", go_expr(&args[0], lvl), go_expr(&args[1], lvl));
+                    }
+                    "reduce" if args.len() >= 2 => {
+                        let init = args.get(2).map(|a| go_expr(a, lvl)).unwrap_or_else(|| "nil".to_string());
+                        return format!("__steel_reduce({}, {}, {})", go_expr(&args[0], lvl), go_expr(&args[1], lvl), init);
+                    }
+                    "find" if args.len() == 2 => {
+                        return format!("__steel_find({}, {})", go_expr(&args[0], lvl), go_expr(&args[1], lvl));
+                    }
+                    "any" if args.len() == 2 => {
+                        return format!("__steel_any({}, {})", go_expr(&args[0], lvl), go_expr(&args[1], lvl));
+                    }
+                    "all" if args.len() == 2 => {
+                        return format!("__steel_all({}, {})", go_expr(&args[0], lvl), go_expr(&args[1], lvl));
+                    }
+                    "sum" if args.len() == 1 => {
+                        return format!("__steel_sum({})", go_expr(&args[0], lvl));
+                    }
+                    "avg" if args.len() == 1 => {
+                        return format!("__steel_avg({})", go_expr(&args[0], lvl));
+                    }
+                    "unique" if args.len() == 1 => {
+                        return format!("__steel_unique({})", go_expr(&args[0], lvl));
+                    }
+                    "flat" if args.len() == 1 => {
+                        return format!("__steel_flat({})", go_expr(&args[0], lvl));
+                    }
+                    "zip" if args.len() == 2 => {
+                        return format!("__steel_zip({}, {})", go_expr(&args[0], lvl), go_expr(&args[1], lvl));
+                    }
+                    "enumerate" if args.len() == 1 => {
+                        return format!("__steel_enumerate({})", go_expr(&args[0], lvl));
+                    }
+                    "clamp" if args.len() == 3 => {
+                        return format!("__steel_clamp({}, {}, {})", go_num_expr(&args[0], lvl), go_num_expr(&args[1], lvl), go_num_expr(&args[2], lvl));
+                    }
+                    "sign" if args.len() == 1 => {
+                        return format!("__steel_sign({})", go_num_expr(&args[0], lvl));
+                    }
+                    "atan2" if args.len() == 2 => {
+                        return format!("math.Atan2({}, {})", go_num_expr(&args[0], lvl), go_num_expr(&args[1], lvl));
+                    }
+                    "log" if args.len() == 1 => {
+                        return format!("math.Log({})", go_num_expr(&args[0], lvl));
+                    }
+                    "exp" if args.len() == 1 => {
+                        return format!("math.Exp({})", go_num_expr(&args[0], lvl));
+                    }
+                    "json_stringify" if args.len() == 1 => {
+                        return format!("__steel_json_stringify({})", go_expr(&args[0], lvl));
+                    }
+                    "json_parse" if args.len() == 1 => {
+                        return format!("__steel_json_parse({})", go_expr(&args[0], lvl));
+                    }
+                    "hash" if args.len() == 1 => {
+                        return format!("__steel_hash({})", go_expr(&args[0], lvl));
+                    }
+                    "append_file" if args.len() == 2 => {
