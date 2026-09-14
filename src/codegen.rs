@@ -5899,3 +5899,85 @@ fn go_expr(expr: &Expr, lvl: usize) -> String {
             BinaryOp::BitXor => format!(
                 "float64(int({}) ^ int({}))",
                 go_num_expr(left, lvl),
+                go_num_expr(right, lvl)
+            ),
+            BinaryOp::Shl => format!(
+                "float64(int({}) << uint({}))",
+                go_num_expr(left, lvl),
+                go_num_expr(right, lvl)
+            ),
+            BinaryOp::Shr => format!(
+                "float64(int({}) >> uint({}))",
+                go_num_expr(left, lvl),
+                go_num_expr(right, lvl)
+            ),
+            BinaryOp::NullCoalesce => {
+                let l = go_expr(left, lvl);
+                let r = go_expr(right, lvl);
+                format!(
+                    "func() any {{ if {} != nil {{ return {} }}; return {} }}()",
+                    l, l, r
+                )
+            }
+            BinaryOp::Eq
+            | BinaryOp::Neq
+            | BinaryOp::Lt
+            | BinaryOp::Gt
+            | BinaryOp::Lte
+            | BinaryOp::Gte
+            | BinaryOp::And
+            | BinaryOp::Or => go_cond_expr(expr, lvl),
+        },
+        Expr::Unary { op, expr: inner } => match op {
+            UnaryOp::Neg => go_num_expr(expr, lvl),
+            UnaryOp::Not => go_cond_expr(expr, lvl),
+            UnaryOp::BitNot => format!("float64(^int({}))", go_num_expr(inner, lvl)),
+        },
+        Expr::Call { callee, args } => {
+            if let Expr::Ident(name) = &**callee {
+                match name.as_str() {
+                    "len" if args.len() == 1 => {
+                        return format!("__steel_len({})", go_expr(&args[0], lvl));
+                    }
+                    "print" | "println" => {
+                        let arg_strs: Vec<String> = args.iter().map(|a| go_expr(a, lvl)).collect();
+                        return format!("__steel_print({})", arg_strs.join(", "));
+                    }
+                    "str" if args.len() == 1 => {
+                        return format!("fmt.Sprint({})", go_expr(&args[0], lvl));
+                    }
+                    "num" if args.len() == 1 => {
+                        return format!("__steel_num_cast({})", go_expr(&args[0], lvl));
+                    }
+                    "int" if args.len() == 1 => {
+                        return format!("__steel_int({})", go_expr(&args[0], lvl));
+                    }
+                    "bool" if args.len() == 1 => {
+                        return format!("__steel_truthy({})", go_expr(&args[0], lvl));
+                    }
+                    "type" if args.len() == 1 => {
+                        return format!("__steel_type({})", go_expr(&args[0], lvl));
+                    }
+                    "assert" if !args.is_empty() => {
+                        let a: Vec<String> = args.iter().map(|x| go_expr(x, lvl)).collect();
+                        return format!("__steel_assert({})", a.join(", "));
+                    }
+                    "push" if args.len() == 2 => {
+                        return format!("__steel_push({}, {})", go_expr(&args[0], lvl), go_expr(&args[1], lvl));
+                    }
+                    "pop" if args.len() == 1 => {
+                        return format!("__steel_pop({})", go_expr(&args[0], lvl));
+                    }
+                    "has_key" if args.len() == 2 => {
+                        return format!("__steel_has_key({}, {})", go_expr(&args[0], lvl), go_expr(&args[1], lvl));
+                    }
+                    "delete_key" if args.len() == 2 => {
+                        return format!("__steel_delete_key({}, {})", go_expr(&args[0], lvl), go_expr(&args[1], lvl));
+                    }
+                    "concat" if args.len() == 2 => {
+                        return format!("__steel_concat({}, {})", go_expr(&args[0], lvl), go_expr(&args[1], lvl));
+                    }
+                    "index_of" if args.len() == 2 => {
+                        return format!("__steel_index_of({}, {})", go_expr(&args[0], lvl), go_expr(&args[1], lvl));
+                    }
+                    "repeat" if args.len() == 2 => {
