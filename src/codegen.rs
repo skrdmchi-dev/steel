@@ -6145,3 +6145,84 @@ fn go_expr(expr: &Expr, lvl: usize) -> String {
                     }
                     "reverse" if args.len() == 1 => {
                         return format!("__steel_reverse({})", go_expr(&args[0], lvl));
+                    }
+                    "keys" if args.len() == 1 => {
+                        return format!("__steel_keys({})", go_expr(&args[0], lvl));
+                    }
+                    "values" if args.len() == 1 => {
+                        return format!("__steel_values({})", go_expr(&args[0], lvl));
+                    }
+                    "slice" if args.len() >= 2 => {
+                        let end_e = args.get(2).map(|a| go_expr(a, lvl)).unwrap_or_else(|| "nil".to_string());
+                        return format!("__steel_slice({}, {}, {})", go_expr(&args[0], lvl), go_expr(&args[1], lvl), end_e);
+                    }
+                    "sort" if args.len() == 1 => {
+                        return format!("__steel_sort({})", go_expr(&args[0], lvl));
+                    }
+                    _ => {}
+                }
+            }
+            let arg_strs: Vec<String> = args.iter().map(|a| go_expr(a, lvl)).collect();
+            if arg_strs.is_empty() {
+                format!("__steel_call({})", go_expr(callee, lvl))
+            } else {
+                format!("__steel_call({}, {})", go_expr(callee, lvl), arg_strs.join(", "))
+            }
+        }
+        Expr::Index { target, index } => format!(
+            "__steel_get({}, {})",
+            go_expr(target, lvl),
+            go_expr(index, lvl)
+        ),
+        Expr::Member { target, field } => format!(
+            "{}.(map[string]any)[\"{}\"]",
+            go_expr(target, lvl),
+            escape_str(field)
+        ),
+        Expr::FnExpr { params, body } => {
+            let mut s = String::from("func(__args ...any) any {\n");
+            let inner_pad = indent(lvl + 1);
+            for (i, (p, def)) in params.iter().enumerate() {
+                if let Some(def_expr) = def {
+                    s.push_str(&format!(
+                        "{}var {} any = {}; if len(__args) > {} {{ {} = __args[{}] }}; _ = {}\n",
+                        inner_pad, p, go_expr(def_expr, lvl + 1), i, p, i, p
+                    ));
+                } else {
+                    s.push_str(&format!(
+                        "{}var {} any; if len(__args) > {} {{ {} = __args[{}] }}; _ = {}\n",
+                        inner_pad, p, i, p, i, p
+                    ));
+                }
+            }
+            for st in body {
+                s.push_str(&go_stmt(st, lvl + 1));
+            }
+            s.push_str(&format!("{}    return nil\n{}}}", indent(lvl), indent(lvl)));
+            s
+        }
+        Expr::Range { start, end } => format!(
+            "__steel_range({}, {})",
+            go_expr(start, lvl),
+            go_expr(end, lvl)
+        ),
+        Expr::Spread(inner) => go_expr(inner, lvl),
+    }
+}
+
+// MULTI-FILE PROJECT TRANSPILATION (Default non-bundled directory output)
+
+pub struct ModuleUnit {
+    pub name: String,
+    pub is_entry: bool,
+    pub imports: Vec<String>,
+    pub program: Program,
+}
+
+fn module_exported_fns(program: &Program) -> Vec<(String, Vec<(String, Option<Expr>)>)> {
+    let mut out = Vec::new();
+    for stmt in &program.statements {
+        match stmt {
+            Stmt::FnDecl { name, params, .. } => {
+                out.push((name.clone(), params.clone()));
+            }
