@@ -6063,3 +6063,85 @@ fn go_expr(expr: &Expr, lvl: usize) -> String {
                         return format!("__steel_hash({})", go_expr(&args[0], lvl));
                     }
                     "append_file" if args.len() == 2 => {
+                        return format!("__steel_append_file({}, {})", go_expr(&args[0], lvl), go_expr(&args[1], lvl));
+                    }
+                    "remove_file" if args.len() == 1 => {
+                        return format!("__steel_remove_file({})", go_expr(&args[0], lvl));
+                    }
+                    "clock" if args.is_empty() => {
+                        return "__steel_clock()".to_string();
+                    }
+                    "floor" if args.len() == 1 => {
+                        return format!("math.Floor({})", go_num_expr(&args[0], lvl));
+                    }
+                    "ceil" if args.len() == 1 => {
+                        return format!("math.Ceil({})", go_num_expr(&args[0], lvl));
+                    }
+                    "sqrt" if args.len() == 1 => {
+                        return format!("math.Sqrt({})", go_num_expr(&args[0], lvl));
+                    }
+                    "sin" if args.len() == 1 => {
+                        return format!("math.Sin({})", go_num_expr(&args[0], lvl));
+                    }
+                    "cos" if args.len() == 1 => {
+                        return format!("math.Cos({})", go_num_expr(&args[0], lvl));
+                    }
+                    "tan" if args.len() == 1 => {
+                        return format!("math.Tan({})", go_num_expr(&args[0], lvl));
+                    }
+                    "round" if args.len() == 1 => {
+                        return format!("math.Round({})", go_num_expr(&args[0], lvl));
+                    }
+                    "pow" if args.len() == 2 => {
+                        return format!("math.Pow({}, {})", go_num_expr(&args[0], lvl), go_num_expr(&args[1], lvl));
+                    }
+                    "min" if args.len() == 2 => {
+                        return format!("math.Min({}, {})", go_num_expr(&args[0], lvl), go_num_expr(&args[1], lvl));
+                    }
+                    "max" if args.len() == 2 => {
+                        return format!("math.Max({}, {})", go_num_expr(&args[0], lvl), go_num_expr(&args[1], lvl));
+                    }
+                    "abs" if args.len() == 1 => {
+                        return format!("math.Abs({})", go_num_expr(&args[0], lvl));
+                    }
+                    "read_file" if args.len() == 1 => {
+                        return format!("__steel_read_file({})", go_expr(&args[0], lvl));
+                    }
+                    "write_file" if args.len() == 2 => {
+                        return format!("__steel_write_file({}, {})", go_expr(&args[0], lvl), go_expr(&args[1], lvl));
+                    }
+                    "file_exists" if args.len() == 1 => {
+                        return format!("__steel_file_exists({})", go_expr(&args[0], lvl));
+                    }
+                    "env" if args.len() == 1 => {
+                        return format!("__steel_env({})", go_expr(&args[0], lvl));
+                    }
+                    "upper" if args.len() == 1 => {
+                        return format!("strings.ToUpper(fmt.Sprint({}))", go_expr(&args[0], lvl));
+                    }
+                    "lower" if args.len() == 1 => {
+                        return format!("strings.ToLower(fmt.Sprint({}))", go_expr(&args[0], lvl));
+                    }
+                    "trim" if args.len() == 1 => {
+                        return format!("strings.TrimSpace(fmt.Sprint({}))", go_expr(&args[0], lvl));
+                    }
+                    "contains" if args.len() == 2 => {
+                        return format!("__steel_contains({}, {})", go_expr(&args[0], lvl), go_expr(&args[1], lvl));
+                    }
+                    "starts_with" if args.len() == 2 => {
+                        return format!("strings.HasPrefix(fmt.Sprint({}), fmt.Sprint({}))", go_expr(&args[0], lvl), go_expr(&args[1], lvl));
+                    }
+                    "ends_with" if args.len() == 2 => {
+                        return format!("strings.HasSuffix(fmt.Sprint({}), fmt.Sprint({}))", go_expr(&args[0], lvl), go_expr(&args[1], lvl));
+                    }
+                    "split" if args.len() == 2 => {
+                        return format!("__steel_split({}, {})", go_expr(&args[0], lvl), go_expr(&args[1], lvl));
+                    }
+                    "join" if args.len() == 2 => {
+                        return format!("__steel_join({}, {})", go_expr(&args[0], lvl), go_expr(&args[1], lvl));
+                    }
+                    "replace" if args.len() == 3 => {
+                        return format!("strings.ReplaceAll(fmt.Sprint({}), fmt.Sprint({}), fmt.Sprint({}))", go_expr(&args[0], lvl), go_expr(&args[1], lvl), go_expr(&args[2], lvl));
+                    }
+                    "reverse" if args.len() == 1 => {
+                        return format!("__steel_reverse({})", go_expr(&args[0], lvl));
