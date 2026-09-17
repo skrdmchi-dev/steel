@@ -6226,3 +6226,85 @@ fn module_exported_fns(program: &Program) -> Vec<(String, Vec<(String, Option<Ex
             Stmt::FnDecl { name, params, .. } => {
                 out.push((name.clone(), params.clone()));
             }
+            Stmt::ClassDecl {
+                name,
+                parent,
+                methods,
+            } => {
+                if let Stmt::FnDecl { name, params, .. } = desugar_class(name, parent, methods) {
+                    out.push((name, params));
+                }
+            }
+            _ => {}
+        }
+    }
+    out
+}
+
+/// Transpiles a multi-file Steel project into separate target language files
+/// (mirroring the original module structure instead of combining into one file).
+pub fn transpile_project(modules: &[ModuleUnit], target: Target) -> Vec<(String, String)> {
+    let opt_modules: Vec<ModuleUnit> = modules
+        .iter()
+        .map(|m| ModuleUnit {
+            name: m.name.clone(),
+            is_entry: m.is_entry,
+            imports: m.imports.clone(),
+            program: crate::optimizer::optimize_program(&m.program),
+        })
+        .collect();
+
+    match target {
+        Target::C => emit_c_project(&opt_modules, target),
+        Target::Cpp => crate::codegen_cpp::emit_cpp_project(&opt_modules),
+        Target::Rust => emit_rust_project(&opt_modules),
+        Target::Python => emit_python_project(&opt_modules),
+        Target::Js => emit_js_project(&opt_modules, target),
+        Target::Ts => crate::codegen_ts::emit_ts_project(&opt_modules),
+        Target::Go => emit_go_project(&opt_modules),
+        Target::Lua => emit_lua_project(&opt_modules),
+    }
+}
+
+fn emit_c_project(modules: &[ModuleUnit], target: Target) -> Vec<(String, String)> {
+    let ext = target.extension();
+    let hdr_ext = if target == Target::Cpp { "hpp" } else { "h" };
+    let lang_label = target.name();
+
+    // First pass: generate each module's lambdas, top_fns, and main_body
+    let mut rendered: Vec<(String, String, String)> = Vec::new();
+    let mut all_user_code = String::new();
+
+    C_TOP_FNS.with(|f| {
+        let mut set = f.borrow_mut();
+        set.clear();
+        for m in modules {
+            for stmt in &m.program.statements {
+                match stmt {
+                    Stmt::FnDecl { name, .. } | Stmt::ClassDecl { name, .. } => {
+                        set.insert(name.clone());
+                    }
+                    _ => {}
+                }
+            }
+        }
+    });
+    C_CUR_LOCALS.with(|l| l.borrow_mut().clear());
+
+    for m in modules {
+        let mut lambdas = String::new();
+        let mut lambda_id = 0;
+        let mut top_fns = String::new();
+        let mut main_body = String::new();
+        let mut declared = std::collections::HashSet::new();
+
+        for stmt in &m.program.statements {
+            match stmt {
+                Stmt::Import(_) => {}
+                Stmt::FnDecl { name, params, body } => {
+                    top_fns.push_str(&c_top_fn(name, params, body, &mut lambdas, &mut lambda_id));
+                }
+                Stmt::ClassDecl {
+                    name,
+                    parent,
+                    methods,
