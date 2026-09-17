@@ -6308,3 +6308,85 @@ fn emit_c_project(modules: &[ModuleUnit], target: Target) -> Vec<(String, String
                     name,
                     parent,
                     methods,
+                } => {
+                    if let Stmt::FnDecl { name, params, body } = desugar_class(name, parent, methods)
+                    {
+                        top_fns.push_str(&c_top_fn(
+                            &name,
+                            &params,
+                            &body,
+                            &mut lambdas,
+                            &mut lambda_id,
+                        ));
+                    }
+                }
+                other => {
+                    main_body.push_str(&c_stmt(
+                        other,
+                        1,
+                        &mut declared,
+                        &mut lambdas,
+                        &mut lambda_id,
+                    ));
+                }
+            }
+        }
+        all_user_code.push_str(&lambdas);
+        all_user_code.push_str(&top_fns);
+        all_user_code.push_str(&main_body);
+        rendered.push((lambdas, top_fns, main_body));
+    }
+
+    let needs_arr = all_user_code.contains("sv_arr_new")
+        || all_user_code.contains("sv_push")
+        || all_user_code.contains("sv_pop")
+        || all_user_code.contains("sv_range")
+        || all_user_code.contains(".arr")
+        || all_user_code.contains("sv_get")
+        || all_user_code.contains("sv_set")
+        || all_user_code.contains("sv_map_hof")
+        || all_user_code.contains("sv_filter_hof")
+        || all_user_code.contains("sv_reduce_hof");
+    let needs_map = all_user_code.contains("sv_map_new")
+        || all_user_code.contains("sv_map_set")
+        || all_user_code.contains("sv_map_get")
+        || all_user_code.contains("sv_get")
+        || all_user_code.contains("sv_set");
+    let needs_add = all_user_code.contains("sv_add(");
+    let needs_eq = all_user_code.contains("sv_eq(");
+    let needs_truthy = all_user_code.contains("sv_truthy(");
+    let needs_len = all_user_code.contains("sv_len(");
+    let needs_hof = all_user_code.contains("sv_map_hof")
+        || all_user_code.contains("sv_filter_hof")
+        || all_user_code.contains("sv_reduce_hof");
+    let needs_arena = needs_arr || needs_map || needs_add;
+
+    // Build shared steel_rt.h / steel_rt.hpp
+    let mut rt = format!(
+        "/* Steel Shared Runtime Header (Target: {}) */\n\
+         #ifndef STEEL_RT_H\n\
+         #define STEEL_RT_H\n\n\
+         #include <stdio.h>\n\
+         #include <stdlib.h>\n\
+         #include <string.h>\n\
+         #include <stdbool.h>\n\
+         #include <stdarg.h>\n\
+         #include <math.h>\n\n",
+        lang_label
+    );
+
+    if !needs_arr && !needs_map && !needs_hof {
+        rt.push_str(
+            "typedef enum { ST_NULL, ST_BOOL, ST_NUM, ST_STR } SType;\n\
+             typedef struct { SType type; double num; const char* str; } SVal;\n\
+             static inline SVal sv_null(void) { return (SVal){ST_NULL, 0, NULL}; }\n\
+             static inline SVal sv_bool(bool b) { return (SVal){ST_BOOL, b ? 1.0 : 0.0, NULL}; }\n\
+             static inline SVal sv_num(double n) { return (SVal){ST_NUM, n, NULL}; }\n\
+             static inline SVal sv_str(const char* s) { return (SVal){ST_STR, 0, s}; }\n",
+        );
+        if needs_truthy {
+            rt.push_str(
+                "static inline bool sv_truthy(SVal v) {\n\
+                 \x20   return v.type == ST_STR ? (v.str && v.str[0] != '\\0') : (v.type != ST_NULL && v.num != 0.0);\n\
+                 }\n",
+            );
