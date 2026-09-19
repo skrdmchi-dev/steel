@@ -6390,3 +6390,85 @@ fn emit_c_project(modules: &[ModuleUnit], target: Target) -> Vec<(String, String
                  \x20   return v.type == ST_STR ? (v.str && v.str[0] != '\\0') : (v.type != ST_NULL && v.num != 0.0);\n\
                  }\n",
             );
+        }
+        if needs_eq {
+            rt.push_str(
+                "static inline bool sv_eq(SVal a, SVal b) {\n\
+                 \x20   if (a.type != b.type) return false;\n\
+                 \x20   return a.type == ST_STR ? strcmp(a.str, b.str) == 0 : a.num == b.num;\n\
+                 }\n",
+            );
+        }
+        if needs_add || all_user_code.contains("sv_str_cast(") {
+            rt.push_str(
+                "static inline SVal sv_str_cast(SVal v) {\n\
+                 \x20   if (v.type == ST_STR) return v;\n\
+                 \x20   char* b = (char*)calloc(1, 64);\n\
+                 \x20   if (v.type == ST_NULL) snprintf(b, 64, \"null\");\n\
+                 \x20   else if (v.type == ST_BOOL) snprintf(b, 64, \"%s\", v.num != 0.0 ? \"true\" : \"false\");\n\
+                 \x20   else snprintf(b, 64, floor(v.num) == v.num ? \"%.0f\" : \"%g\", v.num);\n\
+                 \x20   return sv_str(b);\n\
+                 }\n",
+            );
+        }
+        if needs_add {
+            rt.push_str(
+                "static inline SVal sv_add(SVal a, SVal b) {\n\
+                 \x20   if (a.type == ST_NUM && b.type == ST_NUM) return sv_num(a.num + b.num);\n\
+                 \x20   SVal sa = sv_str_cast(a), sb = sv_str_cast(b);\n\
+                 \x20   char* r = (char*)calloc(1, strlen(sa.str) + strlen(sb.str) + 1);\n\
+                 \x20   strcpy(r, sa.str); strcat(r, sb.str);\n\
+                 \x20   return sv_str(r);\n\
+                 }\n",
+            );
+        }
+        if all_user_code.contains("sv_print_one(") {
+            rt.push_str(
+                "static inline void sv_print_one(SVal v) {\n\
+                 \x20   if (v.type == ST_STR) printf(\"%s\", v.str);\n\
+                 \x20   else if (v.type == ST_NUM) printf(floor(v.num) == v.num ? \"%.0f\" : \"%g\", v.num);\n\
+                 \x20   else if (v.type == ST_BOOL) printf(\"%s\", v.num != 0.0 ? \"true\" : \"false\");\n\
+                 \x20   else printf(\"null\");\n\
+                 }\n",
+            );
+        }
+    } else {
+        rt.push_str(
+            "typedef enum { ST_NULL, ST_BOOL, ST_NUM, ST_STR, ST_ARR, ST_MAP, ST_FN } SType;\n\
+             typedef struct SVal SVal;\n\
+             typedef struct SArr SArr;\n\
+             typedef struct SMap SMap;\n\
+             typedef SVal (*SCFn)(SVal __st_this, int argc, SVal* argv);\n\
+             struct SVal { SType type; SMap* env; union { double num; const char* str; SArr* arr; SMap* map; SCFn fn; }; };\n\
+             struct SArr { SVal* data; int len; int cap; };\n\
+             struct SMap { const char** keys; SVal* vals; int len; int cap; };\n\
+             static inline void* sv_alloc(size_t sz) { return calloc(1, sz); }\n\
+             static inline void sv_cleanup(void) {}\n\
+             static inline SVal sv_null(void) { SVal v; v.type = ST_NULL; v.num = 0; return v; }\n\
+             static inline SVal sv_bool(bool b) { SVal v; v.type = ST_BOOL; v.num = b ? 1.0 : 0.0; return v; }\n\
+             static inline SVal sv_num(double n) { SVal v; v.type = ST_NUM; v.num = n; return v; }\n\
+             static inline SVal sv_str(const char* s) { SVal v; v.type = ST_STR; v.str = s; return v; }\n\
+             static inline SVal sv_fn(SCFn f) { SVal v; v.type = ST_FN; v.env = NULL; v.fn = f; return v; }\n\
+             static inline SVal sv_call_fn(SVal f, int argc, SVal* argv) {\n\
+             \x20   if (f.type != ST_FN || !f.fn) return sv_null();\n\
+             \x20   SVal env; env.type = f.env ? ST_MAP : ST_NULL; env.env = NULL; env.map = f.env;\n\
+             \x20   return f.fn(env, argc, argv);\n\
+             }\n",
+        );
+        if needs_arr {
+            rt.push_str(
+                "static inline SVal sv_arr_new(int count, SVal* init_items) {\n\
+                 \x20   SArr* a = (SArr*)sv_alloc(sizeof(SArr)); a->cap = count > 4 ? count * 2 : 8; a->len = count;\n\
+                 \x20   a->data = (SVal*)sv_alloc(sizeof(SVal) * a->cap);\n\
+                 \x20   for (int i = 0; i < count; i++) a->data[i] = init_items[i];\n\
+                 \x20   SVal v; v.type = ST_ARR; v.arr = a; return v;\n\
+                 }\n\
+                 static inline SVal sv_push(SVal arr, SVal item) {\n\
+                 \x20   if (arr.type != ST_ARR) return arr;\n\
+                 \x20   SArr* a = arr.arr;\n\
+                 \x20   if (a->len >= a->cap) { int nc = a->cap * 2; SVal* nd = (SVal*)sv_alloc(sizeof(SVal) * nc); memcpy(nd, a->data, sizeof(SVal) * a->len); a->data = nd; a->cap = nc; }\n\
+                 \x20   a->data[a->len++] = item; return arr;\n\
+                 }\n\
+                 static inline SVal sv_pop(SVal arr) { return (arr.type != ST_ARR || arr.arr->len == 0) ? sv_null() : arr.arr->data[--arr.arr->len]; }\n\
+                 static inline SVal sv_range(SVal a, SVal b) { int s = (int)a.num, e = (int)b.num; SVal r = sv_arr_new(0, NULL); for (int i = s; i < e; i++) sv_push(r, sv_num(i)); return r; }\n",
+            );
