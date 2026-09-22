@@ -6554,3 +6554,85 @@ fn emit_c_project(modules: &[ModuleUnit], target: Target) -> Vec<(String, String
             );
         }
         if needs_hof {
+            rt.push_str(
+                "static inline SVal sv_map_hof(SVal arr, SVal fn) { SVal out = sv_arr_new(0, NULL); SVal env; env.type = fn.env ? ST_MAP : ST_NULL; env.env = NULL; env.map = fn.env; for (int i = 0; i < arr.arr->len; i++) sv_push(out, fn.fn(env, 1, &arr.arr->data[i])); return out; }\n\
+                 static inline SVal sv_filter_hof(SVal arr, SVal fn) { SVal out = sv_arr_new(0, NULL); SVal env; env.type = fn.env ? ST_MAP : ST_NULL; env.env = NULL; env.map = fn.env; for (int i = 0; i < arr.arr->len; i++) if (sv_truthy(fn.fn(env, 1, &arr.arr->data[i]))) sv_push(out, arr.arr->data[i]); return out; }\n\
+                 static inline SVal sv_reduce_hof(SVal arr, SVal fn, SVal init) { SVal acc = init; SVal env; env.type = fn.env ? ST_MAP : ST_NULL; env.env = NULL; env.map = fn.env; for (int i = 0; i < arr.arr->len; i++) { SVal a[2] = { acc, arr.arr->data[i] }; acc = fn.fn(env, 2, a); } return acc; }\n",
+            );
+        }
+        rt.push_str(
+            "static inline void sv_print_one(SVal v) {\n\
+             \x20   if (v.type == ST_ARR) { printf(\"[\"); for (int i = 0; i < v.arr->len; i++) { if (i > 0) printf(\", \"); sv_print_one(v.arr->data[i]); } printf(\"]\"); }\n\
+             \x20   else printf(\"%s\", sv_str_cast(v).str);\n\
+             }\n",
+        );
+    }
+    rt.push_str(&c_extra_stdlib(&all_user_code));
+    rt.push_str("\n#endif /* STEEL_RT_H */\n");
+
+    let mut files = Vec::new();
+    files.push((format!("steel_rt.{}", hdr_ext), rt));
+
+    for (idx, m) in modules.iter().enumerate() {
+        let (lambdas, top_fns, main_body) = &rendered[idx];
+        let fns = module_exported_fns(&m.program);
+
+        if !m.is_entry {
+            let guard = format!("{}_H", m.name.to_uppercase().replace('-', "_"));
+            let mut hdr = format!(
+                "/* Header for module '{}' (Target: {}) */\n\
+                 #ifndef {}\n\
+                 #define {}\n\n\
+                 #include \"steel_rt.{}\"\n\n",
+                m.name, lang_label, guard, guard, hdr_ext
+            );
+            for (fn_name, params) in &fns {
+                let p_sig: Vec<String> = params.iter().map(|(p, _)| format!("SVal {}", c_safe_ident(p))).collect();
+                let sig = if p_sig.is_empty() {
+                    "void".to_string()
+                } else {
+                    p_sig.join(", ")
+                };
+                hdr.push_str(&format!("SVal {}({});\n", c_safe_ident(fn_name), sig));
+                hdr.push_str(&format!("SVal __st_fn_{}(SVal, int, SVal*);\n", c_safe_ident(fn_name)));
+            }
+            hdr.push_str(&format!("\n#endif /* {} */\n", guard));
+            files.push((format!("{}.{}", m.name, hdr_ext), hdr));
+        }
+
+        let mut src = format!(
+            "/* Module '{}' (Target: {}) */\n",
+            m.name, lang_label
+        );
+        if m.is_entry {
+            src.push_str(&format!("#include \"steel_rt.{}\"\n", hdr_ext));
+        } else {
+            src.push_str(&format!("#include \"{}.{}\"\n", m.name, hdr_ext));
+        }
+        let mut included = std::collections::HashSet::new();
+        for imp in &m.imports {
+            if imp != &m.name && included.insert(imp.clone()) {
+                src.push_str(&format!("#include \"{}.{}\"\n", imp, hdr_ext));
+            }
+        }
+        // Also auto-include sibling module headers if this module calls their functions
+        let mod_body = format!("{}{}{}", lambdas, top_fns, main_body);
+        for other in modules {
+            if other.name == m.name || other.is_entry || included.contains(&other.name) {
+                continue;
+            }
+            let other_fns = module_exported_fns(&other.program);
+            if other_fns.iter().any(|(fn_name, _)| mod_body.contains(&format!("{}(", fn_name))) {
+                included.insert(other.name.clone());
+                src.push_str(&format!("#include \"{}.{}\"\n", other.name, hdr_ext));
+            }
+        }
+        src.push('\n');
+        src.push_str(lambdas);
+        src.push_str(top_fns);
+        if m.is_entry {
+            src.push_str("int main(void) {\n");
+            src.push_str(main_body);
+            if needs_arena && (needs_arr || needs_map || needs_hof) {
+                src.push_str("    sv_cleanup();\n");
+            }
