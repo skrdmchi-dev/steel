@@ -6472,3 +6472,85 @@ fn emit_c_project(modules: &[ModuleUnit], target: Target) -> Vec<(String, String
                  static inline SVal sv_pop(SVal arr) { return (arr.type != ST_ARR || arr.arr->len == 0) ? sv_null() : arr.arr->data[--arr.arr->len]; }\n\
                  static inline SVal sv_range(SVal a, SVal b) { int s = (int)a.num, e = (int)b.num; SVal r = sv_arr_new(0, NULL); for (int i = s; i < e; i++) sv_push(r, sv_num(i)); return r; }\n",
             );
+        }
+        if needs_map {
+            rt.push_str(
+                "static inline SVal sv_map_new(void) {\n\
+                 \x20   SMap* m = (SMap*)sv_alloc(sizeof(SMap)); m->cap = 16; m->len = 0;\n\
+                 \x20   m->keys = (const char**)sv_alloc(sizeof(char*) * m->cap); m->vals = (SVal*)sv_alloc(sizeof(SVal) * m->cap);\n\
+                 \x20   SVal v; v.type = ST_MAP; v.map = m; return v;\n\
+                 }\n\
+                 static inline void sv_map_set(SVal obj, const char* key, SVal val) {\n\
+                 \x20   if (obj.type != ST_MAP) return;\n\
+                 \x20   SMap* m = obj.map;\n\
+                 \x20   for (int i = 0; i < m->len; i++) if (strcmp(m->keys[i], key) == 0) { m->vals[i] = val; return; }\n\
+                 \x20   if (m->len >= m->cap) { int nc = m->cap * 2; const char** nk = (const char**)sv_alloc(sizeof(char*) * nc); SVal* nv = (SVal*)sv_alloc(sizeof(SVal) * nc); memcpy(nk, m->keys, sizeof(char*) * m->len); memcpy(nv, m->vals, sizeof(SVal) * m->len); m->keys = nk; m->vals = nv; m->cap = nc; }\n\
+                 \x20   m->keys[m->len] = key; m->vals[m->len] = val; m->len++;\n\
+                 }\n\
+                 static inline SVal sv_map_get(SVal obj, const char* key) {\n\
+                 \x20   if (obj.type != ST_MAP) return sv_null();\n\
+                 \x20   for (int i = 0; i < obj.map->len; i++) if (strcmp(obj.map->keys[i], key) == 0) return obj.map->vals[i];\n\
+                 \x20   return sv_null();\n\
+                 }\n\
+                 static inline SVal sv_call_method(SVal obj, const char* name, int argc, ...) {\n\
+                 \x20   SVal m = sv_map_get(obj, name);\n\
+                 \x20   if (m.type != ST_FN || !m.fn) return sv_null();\n\
+                 \x20   SVal argv[16]; va_list ap; va_start(ap, argc);\n\
+                 \x20   for (int i = 0; i < argc && i < 16; i++) argv[i] = va_arg(ap, SVal);\n\
+                 \x20   va_end(ap); return m.fn(obj, argc, argv);\n\
+                 }\n\
+                 static inline SVal sv_closure(SCFn fn, int ncap, const char** ks, SVal* vs) {\n\
+                 \x20   SVal env = sv_map_new();\n\
+                 \x20   for (int i = 0; i < ncap; i++) sv_map_set(env, ks[i], vs[i]);\n\
+                 \x20   SVal v = sv_fn(fn); v.env = env.map; return v;\n\
+                 }\n",
+            );
+        }
+        if all_user_code.contains("sv_get(") || all_user_code.contains("sv_set(") {
+            rt.push_str(
+                "static inline SVal sv_get(SVal t, SVal idx) {\n\
+                 \x20   if (t.type == ST_MAP && idx.type == ST_STR) return sv_map_get(t, idx.str);\n\
+             \x20   if (t.type == ST_ARR && idx.type == ST_NUM) { int i = (int)idx.num; if (i < 0) i += t.arr->len; return (i >= 0 && i < t.arr->len) ? t.arr->data[i] : sv_null(); }\n\
+                 \x20   return sv_null();\n\
+                 }\n\
+                 static inline void sv_set(SVal t, SVal idx, SVal val) { if (t.type == ST_MAP && idx.type == ST_STR) { sv_map_set(t, idx.str, val); return; } if (t.type == ST_ARR && idx.type == ST_NUM) { int i = (int)idx.num; if (i < 0) i += t.arr->len; if (i >= 0 && i < t.arr->len) t.arr->data[i] = val; } }\n",
+            );
+        }
+        rt.push_str(
+            "static inline bool sv_truthy(SVal v) {\n\
+             \x20   if (v.type == ST_NULL) return false;\n\
+             \x20   if (v.type == ST_BOOL || v.type == ST_NUM) return v.num != 0.0;\n\
+             \x20   if (v.type == ST_STR) return v.str && v.str[0] != '\\0';\n\
+             \x20   return true;\n\
+             }\n\
+             static inline bool sv_eq(SVal a, SVal b) {\n\
+             \x20   if (a.type != b.type) return false;\n\
+             \x20   return a.type == ST_STR ? strcmp(a.str, b.str) == 0 : a.num == b.num;\n\
+             }\n\
+             static inline SVal sv_str_cast(SVal v) {\n\
+             \x20   if (v.type == ST_STR) return v;\n\
+             \x20   char* buf = (char*)sv_alloc(128);\n\
+             \x20   if (v.type == ST_NULL) snprintf(buf, 128, \"null\");\n\
+             \x20   else if (v.type == ST_BOOL) snprintf(buf, 128, \"%s\", v.num != 0.0 ? \"true\" : \"false\");\n\
+             \x20   else snprintf(buf, 128, floor(v.num) == v.num ? \"%.0f\" : \"%g\", v.num);\n\
+             \x20   return sv_str(buf);\n\
+             }\n\
+             static inline SVal sv_add(SVal a, SVal b) {\n\
+             \x20   if (a.type == ST_NUM && b.type == ST_NUM) return sv_num(a.num + b.num);\n\
+             \x20   SVal sa = sv_str_cast(a), sb = sv_str_cast(b);\n\
+             \x20   char* res = (char*)sv_alloc(strlen(sa.str) + strlen(sb.str) + 1);\n\
+             \x20   strcpy(res, sa.str); strcat(res, sb.str);\n\
+             \x20   return sv_str(res);\n\
+             }\n",
+        );
+        if needs_len {
+            rt.push_str(
+                "static inline SVal sv_len(SVal v) {\n\
+                 \x20   if (v.type == ST_ARR) return sv_num(v.arr->len);\n\
+                 \x20   if (v.type == ST_STR) return sv_num((double)strlen(v.str));\n\
+                 \x20   if (v.type == ST_MAP) return sv_num(v.map->len);\n\
+                 \x20   return sv_num(0);\n\
+                 }\n",
+            );
+        }
+        if needs_hof {
