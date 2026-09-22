@@ -6718,3 +6718,85 @@ fn emit_rust_project(modules: &[ModuleUnit]) -> Vec<(String, String)> {
          \x20           }\n\
          \x20           SVal::Func(_) => write!(f, \"<fn>\"),\n\
          \x20       }\n\
+         \x20   }\n\
+         }\n\n\
+         impl PartialEq for SVal {\n\
+         \x20   fn eq(&self, other: &Self) -> bool {\n\
+         \x20       match (self, other) {\n\
+         \x20           (SVal::Null, SVal::Null) => true,\n\
+         \x20           (SVal::Bool(a), SVal::Bool(b)) => a == b,\n\
+         \x20           (SVal::Num(a), SVal::Num(b)) => a == b,\n\
+         \x20           (SVal::Str(a), SVal::Str(b)) => a == b,\n\
+         \x20           _ => false,\n\
+         \x20       }\n\
+         \x20   }\n\
+         }\n\n\
+         impl Add for SVal { type Output = SVal; fn add(self, rhs: SVal) -> SVal {\n\
+         \x20   match (&self, &rhs) {\n\
+         \x20       (SVal::Str(_), _) | (_, SVal::Str(_)) => SVal::Str(format!(\"{}{}\", self, rhs)),\n\
+         \x20       _ => SVal::Num(self.as_num() + rhs.as_num()),\n\
+         \x20   }\n\
+         }}\n\
+         impl Sub for SVal { type Output = SVal; fn sub(self, rhs: SVal) -> SVal { SVal::Num(self.as_num() - rhs.as_num()) } }\n\
+         impl Mul for SVal { type Output = SVal; fn mul(self, rhs: SVal) -> SVal { SVal::Num(self.as_num() * rhs.as_num()) } }\n\
+         impl Div for SVal { type Output = SVal; fn div(self, rhs: SVal) -> SVal { SVal::Num(self.as_num() / rhs.as_num()) } }\n\
+         impl Rem for SVal { type Output = SVal; fn rem(self, rhs: SVal) -> SVal { SVal::Num(self.as_num() % rhs.as_num()) } }\n\
+         impl Neg for SVal { type Output = SVal; fn neg(self) -> SVal { SVal::Num(-self.as_num()) } }\n\
+         impl Not for SVal { type Output = SVal; fn not(self) -> SVal { SVal::Bool(!self.is_truthy()) } }\n\n\
+         pub fn __steel_range(a: SVal, b: SVal) -> SVal {\n\
+         \x20   let start = a.as_num() as i64;\n\
+         \x20   let end = b.as_num() as i64;\n\
+         \x20   let v: Vec<SVal> = (start..end).map(|i| SVal::Num(i as f64)).collect();\n\
+         \x20   SVal::Arr(Rc::new(RefCell::new(v)))\n\
+         }\n";
+    files.push(("steel_rt.rs".to_string(), rt.to_string()));
+
+    // Collect all top-level function names across ALL modules so cross-module calls emit direct calls
+    let mut all_fn_names = std::collections::HashSet::new();
+    for m in modules {
+        for (name, _) in module_exported_fns(&m.program) {
+            all_fn_names.insert(name);
+        }
+    }
+
+    for m in modules {
+        let mut out = format!(
+            "// Module '{}' (Target: Rust)\n\
+             #![allow(unused_variables,unused_mut,dead_code,unreachable_code,unused_parens,non_snake_case,unused_imports)]\n\
+             use std::cell::RefCell;\n\
+             use std::collections::BTreeMap;\n\
+             use std::rc::Rc;\n",
+            m.name
+        );
+
+        if m.is_entry {
+            out.push_str("mod steel_rt;\n");
+            for other in modules {
+                if !other.is_entry {
+                    out.push_str(&format!("mod {};\n", other.name));
+                }
+            }
+        }
+        out.push_str("use crate::steel_rt::*;\n");
+        let mut used_mods = std::collections::HashSet::new();
+        for imp in &m.imports {
+            if imp != &m.name && used_mods.insert(imp.clone()) {
+                out.push_str(&format!("use crate::{}::*;\n", imp));
+            }
+        }
+        for other in modules {
+            if !other.is_entry && other.name != m.name && used_mods.insert(other.name.clone()) {
+                out.push_str(&format!("use crate::{}::*;\n", other.name));
+            }
+        }
+        out.push('\n');
+
+        let mut top_fns = String::new();
+        let mut main_body = String::new();
+        for stmt in &m.program.statements {
+            match stmt {
+                Stmt::Import(_) => {}
+                Stmt::FnDecl { name, params, body } => {
+                    let f = rs_top_fn(name, params, body, &all_fn_names);
+                    if !m.is_entry {
+                        top_fns.push_str(&f.replacen("fn ", "pub fn ", 1).replace("#[allow(dead_code)] fn ", "#[allow(dead_code)] pub fn "));
