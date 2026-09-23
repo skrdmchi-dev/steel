@@ -6800,3 +6800,85 @@ fn emit_rust_project(modules: &[ModuleUnit]) -> Vec<(String, String)> {
                     let f = rs_top_fn(name, params, body, &all_fn_names);
                     if !m.is_entry {
                         top_fns.push_str(&f.replacen("fn ", "pub fn ", 1).replace("#[allow(dead_code)] fn ", "#[allow(dead_code)] pub fn "));
+                    } else {
+                        top_fns.push_str(&f);
+                    }
+                }
+                Stmt::ClassDecl {
+                    name,
+                    parent,
+                    methods,
+                } => {
+                    if let Stmt::FnDecl { name, params, body } = desugar_class(name, parent, methods)
+                    {
+                        let f = rs_top_fn(&name, &params, &body, &all_fn_names);
+                        if !m.is_entry {
+                            top_fns.push_str(&f.replacen("fn ", "pub fn ", 1).replace("#[allow(dead_code)] fn ", "#[allow(dead_code)] pub fn "));
+                        } else {
+                            top_fns.push_str(&f);
+                        }
+                    }
+                }
+                other => {
+                    main_body.push_str(&rs_stmt(other, 1, &all_fn_names));
+                }
+            }
+        }
+
+        out.push_str(&top_fns);
+        if m.is_entry {
+            out.push_str("fn main() {\n");
+            out.push_str(&rs_builtins_preamble(&main_body));
+            out.push_str(&main_body);
+            out.push_str("}\n");
+        }
+        files.push((format!("{}.rs", m.name), out));
+    }
+
+    files
+}
+
+fn emit_python_project(modules: &[ModuleUnit]) -> Vec<(String, String)> {
+    let mut files = Vec::new();
+    for m in modules {
+        let mut code = emit_python(&m.program);
+        for imp in &m.imports {
+            code = code.replace(
+                &format!("# import \"{}.steel\"", imp),
+                &format!("from {} import *", imp),
+            );
+            code = code.replace(
+                &format!("# import \"{}\"", imp),
+                &format!("from {} import *", imp),
+            );
+        }
+        files.push((format!("{}.py", m.name), code));
+    }
+    files
+}
+
+fn emit_js_project(modules: &[ModuleUnit], target: Target) -> Vec<(String, String)> {
+    let ext = target.extension();
+    let mut exports_map = std::collections::HashMap::new();
+    for m in modules {
+        let fns: Vec<String> = module_exported_fns(&m.program)
+            .into_iter()
+            .map(|(n, _)| n)
+            .collect();
+        exports_map.insert(m.name.clone(), fns);
+    }
+
+    let mut files = Vec::new();
+    for m in modules {
+        let mut code = if target == Target::Ts {
+            emit_js(&m.program)
+        } else {
+            emit_js(&m.program)
+        };
+        for imp in &m.imports {
+            let imp_spec = if target == Target::Ts {
+                format!("./{}.ts", imp)
+            } else {
+                format!("./{}", imp)
+            };
+            let import_line = if let Some(fns) = exports_map.get(imp) {
