@@ -6882,3 +6882,85 @@ fn emit_js_project(modules: &[ModuleUnit], target: Target) -> Vec<(String, Strin
                 format!("./{}", imp)
             };
             let import_line = if let Some(fns) = exports_map.get(imp) {
+                if !fns.is_empty() {
+                    format!("const {{ {} }} = require(\"{}\");", fns.join(", "), imp_spec)
+                } else {
+                    format!("require(\"{}\");", imp_spec)
+                }
+            } else {
+                format!("require(\"{}\");", imp_spec)
+            };
+            let pat_steel = format!("require(\"{}.steel\");", imp);
+            let pat_plain = format!("require(\"{}\");", imp);
+            if code.contains(&pat_steel) {
+                code = code.replace(&pat_steel, &import_line);
+            } else {
+                code = code.replace(&pat_plain, &import_line);
+            }
+        }
+        if !m.is_entry {
+            if let Some(fns) = exports_map.get(&m.name) {
+                if !fns.is_empty() {
+                    code.push_str(&format!("\nmodule.exports = {{ {} }};\n", fns.join(", ")));
+                }
+            }
+        }
+        files.push((format!("{}.{}", m.name, ext), code));
+    }
+    files
+}
+
+fn emit_go_project(modules: &[ModuleUnit]) -> Vec<(String, String)> {
+    let mut files = Vec::new();
+    let mut all_code = String::new();
+    let mut rendered: Vec<(String, String)> = Vec::new();
+
+    for m in modules {
+        let mut top_fns = String::new();
+        let mut main_body = String::new();
+        for stmt in &m.program.statements {
+            match stmt {
+                Stmt::Import(_) => {}
+                Stmt::FnDecl { name, params, body } => {
+                    let p_sig: Vec<String> = params.iter().map(|(p, _)| format!("{} any", p)).collect();
+                    top_fns.push_str(&format!("func {}({}) any {{\n", name, p_sig.join(", ")));
+                    for st in body {
+                        top_fns.push_str(&go_stmt(st, 1));
+                    }
+                    if !matches!(body.last(), Some(Stmt::Return(_))) {
+                        top_fns.push_str("    return nil\n");
+                    }
+                    top_fns.push_str("}\n\n");
+                }
+                Stmt::ClassDecl {
+                    name,
+                    parent,
+                    methods,
+                } => {
+                    if let Stmt::FnDecl { name, params, body } = desugar_class(name, parent, methods)
+                    {
+                        let p_sig: Vec<String> =
+                            params.iter().map(|(p, _)| format!("{} any", p)).collect();
+                        top_fns.push_str(&format!("func {}({}) any {{\n", name, p_sig.join(", ")));
+                        for st in &body {
+                            top_fns.push_str(&go_stmt(st, 1));
+                        }
+                        if !matches!(body.last(), Some(Stmt::Return(_))) {
+                            top_fns.push_str("    return nil\n");
+                        }
+                        top_fns.push_str("}\n\n");
+                    }
+                }
+                other => {
+                    main_body.push_str(&go_stmt(other, 1));
+                }
+            }
+        }
+        all_code.push_str(&top_fns);
+        all_code.push_str(&main_body);
+        rendered.push((top_fns, main_body));
+    }
+
+    // Shared steel_rt.go (only if helpers are needed)
+    let (_, rt_body) = go_runtime_helpers(&all_code);
+    if !rt_body.is_empty() {
