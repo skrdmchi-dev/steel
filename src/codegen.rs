@@ -6964,3 +6964,85 @@ fn emit_go_project(modules: &[ModuleUnit]) -> Vec<(String, String)> {
     // Shared steel_rt.go (only if helpers are needed)
     let (_, rt_body) = go_runtime_helpers(&all_code);
     if !rt_body.is_empty() {
+        let mut rt = String::from("package main\n\n");
+        let mut rt_imps = Vec::new();
+        if rt_body.contains("fmt.") { rt_imps.push("\"fmt\""); }
+        if rt_body.contains("math.") { rt_imps.push("\"math\""); }
+        if rt_body.contains("os.") { rt_imps.push("\"os\""); }
+        if rt_body.contains("strings.") { rt_imps.push("\"strings\""); }
+        if rt_body.contains("sort.") { rt_imps.push("\"sort\""); }
+        if rt_body.contains("strconv.") { rt_imps.push("\"strconv\""); }
+        if rt_body.contains("json.") { rt_imps.push("\"encoding/json\""); }
+        if rt_body.contains("time.") { rt_imps.push("\"time\""); }
+        if !rt_imps.is_empty() {
+            rt.push_str(&format!("import (\n    {}\n)\n\n", rt_imps.join("\n    ")));
+        }
+        rt.push_str(&rt_body);
+        files.push(("steel_rt.go".to_string(), rt));
+    }
+
+    for (idx, m) in modules.iter().enumerate() {
+        let (top_fns, main_body) = &rendered[idx];
+        let body_combined = format!("{}{}", top_fns, main_body);
+        let mut out = format!("// Module '{}' (Target: Go)\npackage main\n\n", m.name);
+        let mut imps = Vec::new();
+        if body_combined.contains("fmt.") { imps.push("\"fmt\""); }
+        if body_combined.contains("math.") { imps.push("\"math\""); }
+        if body_combined.contains("strings.") { imps.push("\"strings\""); }
+        if !imps.is_empty() {
+            out.push_str(&format!("import (\n    {}\n)\n\n", imps.join("\n    ")));
+        }
+        out.push_str(top_fns);
+        if m.is_entry {
+            out.push_str("func main() {\n");
+            out.push_str(main_body);
+            out.push_str("}\n");
+        }
+        files.push((format!("{}.go", m.name), out));
+    }
+
+    files.push(("go.mod".to_string(), "module steel_app\n\ngo 1.21\n".to_string()));
+    files
+}
+
+fn emit_lua_project(modules: &[ModuleUnit]) -> Vec<(String, String)> {
+    let mut exports_map = std::collections::HashMap::new();
+    for m in modules {
+        let fns: Vec<String> = module_exported_fns(&m.program)
+            .into_iter()
+            .map(|(n, _)| n)
+            .collect();
+        exports_map.insert(m.name.clone(), fns);
+    }
+
+    let mut files = Vec::new();
+    for m in modules {
+        let mut code = emit_lua(&m.program);
+        for imp in &m.imports {
+            let mut rep = format!("local _m_{} = require(\"{}\")", imp, imp);
+            if let Some(fns) = exports_map.get(imp) {
+                for f in fns {
+                    rep.push_str(&format!("\nlocal {} = _m_{}.{}", f, imp, f));
+                }
+            }
+            let pat_steel = format!("require(\"{}.steel\")", imp);
+            let pat_plain = format!("require(\"{}\")", imp);
+            if code.contains(&pat_steel) {
+                code = code.replace(&pat_steel, &rep);
+            } else {
+                code = code.replace(&pat_plain, &rep);
+            }
+        }
+        if !m.is_entry {
+            if let Some(fns) = exports_map.get(&m.name) {
+                if !fns.is_empty() {
+                    let entries: Vec<String> =
+                        fns.iter().map(|f| format!("{} = {}", f, f)).collect();
+                    code.push_str(&format!("\nreturn {{ {} }}\n", entries.join(", ")));
+                }
+            }
+        }
+        files.push((format!("{}.lua", m.name), code));
+    }
+    files
+}
