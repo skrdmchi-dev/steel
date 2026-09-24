@@ -1,0 +1,24 @@
+// Clean, minimal Steel — no `let` required + one-line functions!
+
+fn double(x) = x * 2
+fn add(a, b = 10) = a + b
+
+class Rect {
+    init(w, h) {
+        this.w = w
+        this.h = h
+    }
+    area() = this.w * this.h
+}
+
+name = "Steel"
+score = 5 |> double |> add
+score += 5
+
+total = 0
+for i in 1..6 {
+    total += i
+}
+
+box = new Rect(6, 7)
+print(name, "| score:", score, "| sum:", total, "| area:", box.area())
