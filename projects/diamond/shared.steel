@@ -1,0 +1,4 @@
+// Diamond import base module
+fn base_val(x) {
+    return x * 3 + 1
+}
