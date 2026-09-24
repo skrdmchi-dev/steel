@@ -1,0 +1,7 @@
+import "shared.steel"
+
+fn from_a(n) {
+    let v = base_val(n)
+    v += 10
+    return v
+}
