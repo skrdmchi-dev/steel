@@ -1,0 +1,19 @@
+// =========================================================================
+// Project 2: 2D Physics & Trajectory Engine — `integrator.steel`
+// =========================================================================
+
+fn step_x(x: num, vx: num, dt: num) -> num {
+    return x + vx * dt
+}
+
+fn step_y(y: num, vy: num, dt: num) -> num {
+    return y + vy * dt
+}
+
+fn step_vy(vy: num, gravity: num, dt: num) -> num {
+    return vy - gravity * dt
+}
+
+fn kinetic_energy(mass: num, vx: num, vy: num) -> num {
+    return 0.5 * mass * (vx * vx + vy * vy)
+}
