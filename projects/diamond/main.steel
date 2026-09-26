@@ -1,0 +1,24 @@
+import "a.steel"
+import "b.steel"
+
+// 1. Diamond multi-file imports
+print("DIAMOND:", from_a(5), from_b(5))
+
+// 2. Compound assignment operators
+let c = 10
+c += 5
+c -= 3
+c *= 4
+c /= 6
+print("COMPOUND:", c)
+
+// 3. Boolean logic & negation
+let b1 = !false
+let b2 = !true
+let b3 = !(3 == 4) && (5 > 2)
+let b4 = (1 == 2) || (2 == 2)
+print("BOOL:", b1, b2, b3, b4)
+
+// 4. Precedence & parentheses
+let p = (2 + 3) * (10 - 4) + 12 / 3
+print("PREC:", p)
