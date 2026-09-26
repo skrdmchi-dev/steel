@@ -1,0 +1,22 @@
+// System, File I/O, String Stdlib & Try/Catch Error-Handling Test
+
+// 1. File I/O: write_file, file_exists, read_file
+let tmp_path = "projects/sys_test/probe.txt"
+write_file(tmp_path, "  hello steel world  ")
+let exists = file_exists(tmp_path)
+let raw = read_file(tmp_path)
+print("IO:", exists, "|", trim(raw))
+
+// 2. String utilities: upper, lower, trim, contains
+let cleaned = trim(raw)
+print("STR:", upper(cleaned), "|", lower("STEEL"), "|", contains(cleaned, "steel"))
+
+// 3. Real try / catch / throw error recovery
+let recovered = "no"
+try {
+    throw "boom_42"
+    recovered = "should_not_run"
+} catch err {
+    recovered = "caught:" + err
+}
+print("TRY:", recovered)
