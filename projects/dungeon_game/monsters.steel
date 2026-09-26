@@ -1,0 +1,18 @@
+// =========================================================================
+// Project 1: Dungeon Crawler RPG — `monsters.steel` (Imported Module)
+// =========================================================================
+
+fn monster_hp(floor: num) -> num {
+    return 35 + floor * 25
+}
+
+fn monster_atk(floor: num) -> num {
+    return 8 + floor * 5
+}
+
+fn monster_name(floor: num) -> str {
+    if floor == 1 { return "Goblin Scout" }
+    if floor == 2 { return "Iron Golem" }
+    if floor == 3 { return "Shadow Wyvern" }
+    return "Ancient Dragon Boss"
+}
