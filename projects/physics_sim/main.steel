@@ -1,0 +1,33 @@
+// =========================================================================
+// Project 2: 2D Physics & Trajectory Engine — `main.steel`
+// =========================================================================
+import "integrator.steel"
+
+print("=== STEEL 2D PROJECTILE & BOUNCE PHYSICS ENGINE ===")
+
+let x = 0.0
+let y = 20.0
+let vx = 12.0
+let vy = 15.0
+let gravity = 9.81
+let dt = 0.25
+let mass = 2.0
+let bounces = 0
+
+for tick in 1..13 {
+    x = step_x(x, vx, dt)
+    vy = step_vy(vy, gravity, dt)
+    y = step_y(y, vy, dt)
+
+    // Elastic ground bounce with 75% restitution
+    if y <= 0.0 {
+        y = 0.0
+        vy = -vy * 0.75
+        bounces += 1
+    }
+
+    let ke = kinetic_energy(mass, vx, vy)
+    print("Tick", tick, "| Pos: (", x, ",", y, ") | VelY:", vy, "| KE:", ke)
+}
+
+print("Simulation complete! Total ground bounces:", bounces)
