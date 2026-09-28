@@ -1,0 +1,15 @@
+// =========================================================================
+// Project 1: Dungeon Crawler RPG — `combat.steel` (Imported Module)
+// =========================================================================
+
+fn calc_damage(atk: num, def: num, crit_mult: num) -> num {
+    let base = atk * crit_mult - def
+    if base < 1 {
+        return 1
+    }
+    return base
+}
+
+fn xp_for_level(level: num) -> num {
+    return level * level * 50
+}
