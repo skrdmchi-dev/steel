@@ -1,0 +1,38 @@
+// =========================================================================
+// Project 1: Dungeon Crawler RPG — `main.steel` (Main Entry Point)
+// =========================================================================
+import "combat.steel"
+import "monsters.steel"
+
+print("=== STEEL DUNGEON CRAWLER SIMULATOR ===")
+
+let hero_hp = 180
+let hero_atk = 28
+let hero_def = 6
+let gold = 0
+
+for floor in 1..5 {
+    let m_name = monster_name(floor)
+    let m_hp = monster_hp(floor)
+    let m_atk = monster_atk(floor)
+    let turns = 0
+
+    while m_hp > 0 && hero_hp > 0 {
+        turns += 1
+        // Hero attacks (every 3rd turn is a 2x critical hit!)
+        let crit = turns % 3 == 0 ? 2 : 1
+        let dmg = calc_damage(hero_atk, 3, crit)
+        m_hp -= dmg
+
+        if m_hp > 0 {
+            let taken = calc_damage(m_atk, hero_def, 1)
+            hero_hp -= taken
+        }
+    }
+
+    gold += floor * 40
+    print("Floor", floor, "| Defeated", m_name, "in", turns, "turns | Hero HP:", hero_hp, "| Gold:", gold)
+}
+
+let next_xp = xp_for_level(5)
+print("Victory! Final Hero HP:", hero_hp, "| Total Gold:", gold, "| Next Level XP:", next_xp)
