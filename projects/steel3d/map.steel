@@ -1,0 +1,28 @@
+// =========================================================================
+// STEEL 3D ENGINE — `map.steel` (12x12 3D Dungeon World)
+// =========================================================================
+// Cell types: 0 = open corridor, 1 = solid stone wall, 2 = glowing portal exit
+
+fn get_cell(gx: num, gy: num) -> num {
+    if gx <= 0 || gy <= 0 || gx >= 11 || gy >= 11 {
+        return 1
+    }
+    // Exit portal at (9, 9)
+    if gx == 9 && gy == 9 {
+        return 2
+    }
+    // Interior pillars & maze walls
+    if gx == 4 && gy >= 2 && gy <= 6 {
+        return 1
+    }
+    if gx == 7 && gy >= 5 && gy <= 9 {
+        return 1
+    }
+    if gy == 4 && gx >= 7 && gx <= 9 {
+        return 1
+    }
+    if gx == 2 && gy == 8 {
+        return 1
+    }
+    return 0
+}
