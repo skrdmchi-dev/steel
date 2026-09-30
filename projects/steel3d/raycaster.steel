@@ -35,3 +35,22 @@ fn shade_pixel(row: num, half_h: num, wall_h: num, dist: num, is_portal: num) ->
     // Ceiling
     if row < top {
         return " "
+    }
+    // Floor perspective shading
+    if row > bot {
+        if row > 13 { return "." }
+        if row > 11 { return "," }
+        return " "
+    }
+    // Glowing Exit Portal
+    if is_portal == 1 {
+        return "$"
+    }
+    // 3D Wall distance shading
+    if dist < 1.8 { return "@" }
+    if dist < 3.0 { return "#" }
+    if dist < 4.5 { return "=" }
+    if dist < 6.5 { return "+" }
+    if dist < 9.0 { return ":" }
+    return "."
+}
