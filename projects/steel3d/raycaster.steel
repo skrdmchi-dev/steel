@@ -17,3 +17,21 @@ fn cast_ray(px: num, py: num, ray_angle: num) -> num {
         let gy = floor(ry)
         let cell = get_cell(gx, gy)
         if cell == 1 {
+            return dist
+        }
+        if cell == 2 {
+            return -dist
+        }
+        dist += step
+    }
+    return 12.0
+}
+
+// Picks a 3D depth-shaded pixel character based on distance, height, and hit type
+fn shade_pixel(row: num, half_h: num, wall_h: num, dist: num, is_portal: num) -> str {
+    let top = half_h - wall_h
+    let bot = half_h + wall_h
+
+    // Ceiling
+    if row < top {
+        return " "
