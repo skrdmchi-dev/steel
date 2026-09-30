@@ -1,0 +1,19 @@
+// =========================================================================
+// STEEL 3D ENGINE — `raycaster.steel` (DDA 3D Raycasting & Shading)
+// =========================================================================
+
+// Casts a 3D ray from (px, py) at angle `ray_angle` and returns perpendicular
+// distance to the nearest wall (or negative distance if it hits the Exit Portal!)
+fn cast_ray(px: num, py: num, ray_angle: num) -> num {
+    let dx = cos(ray_angle)
+    let dy = sin(ray_angle)
+    let dist = 0.05
+    let step = 0.08
+
+    while dist < 12.0 {
+        let rx = px + dx * dist
+        let ry = py + dy * dist
+        let gx = floor(rx)
+        let gy = floor(ry)
+        let cell = get_cell(gx, gy)
+        if cell == 1 {
