@@ -1,0 +1,61 @@
+// =========================================================================
+// STEEL 3D DUNGEON RAYCASTER — `main.steel`
+// A real-time 3D first-person perspective engine written in Steel (.steel)!
+// =========================================================================
+import "map.steel"
+import "raycaster.steel"
+
+fn render_3d_frame(px: num, py: num, angle: num, frame_num: num) {
+    let width = 56
+    let height = 16
+    let half_h = 8
+    let fov = 1.1
+
+    print("+--------------------------------------------------------+")
+    print("| STEEL 3D ENGINE | Frame:", frame_num, "| Pos: (", px, ",", py, ") |")
+    print("+--------------------------------------------------------+")
+
+    for row in 0..height {
+        let line = "|"
+        for col in 0..width {
+            let ray_angle = angle - (fov * 0.5) + (col / width) * fov
+            let raw_dist = cast_ray(px, py, ray_angle)
+            let is_portal = raw_dist < 0 ? 1 : 0
+            let dist = raw_dist < 0 ? -raw_dist : raw_dist
+
+            // Fix fisheye lens distortion
+            let corr_dist = dist * cos(ray_angle - angle)
+            if corr_dist < 0.2 {
+                corr_dist = 0.2
+            }
+
+            let wall_h = floor(7.5 / corr_dist)
+            line = line + shade_pixel(row, half_h, wall_h, corr_dist, is_portal)
+        }
+        print(line + "|")
+    }
+    print("+--------------------------------------------------------+")
+}
+
+// Player state: starts at (1.5, 1.5) facing east/southeast through the 3D corridor
+let px = 1.5
+let py = 1.5
+let angle = 0.35
+
+print("=== LAUNCHING STEEL 3D FIRST-PERSON DUNGEON ENGINE ===")
+
+// Render 3 live camera frames as the player walks forward & turns down the 3D hallway!
+for frame in 1..4 {
+    render_3d_frame(px, py, angle, frame)
+
+    // Move player forward along viewing vector with 3D wall collision detection
+    let next_x = px + cos(angle) * 0.85
+    let next_y = py + sin(angle) * 0.85
+    if get_cell(floor(next_x), floor(next_y)) == 0 {
+        px = next_x
+        py = next_y
+    }
+    angle += 0.25
+}
+
+print("3D Engine Demo Complete! Ready to compile to C11 or Rust!")
