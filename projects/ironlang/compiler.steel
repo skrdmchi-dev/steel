@@ -207,3 +207,107 @@ fn parse_block(tokens, state, syms, code) {
             }
         } else {
             // Assignment: <name> = <expr>
+            let slot = find_or_add_var(syms, tok)
+            state[0] = state[0] + 2
+            parse_cmp(tokens, state, syms, code)
+            push(code, 4)
+            push(code, slot)
+        }
+    }
+    return 0
+}
+
+fn compile_iron(tokens) {
+    let state = [0]
+    let syms = []
+    let code = []
+    parse_block(tokens, state, syms, code)
+    push(code, 20)
+    return code
+}
+
+// Jump-target-safe peephole constant folder:
+// Folds `PUSH a, PUSH b, ADD/SUB/MUL` into `PUSH (a op b)` and remaps all jump targets!
+fn optimize_iron(code) {
+    let n = len(code)
+    let is_target = []
+    let old_to_new = []
+    for i in 0..n {
+        push(is_target, 0)
+        push(old_to_new, 0)
+    }
+
+    // Pass 1: mark every jump target address so we never fold across a basic-block boundary
+    let p = 0
+    while p < n {
+        let op = code[p]
+        if op == 16 || op == 17 {
+            let tgt = code[p + 1]
+            if tgt < n {
+                is_target[tgt] = 1
+            }
+            p = p + 2
+        } else if op == 1 || op == 3 || op == 4 {
+            p = p + 2
+        } else {
+            p = p + 1
+        }
+    }
+
+    // Pass 2: peephole fold constant arithmetic and build offset remap table
+    let opt = []
+    let folded = 0
+    let ip = 0
+    while ip < n {
+        old_to_new[ip] = len(opt)
+        if ip + 4 < n && code[ip] == 1 && code[ip + 2] == 1 && is_target[ip + 2] == 0 && is_target[ip + 4] == 0 {
+            let bin = code[ip + 4]
+            if bin == 5 || bin == 6 || bin == 7 {
+                let a = code[ip + 1]
+                let b = code[ip + 3]
+                let val = a + b
+                if bin == 6 { val = a - b }
+                if bin == 7 { val = a * b }
+                push(opt, 1)
+                push(opt, val)
+                folded = folded + 1
+                ip = ip + 5
+            } else {
+                push(opt, code[ip])
+                push(opt, code[ip + 1])
+                ip = ip + 2
+            }
+        } else {
+            let op = code[ip]
+            if op == 1 || op == 3 || op == 4 || op == 16 || op == 17 {
+                push(opt, op)
+                push(opt, code[ip + 1])
+                ip = ip + 2
+            } else {
+                push(opt, op)
+                ip = ip + 1
+            }
+        }
+    }
+
+    // Pass 3: patch all JMP / JZ targets to their new compacted addresses
+    let m = len(opt)
+    let j = 0
+    while j < m {
+        let op = opt[j]
+        if op == 16 || op == 17 {
+            let old_tgt = opt[j + 1]
+            if old_tgt < n {
+                opt[j + 1] = old_to_new[old_tgt]
+            }
+            j = j + 2
+        } else if op == 1 || op == 3 || op == 4 {
+            j = j + 2
+        } else {
+            j = j + 1
+        }
+    }
+
+    print("  [OPTIMIZER] Folded", folded, "constant expressions (", n, "->", m, "words )")
+    return opt
+}
