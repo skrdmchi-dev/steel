@@ -45,3 +45,50 @@ fn run_vm(code, silent_trace) {
             push(stack, a - b)
             ip = ip + 1
         } else if op == 7 {
+            // MUL
+            let b = pop(stack)
+            let a = pop(stack)
+            push(stack, a * b)
+            ip = ip + 1
+        } else if op == 8 {
+            // DIV (integer floor division for IronLang)
+            let b = pop(stack)
+            let a = pop(stack)
+            push(stack, floor(a / b))
+            ip = ip + 1
+        } else if op == 9 {
+            // MOD
+            let b = pop(stack)
+            let a = pop(stack)
+            push(stack, a % b)
+            ip = ip + 1
+        } else if op == 10 {
+            // EQ
+            let b = pop(stack)
+            let a = pop(stack)
+            let res = a == b ? 1 : 0
+            push(stack, res)
+            ip = ip + 1
+        } else if op == 11 {
+            // LT
+            let b = pop(stack)
+            let a = pop(stack)
+            let res = a < b ? 1 : 0
+            push(stack, res)
+            ip = ip + 1
+        } else if op == 12 {
+            // GT
+            let b = pop(stack)
+            let a = pop(stack)
+            let res = a > b ? 1 : 0
+            push(stack, res)
+            ip = ip + 1
+        } else if op == 13 {
+            // LTE
+            let b = pop(stack)
+            let a = pop(stack)
+            let res = a <= b ? 1 : 0
+            push(stack, res)
+            ip = ip + 1
+        } else if op == 14 {
+            // GTE
