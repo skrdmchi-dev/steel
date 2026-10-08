@@ -92,3 +92,50 @@ fn run_vm(code, silent_trace) {
             ip = ip + 1
         } else if op == 14 {
             // GTE
+            let b = pop(stack)
+            let a = pop(stack)
+            let res = a >= b ? 1 : 0
+            push(stack, res)
+            ip = ip + 1
+        } else if op == 15 {
+            // NEQ
+            let b = pop(stack)
+            let a = pop(stack)
+            let res = a != b ? 1 : 0
+            push(stack, res)
+            ip = ip + 1
+        } else if op == 16 {
+            // JMP target
+            ip = code[ip + 1]
+        } else if op == 17 {
+            // JZ target
+            let cond = pop(stack)
+            if cond == 0 {
+                ip = code[ip + 1]
+            } else {
+                ip = ip + 2
+            }
+        } else if op == 18 {
+            // PRINT
+            let val = pop(stack)
+            push(outputs, val)
+            if silent_trace == 0 {
+                print("  [VM OUT]", val)
+            }
+            ip = ip + 1
+        } else if op == 19 {
+            // NEG
+            let a = pop(stack)
+            push(stack, 0 - a)
+            ip = ip + 1
+        } else if op == 20 {
+            // HALT
+            ip = n
+        } else {
+            ip = n
+        }
+    }
+
+    print("  [VM STATS] Executed", cycles, "instructions | Outputs:", outputs)
+    return cycles
+}
