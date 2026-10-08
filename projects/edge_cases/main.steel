@@ -1,0 +1,44 @@
+// Extreme Edge-Case Test Suite for Steel
+
+// 1. Default parameters (1 arg vs 2 args)
+fn greet(name, prefix = "Hello") {
+    return prefix + ", " + name + "!"
+}
+print("DEF:", greet("Steel"), "|", greet("World", "Hi"))
+
+// 2. String interpolation with expressions
+let x = 7
+let y = 6
+print("INTERP:", "x=${x}, y=${y}, x*y=${x * y}")
+
+// 3. Null coalescing, bitwise ops, and power
+let n1 = null ?? "fallback"
+let n2 = 42 ?? 99
+let bw = ((12 & 10) | (1 << 4)) ^ 3
+let pw = 2 ** 10
+print("OPS:", n1, n2, bw, pw)
+
+// 4. Higher-order functions + arrow lambdas + pipe operator
+fn double(v) { return v * 2 }
+fn add_five(v) { return v + 5 }
+let piped = 10 |> double |> add_five
+let nums = [1, 2, 3, 4, 5, 6]
+let evens = filter(nums, v => v % 2 == 0)
+let doubled = map(evens, v => v * 10)
+let total = reduce(doubled, (acc, v) => acc + v, 0)
+print("HOF:", piped, evens, doubled, total)
+
+// 5. Nested maps
+let cfg = { host: "127.0.0.1", port: 8080 }
+cfg.port = 9000
+print("MAP:", cfg.host, cfg.port)
+
+// 6. Empty collections & void function
+fn noop(a) {
+    let local = a + 1
+}
+let r_void = noop(5)
+print("EMPTY:", len([]), len(""), r_void)
+
+// 7. Escaped quotes & tabs in strings
+print("ESC:", "say \"ok\"")
