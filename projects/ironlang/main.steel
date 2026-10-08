@@ -1,0 +1,95 @@
+// IronLang — A Complete Compiled Programming Language + Bytecode VM Written in Steel
+// Compiles, optimizes, disassembles, and executes 3 real programs written in IronLang
+
+import "opcodes.steel"
+import "compiler.steel"
+import "vm.steel"
+
+print("================================================================")
+print("  IRONLANG v1.0 — Programming Language & Bytecode VM in Steel")
+print("================================================================")
+
+// ----------------------------------------------------------------
+// PROGRAM 1: Fibonacci Sequence with Constant-Foldable Expressions
+// ----------------------------------------------------------------
+print("")
+print("[PROGRAM 1] Fibonacci Sequence (first 12 numbers)")
+let fib_src = [
+    "let", "limit", "=", "(", 3, "*", 4, ")",
+    "let", "a", "=", 0,
+    "let", "b", "=", 1,
+    "let", "i", "=", 0,
+    "while", "i", "<", "limit",
+        "print", "a",
+        "let", "next", "=", "a", "+", "b",
+        "a", "=", "b",
+        "b", "=", "next",
+        "i", "=", "i", "+", 1,
+    "end"
+]
+
+let fib_raw = compile_iron(fib_src)
+let fib_opt = optimize_iron(fib_raw)
+disassemble(fib_opt, "fibonacci.iron")
+run_vm(fib_opt, 1)
+
+// ----------------------------------------------------------------
+// PROGRAM 2: Prime Number Finder up to 40 (Nested Loops + Modulo)
+// ----------------------------------------------------------------
+print("")
+print("[PROGRAM 2] Prime Number Finder (all primes <= 40)")
+let prime_src = [
+    "let", "max_n", "=", 4, "*", 10,
+    "let", "n", "=", 2,
+    "while", "n", "<=", "max_n",
+        "let", "d", "=", 2,
+        "let", "is_prime", "=", 1,
+        "while", "d", "*", "d", "<=", "n",
+            "if", "n", "%", "d", "==", 0,
+                "is_prime", "=", 0,
+            "end",
+            "d", "=", "d", "+", 1,
+        "end",
+        "if", "is_prime", "==", 1,
+            "print", "n",
+        "end",
+        "n", "=", "n", "+", 1,
+    "end"
+]
+
+let prime_raw = compile_iron(prime_src)
+let prime_opt = optimize_iron(prime_raw)
+run_vm(prime_opt, 1)
+
+// ----------------------------------------------------------------
+// PROGRAM 3: Collatz 3n+1 Conjecture from n = 27 (if/else + peak)
+// ----------------------------------------------------------------
+print("")
+print("[PROGRAM 3] Collatz 3n+1 Trajectory (start = 27, prints steps & peak)")
+let collatz_src = [
+    "let", "n", "=", 20, "+", 7,
+    "let", "steps", "=", 0,
+    "let", "peak", "=", "n",
+    "while", "n", ">", 1,
+        "if", "n", "%", 2, "==", 0,
+            "n", "=", "n", "/", 2,
+        "else",
+            "n", "=", 3, "*", "n", "+", 1,
+        "end",
+        "if", "n", ">", "peak",
+            "peak", "=", "n",
+        "end",
+        "steps", "=", "steps", "+", 1,
+    "end",
+    "print", "steps",
+    "print", "peak"
+]
+
+let collatz_raw = compile_iron(collatz_src)
+let collatz_opt = optimize_iron(collatz_raw)
+run_vm(collatz_opt, 1)
+
+print("")
+print("================================================================")
+print("  ALL 3 IRONLANG PROGRAMS COMPILED, OPTIMIZED & EXECUTED!")
+print("================================================================")
