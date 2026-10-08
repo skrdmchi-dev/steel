@@ -15,3 +15,20 @@ fn quicksort(arr) {
             push(greater, arr[i])
         }
         i = i + 1
+    }
+    let left_sorted = quicksort(less)
+    let right_sorted = quicksort(greater)
+    let out = []
+    for x in left_sorted {
+        push(out, x)
+    }
+    push(out, pivot)
+    for y in right_sorted {
+        push(out, y)
+    }
+    return out
+}
+
+fn ackermann(m, n) {
+    if m == 0 {
+        return n + 1
