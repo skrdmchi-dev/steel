@@ -1,0 +1,50 @@
+// Adversarial Bug-Hunt Suite — Actively trying to break all 9 Steel targets!
+
+// TRAP 1: Nested try/catch blocks
+let t_log = ""
+try {
+    try {
+        throw "inner"
+    } catch e1 {
+        t_log = t_log + "E1:" + e1 + ";"
+    }
+    throw "outer"
+} catch e2 {
+    t_log = t_log + "E2:" + e2
+}
+print("NESTED_TRY:", t_log)
+
+// TRAP 2: Nested loops with break & continue in BOTH inner and outer loops
+let n_sum = 0
+for i in 0..5 {
+    if i == 2 { continue }
+    for j in 0..5 {
+        if j == 1 { continue }
+        if j == 4 { break }
+        n_sum = n_sum + (i * 10 + j)
+    }
+}
+print("NESTED_LOOP:", n_sum)
+
+// TRAP 3: Deeply nested maps + mutation
+let deep = { a: { b: { c: 10 } } }
+deep.a.b.c = deep.a.b.c + 32
+print("DEEP_MAP:", deep.a.b.c)
+
+// TRAP 4: Negative array indexing
+let arr = [100, 200, 300, 400]
+print("NEG_IDX:", arr[-1], arr[-2])
+
+// TRAP 5: Empty if/while/fn blocks & trailing comment with no newline
+fn empty_fn() {}
+if true {}
+let z = 0
+while z < 0 {}
+print("EMPTY_BLK:", empty_fn())
+
+// TRAP 6: Variable names that are keywords in Go/Python/Rust/JS (func, type, def, match)
+let score_type = "gold"
+let val_a = 10
+let val_b = 3
+print("MATH_EDGE:", floor(val_a / val_b), val_a % val_b, 0 - val_b)
+// EOF comment without newline
