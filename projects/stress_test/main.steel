@@ -1,0 +1,56 @@
+// Stress Test Entry: Tests multi-file imports, sorting, recursion, classes, control flow, math, strings
+
+import "algo.steel"
+
+// 1. Quicksort on unsorted array
+let unsorted = [42, 7, 19, 3, 99, 12, 7, 1, 55, 28]
+let sorted = quicksort(unsorted)
+print("SORT:", sorted)
+
+// 2. Deep recursion (Ackermann(3, 4) == 125)
+let ack = ackermann(3, 4)
+print("ACK:", ack)
+
+// 3. Euclidean GCD
+print("GCD:", gcd(252, 105), gcd(1071, 462))
+
+// 4. Break & continue in loops
+let loop_sum = 0
+for i in 0..20 {
+    if i % 2 == 0 {
+        continue
+    }
+    if i > 11 {
+        break
+    }
+    loop_sum = loop_sum + i
+}
+print("LOOP_SUM:", loop_sum)
+
+// 5. Ternary, boolean logic, string concat, negative numbers
+let a = -15
+let b = 4
+let tag = (a < 0 && b > 0) ? "NEG_POS" : "OTHER"
+print("LOGIC:", tag, abs(a) + b, floor(17 / 4))
+
+// 6. Mutable nested arrays & pop
+let stack = []
+push(stack, 10)
+push(stack, 20)
+push(stack, 30)
+let popped = pop(stack)
+print("STACK:", popped, len(stack), stack)
+
+// 7. String equality & dynamic variables
+let s1 = "steel"
+let s2 = "st" + "eel"
+let eq_ok = (s1 == s2) ? 1 : 0
+let neq_ok = (s1 != "rust") ? 1 : 0
+print("STR_EQ:", eq_ok, neq_ok)
+
+// 8. OOP Classes & Methods across modules
+let acct = new BankAccount("Alice", 100)
+let b1 = acct.deposit(50)
+let b2 = acct.withdraw(40)
+let b3 = acct.withdraw(500)
+print("CLASS:", acct.owner, b1, b2, b3)
