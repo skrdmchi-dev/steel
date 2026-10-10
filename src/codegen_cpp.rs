@@ -123,3 +123,66 @@ struct Val {
 
     std::string to_string() const {
         if (is_null()) return "null";
+        if (auto* b = std::get_if<bool>(&data)) return *b ? "true" : "false";
+        if (auto* n = std::get_if<double>(&data)) {
+            if (std::floor(*n) == *n && std::abs(*n) < 1e15) {
+                return std::to_string(static_cast<long long>(*n));
+            }
+            std::ostringstream oss;
+            oss << *n;
+            return oss.str();
+        }
+        if (auto* s = std::get_if<std::string>(&data)) return *s;
+        if (auto* a = std::get_if<ArrPtr>(&data)) {
+            std::string out = "[";
+            for (size_t i = 0; i < (*a)->size(); ++i) {
+                if (i > 0) out += ", ";
+                out += (**a)[i].to_string();
+            }
+            out += "]";
+            return out;
+        }
+        if (is_map()) return "[object]";
+        return "[fn]";
+    }
+
+    Val operator+(const Val& rhs) const {
+        if (is_str() || rhs.is_str()) return Val(to_string() + rhs.to_string());
+        return Val(as_num() + rhs.as_num());
+    }
+    Val operator-(const Val& rhs) const { return Val(as_num() - rhs.as_num()); }
+    Val operator*(const Val& rhs) const { return Val(as_num() * rhs.as_num()); }
+    Val operator/(const Val& rhs) const { return Val(as_num() / rhs.as_num()); }
+    Val operator%(const Val& rhs) const { return Val(std::fmod(as_num(), rhs.as_num())); }
+    Val operator-() const { return Val(-as_num()); }
+
+    bool operator==(const Val& rhs) const {
+        if (data.index() != rhs.data.index()) return false;
+        if (is_null()) return true;
+        if (is_bool()) return std::get<bool>(data) == std::get<bool>(rhs.data);
+        if (is_num()) return std::get<double>(data) == std::get<double>(rhs.data);
+        if (is_str()) return std::get<std::string>(data) == std::get<std::string>(rhs.data);
+        if (is_arr()) return std::get<ArrPtr>(data) == std::get<ArrPtr>(rhs.data);
+        if (is_map()) return std::get<MapPtr>(data) == std::get<MapPtr>(rhs.data);
+        return false;
+    }
+    bool operator!=(const Val& rhs) const { return !(*this == rhs); }
+    bool operator<(const Val& rhs) const { return as_num() < rhs.as_num(); }
+    bool operator>(const Val& rhs) const { return as_num() > rhs.as_num(); }
+    bool operator<=(const Val& rhs) const { return as_num() <= rhs.as_num(); }
+    bool operator>=(const Val& rhs) const { return as_num() >= rhs.as_num(); }
+
+    Val call(const std::vector<Val>& args, const Val& self = Val()) const {
+        if (auto* f = std::get_if<Fn>(&data)) return (*f)(self, args);
+        return Val();
+    }
+};
+
+inline Val make_arr(std::initializer_list<Val> items) {
+    return Val(std::make_shared<Arr>(items));
+}
+
+inline Val make_map(std::initializer_list<std::pair<const std::string, Val>> entries = {}) {
+    auto m = std::make_shared<Map>();
+    for (const auto& kv : entries) (*m)[kv.first] = kv.second;
+    return Val(m);
