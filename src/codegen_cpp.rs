@@ -61,3 +61,65 @@ const CPP_RUNTIME_HEADER: &str = r#"#pragma once
 #include <iomanip>
 #include <iostream>
 #include <memory>
+#include <sstream>
+#include <stdexcept>
+#include <string>
+#include <unordered_map>
+#include <variant>
+#include <vector>
+
+namespace steel {
+
+struct Val;
+using Arr = std::vector<Val>;
+using ArrPtr = std::shared_ptr<Arr>;
+using Map = std::unordered_map<std::string, Val>;
+using MapPtr = std::shared_ptr<Map>;
+using Fn = std::function<Val(Val, const std::vector<Val>&)>;
+
+struct Error : std::runtime_error {
+    explicit Error(const std::string& msg) : std::runtime_error(msg) {}
+};
+
+struct Val {
+    using Storage = std::variant<std::monostate, bool, double, std::string, ArrPtr, MapPtr, Fn>;
+    Storage data;
+
+    Val() : data(std::monostate{}) {}
+    Val(std::nullptr_t) : data(std::monostate{}) {}
+    Val(bool b) : data(b) {}
+    Val(int n) : data(static_cast<double>(n)) {}
+    Val(double n) : data(n) {}
+    Val(const char* s) : data(std::string(s)) {}
+    Val(std::string s) : data(std::move(s)) {}
+    Val(ArrPtr a) : data(std::move(a)) {}
+    Val(MapPtr m) : data(std::move(m)) {}
+    Val(Fn f) : data(std::move(f)) {}
+
+    bool is_null() const { return std::holds_alternative<std::monostate>(data); }
+    bool is_bool() const { return std::holds_alternative<bool>(data); }
+    bool is_num() const { return std::holds_alternative<double>(data); }
+    bool is_str() const { return std::holds_alternative<std::string>(data); }
+    bool is_arr() const { return std::holds_alternative<ArrPtr>(data); }
+    bool is_map() const { return std::holds_alternative<MapPtr>(data); }
+    bool is_fn() const { return std::holds_alternative<Fn>(data); }
+
+    double as_num() const {
+        if (auto* p = std::get_if<double>(&data)) return *p;
+        if (auto* b = std::get_if<bool>(&data)) return *b ? 1.0 : 0.0;
+        if (auto* s = std::get_if<std::string>(&data)) {
+            try { return std::stod(*s); } catch (...) { return 0.0; }
+        }
+        return 0.0;
+    }
+
+    bool truthy() const {
+        if (is_null()) return false;
+        if (auto* b = std::get_if<bool>(&data)) return *b;
+        if (auto* n = std::get_if<double>(&data)) return *n != 0.0;
+        if (auto* s = std::get_if<std::string>(&data)) return !s->empty();
+        return true;
+    }
+
+    std::string to_string() const {
+        if (is_null()) return "null";
