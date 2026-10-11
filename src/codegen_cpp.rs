@@ -437,3 +437,65 @@ inline Val unique_val(const Val& arr) {
         bool dup = false;
         for (const auto& u : *out) if (u == x) { dup = true; break; }
         if (!dup) out->push_back(x);
+    }
+    return Val(out);
+}
+
+inline Val flat_val(const Val& arr) {
+    auto out = std::make_shared<Arr>();
+    for (const auto& x : iter_vec(arr)) {
+        if (auto* inner = std::get_if<ArrPtr>(&x.data)) {
+            out->insert(out->end(), (*inner)->begin(), (*inner)->end());
+        } else {
+            out->push_back(x);
+        }
+    }
+    return Val(out);
+}
+
+inline Val zip_val(const Val& a, const Val& b) {
+    auto av = iter_vec(a), bv = iter_vec(b);
+    size_t n = std::min(av.size(), bv.size());
+    auto out = std::make_shared<Arr>();
+    for (size_t i = 0; i < n; ++i) {
+        auto pair = std::make_shared<Arr>(Arr{av[i], bv[i]});
+        out->push_back(Val(pair));
+    }
+    return Val(out);
+}
+
+inline Val enumerate_val(const Val& a) {
+    auto av = iter_vec(a);
+    auto out = std::make_shared<Arr>();
+    for (size_t i = 0; i < av.size(); ++i) {
+        auto pair = std::make_shared<Arr>(Arr{Val(static_cast<double>(i)), av[i]});
+        out->push_back(Val(pair));
+    }
+    return Val(out);
+}
+
+inline Val hash_val(const Val& v) {
+    std::string s = v.to_string();
+    std::uint64_t h = 0xcbf29ce484222325ULL;
+    for (unsigned char b : s) {
+        h ^= static_cast<std::uint64_t>(b);
+        h *= 0x0100000001b3ULL;
+    }
+    std::ostringstream ss;
+    ss << std::hex << std::setfill('0') << std::setw(16) << h;
+    return Val(ss.str());
+}
+
+inline std::string json_escape(const std::string& s) {
+    std::string out = "\"";
+    for (char c : s) {
+        if (c == '\\') out += "\\\\";
+        else if (c == '"') out += "\\\"";
+        else if (c == '\n') out += "\\n";
+        else if (c == '\r') out += "\\r";
+        else if (c == '\t') out += "\\t";
+        else out.push_back(c);
+    }
+    out.push_back('"');
+    return out;
+}
