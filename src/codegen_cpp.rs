@@ -311,3 +311,66 @@ inline Val reduce_hof(const Val& arr, const Val& fn, const Val& init, bool has_i
 inline Val find_hof(const Val& arr, const Val& fn) {
     for (const auto& item : iter_vec(arr)) {
         if (fn.call({item}).truthy()) return item;
+    }
+    return Val();
+}
+
+inline Val any_hof(const Val& arr, const Val& fn) {
+    for (const auto& item : iter_vec(arr)) {
+        if (fn.call({item}).truthy()) return Val(true);
+    }
+    return Val(false);
+}
+
+inline Val all_hof(const Val& arr, const Val& fn) {
+    for (const auto& item : iter_vec(arr)) {
+        if (!fn.call({item}).truthy()) return Val(false);
+    }
+    return Val(true);
+}
+
+inline Val type_of(const Val& v) {
+    if (std::holds_alternative<std::monostate>(v.data)) return Val("null");
+    if (std::holds_alternative<bool>(v.data)) return Val("boolean");
+    if (std::holds_alternative<double>(v.data)) return Val("number");
+    if (std::holds_alternative<std::string>(v.data)) return Val("string");
+    if (std::holds_alternative<ArrPtr>(v.data)) return Val("array");
+    if (std::holds_alternative<MapPtr>(v.data)) return Val("map");
+    return Val("function");
+}
+
+inline Val assert_val(const Val& cond, const Val& msg = Val("Assertion failed")) {
+    if (!cond.truthy()) throw Error(msg.to_string());
+    return Val(true);
+}
+
+inline Val has_key_val(const Val& m, const Val& k) {
+    if (auto* mp = std::get_if<MapPtr>(&m.data)) return Val((*mp)->count(k.to_string()) > 0);
+    return Val(false);
+}
+
+inline Val delete_key_val(const Val& m, const Val& k) {
+    if (auto* mp = std::get_if<MapPtr>(&m.data)) return Val((*mp)->erase(k.to_string()) > 0);
+    return Val(false);
+}
+
+inline Val concat_val(const Val& a, const Val& b) {
+    auto out = std::make_shared<Arr>(iter_vec(a));
+    auto bv = iter_vec(b);
+    out->insert(out->end(), bv.begin(), bv.end());
+    return Val(out);
+}
+
+inline Val index_of_val(const Val& h, const Val& n) {
+    if (auto* a = std::get_if<ArrPtr>(&h.data)) {
+        for (size_t i = 0; i < (*a)->size(); ++i) {
+            if ((**a)[i] == n) return Val(static_cast<double>(i));
+        }
+        return Val(-1.0);
+    }
+    std::string hs = h.to_string(), ns = n.to_string();
+    size_t pos = hs.find(ns);
+    return Val(pos == std::string::npos ? -1.0 : static_cast<double>(pos));
+}
+
+inline Val repeat_str(const Val& s, const Val& n) {
