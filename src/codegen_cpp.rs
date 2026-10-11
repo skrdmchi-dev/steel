@@ -374,3 +374,66 @@ inline Val index_of_val(const Val& h, const Val& n) {
 }
 
 inline Val repeat_str(const Val& s, const Val& n) {
+    long long c = std::max(0LL, static_cast<long long>(n.as_num()));
+    std::string src = s.to_string(), out;
+    out.reserve(src.size() * static_cast<size_t>(c));
+    for (long long i = 0; i < c; ++i) out += src;
+    return Val(std::move(out));
+}
+
+inline Val pad_start_str(const Val& s, const Val& w, const Val& ch = Val(" ")) {
+    std::string src = s.to_string(), p = ch.to_string();
+    size_t width = static_cast<size_t>(std::max(0LL, static_cast<long long>(w.as_num())));
+    if (src.size() >= width || p.empty()) return Val(std::move(src));
+    size_t need = width - src.size();
+    std::string out;
+    out.reserve(width);
+    for (size_t i = 0; i < need; ++i) out.push_back(p[i % p.size()]);
+    out += src;
+    return Val(std::move(out));
+}
+
+inline Val pad_end_str(const Val& s, const Val& w, const Val& ch = Val(" ")) {
+    std::string src = s.to_string(), p = ch.to_string();
+    size_t width = static_cast<size_t>(std::max(0LL, static_cast<long long>(w.as_num())));
+    if (src.size() >= width || p.empty()) return Val(std::move(src));
+    size_t need = width - src.size();
+    src.reserve(width);
+    for (size_t i = 0; i < need; ++i) src.push_back(p[i % p.size()]);
+    return Val(std::move(src));
+}
+
+inline Val char_code_val(const Val& s) {
+    std::string src = s.to_string();
+    return Val(src.empty() ? 0.0 : static_cast<double>(static_cast<unsigned char>(src[0])));
+}
+
+inline Val from_char_code_val(const Val& n) {
+    int c = std::max(0, static_cast<int>(n.as_num()));
+    return Val(std::string(1, static_cast<char>(c)));
+}
+
+inline Val sum_val(const Val& arr) {
+    double s = 0.0;
+    for (const auto& x : iter_vec(arr)) {
+        if (auto* d = std::get_if<double>(&x.data)) s += *d;
+    }
+    return Val(s);
+}
+
+inline Val avg_val(const Val& arr) {
+    auto items = iter_vec(arr);
+    if (items.empty()) return Val(0.0);
+    double s = 0.0;
+    for (const auto& x : items) {
+        if (auto* d = std::get_if<double>(&x.data)) s += *d;
+    }
+    return Val(s / static_cast<double>(items.size()));
+}
+
+inline Val unique_val(const Val& arr) {
+    auto out = std::make_shared<Arr>();
+    for (const auto& x : iter_vec(arr)) {
+        bool dup = false;
+        for (const auto& u : *out) if (u == x) { dup = true; break; }
+        if (!dup) out->push_back(x);
