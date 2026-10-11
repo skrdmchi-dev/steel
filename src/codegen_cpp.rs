@@ -249,3 +249,65 @@ inline Val len_of(const Val& v) {
 
 inline Val push_val(const Val& arr, const Val& item) {
     if (auto* a = std::get_if<ArrPtr>(&arr.data)) (*a)->push_back(item);
+    return arr;
+}
+
+inline Val pop_val(const Val& arr) {
+    if (auto* a = std::get_if<ArrPtr>(&arr.data)) {
+        if (!(*a)->empty()) {
+            Val v = (*a)->back();
+            (*a)->pop_back();
+            return v;
+        }
+    }
+    return Val();
+}
+
+inline Val range_val(const Val& a, const Val& b, const Val& step_v = Val(1.0)) {
+    auto out = std::make_shared<Arr>();
+    long long s = static_cast<long long>(a.as_num());
+    long long e = static_cast<long long>(b.as_num());
+    long long step = static_cast<long long>(step_v.as_num());
+    if (step > 0) {
+        for (long long i = s; i < e; i += step) out->push_back(Val(static_cast<double>(i)));
+    } else if (step < 0) {
+        for (long long i = s; i > e; i += step) out->push_back(Val(static_cast<double>(i)));
+    }
+    return Val(out);
+}
+
+inline std::vector<Val> iter_vec(const Val& v) {
+    if (auto* a = std::get_if<ArrPtr>(&v.data)) return **a;
+    return {};
+}
+
+inline Val map_hof(const Val& arr, const Val& fn) {
+    auto out = std::make_shared<Arr>();
+    for (const auto& item : iter_vec(arr)) out->push_back(fn.call({item}));
+    return Val(out);
+}
+
+inline Val filter_hof(const Val& arr, const Val& fn) {
+    auto out = std::make_shared<Arr>();
+    for (const auto& item : iter_vec(arr)) {
+        if (fn.call({item}).truthy()) out->push_back(item);
+    }
+    return Val(out);
+}
+
+inline Val reduce_hof(const Val& arr, const Val& fn, const Val& init, bool has_init) {
+    auto items = iter_vec(arr);
+    size_t start = 0;
+    Val acc = init;
+    if (!has_init) {
+        if (items.empty()) return Val();
+        acc = items[0];
+        start = 1;
+    }
+    for (size_t i = start; i < items.size(); ++i) acc = fn.call({acc, items[i]});
+    return acc;
+}
+
+inline Val find_hof(const Val& arr, const Val& fn) {
+    for (const auto& item : iter_vec(arr)) {
+        if (fn.call({item}).truthy()) return item;
