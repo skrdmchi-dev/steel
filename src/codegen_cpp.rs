@@ -186,3 +186,66 @@ inline Val make_map(std::initializer_list<std::pair<const std::string, Val>> ent
     auto m = std::make_shared<Map>();
     for (const auto& kv : entries) (*m)[kv.first] = kv.second;
     return Val(m);
+}
+
+inline Val map_get(const Val& obj, const std::string& key) {
+    if (auto* m = std::get_if<MapPtr>(&obj.data)) {
+        auto it = (*m)->find(key);
+        if (it != (*m)->end()) return it->second;
+    }
+    return Val();
+}
+
+inline void map_set(const Val& obj, const std::string& key, const Val& val) {
+    if (auto* m = std::get_if<MapPtr>(&obj.data)) {
+        (**m)[key] = val;
+    }
+}
+
+inline Val call_method(const Val& obj, const std::string& name, const std::vector<Val>& args) {
+    Val m = map_get(obj, name);
+    return m.call(args, obj);
+}
+
+inline Val idx_get(const Val& t, const Val& idx) {
+    if (t.is_map() && idx.is_str()) return map_get(t, std::get<std::string>(idx.data));
+    if (auto* a = std::get_if<ArrPtr>(&t.data)) {
+        long long i = static_cast<long long>(idx.as_num());
+        long long n = static_cast<long long>((*a)->size());
+        if (i < 0) i += n;
+        if (i >= 0 && i < n) return (**a)[static_cast<size_t>(i)];
+    }
+    return Val();
+}
+
+inline void idx_set(const Val& t, const Val& idx, const Val& val) {
+    if (t.is_map() && idx.is_str()) {
+        map_set(t, std::get<std::string>(idx.data), val);
+        return;
+    }
+    if (auto* a = std::get_if<ArrPtr>(&t.data)) {
+        long long i = static_cast<long long>(idx.as_num());
+        long long n = static_cast<long long>((*a)->size());
+        if (i < 0) i += n;
+        if (i >= 0 && i < n) (**a)[static_cast<size_t>(i)] = val;
+    }
+}
+
+inline Val print_vals(const std::vector<Val>& args) {
+    for (size_t i = 0; i < args.size(); ++i) {
+        if (i > 0) std::cout << ' ';
+        std::cout << args[i].to_string();
+    }
+    std::cout << '\n';
+    return Val();
+}
+
+inline Val len_of(const Val& v) {
+    if (auto* a = std::get_if<ArrPtr>(&v.data)) return Val(static_cast<double>((*a)->size()));
+    if (auto* s = std::get_if<std::string>(&v.data)) return Val(static_cast<double>(s->size()));
+    if (auto* m = std::get_if<MapPtr>(&v.data)) return Val(static_cast<double>((*m)->size()));
+    return Val(0.0);
+}
+
+inline Val push_val(const Val& arr, const Val& item) {
+    if (auto* a = std::get_if<ArrPtr>(&arr.data)) (*a)->push_back(item);
