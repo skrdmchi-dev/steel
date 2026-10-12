@@ -499,3 +499,66 @@ inline std::string json_escape(const std::string& s) {
     out.push_back('"');
     return out;
 }
+
+inline std::string json_stringify_raw(const Val& v) {
+    if (std::holds_alternative<std::monostate>(v.data)) return "null";
+    if (auto* b = std::get_if<bool>(&v.data)) return *b ? "true" : "false";
+    if (auto* d = std::get_if<double>(&v.data)) return v.to_string();
+    if (auto* s = std::get_if<std::string>(&v.data)) return json_escape(*s);
+    if (auto* a = std::get_if<ArrPtr>(&v.data)) {
+        std::string out = "[";
+        for (size_t i = 0; i < (*a)->size(); ++i) {
+            if (i > 0) out += ",";
+            out += json_stringify_raw((**a)[i]);
+        }
+        out += "]";
+        return out;
+    }
+    if (auto* m = std::get_if<MapPtr>(&v.data)) {
+        std::string out = "{";
+        bool first = true;
+        for (const auto& kv : **m) {
+            if (!first) out += ",";
+            first = false;
+            out += json_escape(kv.first) + ":" + json_stringify_raw(kv.second);
+        }
+        out += "}";
+        return out;
+    }
+    return "null";
+}
+
+inline Val json_stringify_val(const Val& v) { return Val(json_stringify_raw(v)); }
+
+inline Val json_parse_at(const std::string& s, size_t& i) {
+    auto skip = [&]() { while (i < s.size() && std::isspace(static_cast<unsigned char>(s[i]))) ++i; };
+    skip();
+    if (i >= s.size()) return Val();
+    if (s[i] == '"') {
+        ++i;
+        std::string out;
+        while (i < s.size()) {
+            char c = s[i++];
+            if (c == '"') break;
+            if (c == '\\' && i < s.size()) {
+                char e = s[i++];
+                if (e == 'n') out.push_back('\n');
+                else if (e == 'r') out.push_back('\r');
+                else if (e == 't') out.push_back('\t');
+                else out.push_back(e);
+            } else {
+                out.push_back(c);
+            }
+        }
+        return Val(std::move(out));
+    }
+    if (s[i] == '[') {
+        ++i;
+        auto arr = std::make_shared<Arr>();
+        skip();
+        if (i < s.size() && s[i] == ']') { ++i; return Val(arr); }
+        while (i < s.size()) {
+            arr->push_back(json_parse_at(s, i));
+            skip();
+            if (i < s.size() && s[i] == ',') { ++i; continue; }
+            if (i < s.size() && s[i] == ']') ++i;
