@@ -562,3 +562,66 @@ inline Val json_parse_at(const std::string& s, size_t& i) {
             skip();
             if (i < s.size() && s[i] == ',') { ++i; continue; }
             if (i < s.size() && s[i] == ']') ++i;
+            break;
+        }
+        return Val(arr);
+    }
+    if (s[i] == '{') {
+        ++i;
+        auto mp = std::make_shared<Map>();
+        skip();
+        if (i < s.size() && s[i] == '}') { ++i; return Val(mp); }
+        while (i < s.size()) {
+            Val k = json_parse_at(s, i);
+            skip();
+            if (i < s.size() && s[i] == ':') ++i;
+            (*mp)[k.to_string()] = json_parse_at(s, i);
+            skip();
+            if (i < s.size() && s[i] == ',') { ++i; continue; }
+            if (i < s.size() && s[i] == '}') ++i;
+            break;
+        }
+        return Val(mp);
+    }
+    if (s.compare(i, 4, "true") == 0) { i += 4; return Val(true); }
+    if (s.compare(i, 5, "false") == 0) { i += 5; return Val(false); }
+    if (s.compare(i, 4, "null") == 0) { i += 4; return Val(); }
+    size_t st = i;
+    while (i < s.size() && (std::isdigit(static_cast<unsigned char>(s[i])) || s[i] == '-' || s[i] == '+' || s[i] == '.' || s[i] == 'e' || s[i] == 'E')) ++i;
+    try { return Val(std::stod(s.substr(st, i - st))); } catch (...) { return Val(0.0); }
+}
+
+inline Val json_parse_val(const Val& v) {
+    std::string s = v.to_string();
+    size_t i = 0;
+    return json_parse_at(s, i);
+}
+
+inline Val append_file_str(const Val& p, const Val& c) {
+    std::ofstream f(p.to_string(), std::ios::binary | std::ios::app);
+    if (!f) return Val(false);
+    f << c.to_string();
+    return Val(true);
+}
+
+inline Val remove_file_val(const Val& p) {
+    return Val(std::filesystem::remove(p.to_string()));
+}
+
+inline Val clock_val() {
+    using namespace std::chrono;
+    auto us = duration_cast<microseconds>(system_clock::now().time_since_epoch()).count();
+    return Val(static_cast<double>(us) / 1e6);
+}
+
+inline Val upper_str(const Val& v) {
+    std::string s = v.to_string();
+    for (char& c : s) c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
+    return Val(std::move(s));
+}
+
+inline Val lower_str(const Val& v) {
+    std::string s = v.to_string();
+    for (char& c : s) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    return Val(std::move(s));
+}
