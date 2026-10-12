@@ -687,3 +687,66 @@ inline Val join_arr(const Val& arr, const Val& sep) {
 inline Val replace_str(const Val& s, const Val& a, const Val& b) {
     std::string src = s.to_string(), old_s = a.to_string(), new_s = b.to_string();
     if (old_s.empty()) return Val(std::move(src));
+    size_t pos = 0;
+    while ((pos = src.find(old_s, pos)) != std::string::npos) {
+        src.replace(pos, old_s.size(), new_s);
+        pos += new_s.size();
+    }
+    return Val(std::move(src));
+}
+
+inline Val reverse_val(const Val& v) {
+    if (auto* a = std::get_if<ArrPtr>(&v.data)) {
+        auto out = std::make_shared<Arr>((*a)->rbegin(), (*a)->rend());
+        return Val(out);
+    }
+    std::string s = v.to_string();
+    std::reverse(s.begin(), s.end());
+    return Val(std::move(s));
+}
+
+inline Val slice_val(const Val& v, const Val& s, const Val& e) {
+    long long si = std::max(0LL, static_cast<long long>(s.as_num()));
+    if (auto* a = std::get_if<ArrPtr>(&v.data)) {
+        long long n = static_cast<long long>((*a)->size());
+        long long ei = e.is_null() ? n : std::min(n, static_cast<long long>(e.as_num()));
+        if (si > ei) si = ei;
+        auto out = std::make_shared<Arr>((*a)->begin() + si, (*a)->begin() + ei);
+        return Val(out);
+    }
+    std::string str = v.to_string();
+    long long n = static_cast<long long>(str.size());
+    long long ei = e.is_null() ? n : std::min(n, static_cast<long long>(e.as_num()));
+    if (si > ei) si = ei;
+    return Val(str.substr(static_cast<size_t>(si), static_cast<size_t>(ei - si)));
+}
+
+inline Val sort_val(const Val& v) {
+    auto out = std::make_shared<Arr>(iter_vec(v));
+    std::sort(out->begin(), out->end(), [](const Val& a, const Val& b) {
+        return a.to_string() < b.to_string();
+    });
+    return Val(out);
+}
+
+inline Val keys_of(const Val& v) {
+    auto out = std::make_shared<Arr>();
+    if (auto* m = std::get_if<MapPtr>(&v.data)) {
+        for (const auto& kv : **m) out->push_back(Val(kv.first));
+    }
+    return Val(out);
+}
+
+inline Val values_of(const Val& v) {
+    auto out = std::make_shared<Arr>();
+    if (auto* m = std::get_if<MapPtr>(&v.data)) {
+        for (const auto& kv : **m) out->push_back(kv.second);
+    }
+    return Val(out);
+}
+
+inline Val read_file_str(const Val& p) {
+    std::ifstream f(p.to_string(), std::ios::binary);
+    if (!f) return Val("");
+    std::ostringstream ss;
+    ss << f.rdbuf();
