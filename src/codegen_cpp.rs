@@ -625,3 +625,65 @@ inline Val lower_str(const Val& v) {
     for (char& c : s) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
     return Val(std::move(s));
 }
+
+inline Val trim_str(const Val& v) {
+    std::string s = v.to_string();
+    size_t a = 0;
+    while (a < s.size() && std::isspace(static_cast<unsigned char>(s[a]))) ++a;
+    size_t b = s.size();
+    while (b > a && std::isspace(static_cast<unsigned char>(s[b - 1]))) --b;
+    return Val(s.substr(a, b - a));
+}
+
+inline Val contains_val(const Val& h, const Val& n) {
+    if (auto* m = std::get_if<MapPtr>(&h.data)) return Val((*m)->count(n.to_string()) > 0);
+    if (auto* a = std::get_if<ArrPtr>(&h.data)) {
+        for (const auto& x : **a) if (x == n) return Val(true);
+        return Val(false);
+    }
+    return Val(h.to_string().find(n.to_string()) != std::string::npos);
+}
+
+inline Val starts_with_str(const Val& h, const Val& p) {
+    std::string hs = h.to_string(), ps = p.to_string();
+    return Val(hs.size() >= ps.size() && hs.compare(0, ps.size(), ps) == 0);
+}
+
+inline Val ends_with_str(const Val& h, const Val& p) {
+    std::string hs = h.to_string(), ps = p.to_string();
+    return Val(hs.size() >= ps.size() && hs.compare(hs.size() - ps.size(), ps.size(), ps) == 0);
+}
+
+inline Val split_str(const Val& s, const Val& sep) {
+    auto out = std::make_shared<Arr>();
+    std::string src = s.to_string(), sp = sep.to_string();
+    if (sp.empty()) {
+        for (char c : src) out->push_back(Val(std::string(1, c)));
+        return Val(out);
+    }
+    size_t pos = 0;
+    while (true) {
+        size_t hit = src.find(sp, pos);
+        if (hit == std::string::npos) {
+            out->push_back(Val(src.substr(pos)));
+            break;
+        }
+        out->push_back(Val(src.substr(pos, hit - pos)));
+        pos = hit + sp.size();
+    }
+    return Val(out);
+}
+
+inline Val join_arr(const Val& arr, const Val& sep) {
+    std::string sp = sep.to_string(), out;
+    auto items = iter_vec(arr);
+    for (size_t i = 0; i < items.size(); ++i) {
+        if (i > 0) out += sp;
+        out += items[i].to_string();
+    }
+    return Val(std::move(out));
+}
+
+inline Val replace_str(const Val& s, const Val& a, const Val& b) {
+    std::string src = s.to_string(), old_s = a.to_string(), new_s = b.to_string();
+    if (old_s.empty()) return Val(std::move(src));
