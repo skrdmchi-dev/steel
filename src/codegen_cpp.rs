@@ -750,3 +750,66 @@ inline Val read_file_str(const Val& p) {
     if (!f) return Val("");
     std::ostringstream ss;
     ss << f.rdbuf();
+    return Val(ss.str());
+}
+
+inline Val write_file_str(const Val& p, const Val& c) {
+    std::ofstream f(p.to_string(), std::ios::binary);
+    if (!f) return Val(false);
+    f << c.to_string();
+    return Val(true);
+}
+
+inline Val file_exists_val(const Val& p) {
+    return Val(std::filesystem::exists(p.to_string()));
+}
+
+inline Val env_val(const Val& k) {
+    const char* v = std::getenv(k.to_string().c_str());
+    return v ? Val(std::string(v)) : Val();
+}
+
+inline Val time_ms_val() {
+    using namespace std::chrono;
+    auto ms = duration_cast<milliseconds>(system_clock::now().time_since_epoch()).count();
+    return Val(static_cast<double>(ms));
+}
+
+} // namespace steel
+"#;
+
+fn cpp_stmt(stmt: &Stmt, lvl: usize, top_fns: &HashSet<String>, declared: &mut HashSet<String>) -> String {
+    let pad = indent(lvl);
+    match stmt {
+        Stmt::Import(_) => String::new(),
+        Stmt::ClassDecl {
+            name,
+            parent,
+            methods,
+        } => cpp_stmt(&desugar_class(name, parent, methods), lvl, top_fns, declared),
+        Stmt::Let { name, value, .. } => {
+            let sn = cpp_safe_ident(name);
+            let expr_s = cpp_expr(value, lvl, top_fns);
+            if declared.insert(sn.clone()) {
+                format!("{}steel::Val {} = {};\n", pad, sn, expr_s)
+            } else {
+                format!("{}{} = {};\n", pad, sn, expr_s)
+            }
+        }
+        Stmt::Assign { target, value } => match target {
+            AssignTarget::Ident(n) => {
+                let sn = cpp_safe_ident(n);
+                let expr_s = cpp_expr(value, lvl, top_fns);
+                if declared.insert(sn.clone()) {
+                    format!("{}steel::Val {} = {};\n", pad, sn, expr_s)
+                } else {
+                    format!("{}{} = {};\n", pad, sn, expr_s)
+                }
+            }
+            AssignTarget::Index { target, index } => format!(
+                "{}steel::idx_set({}, {}, {});\n",
+                pad,
+                cpp_expr(target, lvl, top_fns),
+                cpp_expr(index, lvl, top_fns),
+                cpp_expr(value, lvl, top_fns)
+            ),
