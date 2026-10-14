@@ -813,3 +813,65 @@ fn cpp_stmt(stmt: &Stmt, lvl: usize, top_fns: &HashSet<String>, declared: &mut H
                 cpp_expr(index, lvl, top_fns),
                 cpp_expr(value, lvl, top_fns)
             ),
+            AssignTarget::Member { target, field } => format!(
+                "{}steel::map_set({}, \"{}\", {});\n",
+                pad,
+                cpp_expr(target, lvl, top_fns),
+                escape_str(field),
+                cpp_expr(value, lvl, top_fns)
+            ),
+        },
+        Stmt::FnDecl { name, params, body } => {
+            let sn = cpp_safe_ident(name);
+            let mut inner_decl = declared.clone();
+            let mut s = format!(
+                "{}steel::Val {} = steel::Val(steel::Fn([=](steel::Val st_this, const std::vector<steel::Val>& st_args) mutable -> steel::Val {{\n{}    (void)st_this; (void)st_args;\n",
+                pad, sn, pad
+            );
+            for (i, (p, def)) in params.iter().enumerate() {
+                let sp = cpp_safe_ident(p);
+                inner_decl.insert(sp.clone());
+                let fb = def
+                    .as_ref()
+                    .map(|d| cpp_expr(d, lvl + 1, top_fns))
+                    .unwrap_or_else(|| "steel::Val()".to_string());
+                s.push_str(&format!(
+                    "{}    steel::Val {} = (st_args.size() > {}) ? st_args[{}] : {};\n",
+                    pad, sp, i, i, fb
+                ));
+            }
+            for st in body {
+                s.push_str(&cpp_stmt(st, lvl + 1, top_fns, &mut inner_decl));
+            }
+            s.push_str(&format!("{}    return steel::Val();\n{}}}));\n", pad, pad));
+            declared.insert(sn);
+            s
+        }
+        Stmt::TryCatch {
+            try_body,
+            err_var,
+            catch_body,
+        } => {
+            let mut s = format!("{}try {{\n", pad);
+            let mut try_decl = declared.clone();
+            for st in try_body {
+                s.push_str(&cpp_stmt(st, lvl + 1, top_fns, &mut try_decl));
+            }
+            let se = cpp_safe_ident(err_var);
+            s.push_str(&format!(
+                "{}}} catch (const steel::Error& st_err) {{\n{}    steel::Val {} = steel::Val(std::string(st_err.what()));\n{}    (void){};\n",
+                pad, pad, se, pad, se
+            ));
+            let mut catch_decl = declared.clone();
+            catch_decl.insert(se);
+            for st in catch_body {
+                s.push_str(&cpp_stmt(st, lvl + 1, top_fns, &mut catch_decl));
+            }
+            s.push_str(&format!("{}}}\n", pad));
+            s
+        }
+        Stmt::Throw(e) => format!(
+            "{}throw steel::Error(({}).to_string());\n",
+            pad,
+            cpp_expr(e, lvl, top_fns)
+        ),
