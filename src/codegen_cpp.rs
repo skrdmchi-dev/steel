@@ -875,3 +875,66 @@ fn cpp_stmt(stmt: &Stmt, lvl: usize, top_fns: &HashSet<String>, declared: &mut H
             pad,
             cpp_expr(e, lvl, top_fns)
         ),
+        Stmt::Test { name, body } => {
+            let mut s = format!("{}// test: {}\n{}{{\n", pad, escape_str(name), pad);
+            let mut inner = declared.clone();
+            for st in body {
+                s.push_str(&cpp_stmt(st, lvl + 1, top_fns, &mut inner));
+            }
+            s.push_str(&format!("{}}}\n", pad));
+            s
+        }
+        Stmt::Defer(inner) => cpp_stmt(inner, lvl, top_fns, declared),
+        Stmt::Return(expr) => match expr {
+            Some(e) => format!("{}return {};\n", pad, cpp_expr(e, lvl, top_fns)),
+            None => format!("{}return steel::Val();\n", pad),
+        },
+        Stmt::If {
+            cond,
+            then_branch,
+            else_branch,
+        } => {
+            let mut s = format!("{}if (({}).truthy()) {{\n", pad, cpp_expr(cond, lvl, top_fns));
+            let mut t_decl = declared.clone();
+            for st in then_branch {
+                s.push_str(&cpp_stmt(st, lvl + 1, top_fns, &mut t_decl));
+            }
+            if let Some(eb) = else_branch {
+                s.push_str(&format!("{}}} else {{\n", pad));
+                let mut e_decl = declared.clone();
+                for st in eb {
+                    s.push_str(&cpp_stmt(st, lvl + 1, top_fns, &mut e_decl));
+                }
+            }
+            s.push_str(&format!("{}}}\n", pad));
+            s
+        }
+        Stmt::While { cond, body } => {
+            let mut s = format!(
+                "{}while (({}).truthy()) {{\n",
+                pad,
+                cpp_expr(cond, lvl, top_fns)
+            );
+            let mut inner = declared.clone();
+            for st in body {
+                s.push_str(&cpp_stmt(st, lvl + 1, top_fns, &mut inner));
+            }
+            s.push_str(&format!("{}}}\n", pad));
+            s
+        }
+        Stmt::For {
+            var,
+            iterable,
+            body,
+        } => {
+            let sv = cpp_safe_ident(var);
+            let mut inner = declared.clone();
+            inner.insert(sv.clone());
+            if let Expr::Range { start, end } = iterable {
+                let mut s = format!(
+                    "{}for (double st_i_{} = ({}).as_num(), st_end_{} = ({}).as_num(); st_i_{} < st_end_{}; st_i_{} += 1.0) {{\n{}    steel::Val {}(st_i_{});\n{}    (void){};\n",
+                    pad,
+                    sv,
+                    cpp_expr(start, lvl, top_fns),
+                    sv,
+                    cpp_expr(end, lvl, top_fns),
