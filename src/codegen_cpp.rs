@@ -938,3 +938,66 @@ fn cpp_stmt(stmt: &Stmt, lvl: usize, top_fns: &HashSet<String>, declared: &mut H
                     cpp_expr(start, lvl, top_fns),
                     sv,
                     cpp_expr(end, lvl, top_fns),
+                    sv,
+                    sv,
+                    sv,
+                    pad,
+                    sv,
+                    sv,
+                    pad,
+                    sv
+                );
+                for st in body {
+                    s.push_str(&cpp_stmt(st, lvl + 1, top_fns, &mut inner));
+                }
+                s.push_str(&format!("{}}}\n", pad));
+                return s;
+            }
+            let mut s = format!(
+                "{}for (steel::Val {} : steel::iter_vec({})) {{\n{}    (void){};\n",
+                pad,
+                sv,
+                cpp_expr(iterable, lvl, top_fns),
+                pad,
+                sv
+            );
+            for st in body {
+                s.push_str(&cpp_stmt(st, lvl + 1, top_fns, &mut inner));
+            }
+            s.push_str(&format!("{}}}\n", pad));
+            s
+        }
+        Stmt::Break => format!("{}break;\n", pad),
+        Stmt::Continue => format!("{}continue;\n", pad),
+        Stmt::Expr(e) => format!("{}(void)({});\n", pad, cpp_expr(e, lvl, top_fns)),
+    }
+}
+
+fn cpp_expr(expr: &Expr, lvl: usize, top_fns: &HashSet<String>) -> String {
+    match expr {
+        Expr::Number(n) => format!("steel::Val({})", fmt_num(*n)),
+        Expr::String(s) => format!("steel::Val(\"{}\")", escape_str(s)),
+        Expr::Bool(b) => format!("steel::Val({})", b),
+        Expr::Null => "steel::Val()".to_string(),
+        Expr::Ident(name) => match name.as_str() {
+            "PI" => "steel::Val(3.14159265358979323846)".to_string(),
+            "E" => "steel::Val(2.71828182845904523536)".to_string(),
+            _ => {
+                let sn = cpp_safe_ident(name);
+                if top_fns.contains(name) {
+                    format!("steel::Val(steel::Fn(st_fn_{}))", sn)
+                } else {
+                    sn
+                }
+            }
+        },
+        Expr::Array(items) => {
+            let inner: Vec<String> = items.iter().map(|e| cpp_expr(e, lvl, top_fns)).collect();
+            format!("steel::make_arr({{{}}})", inner.join(", "))
+        }
+        Expr::Map(entries) => {
+            let inner: Vec<String> = entries
+                .iter()
+                .map(|(k, v)| format!("{{\"{}\", {}}}", escape_str(k), cpp_expr(v, lvl, top_fns)))
+                .collect();
+            format!("steel::make_map({{{}}})", inner.join(", "))
