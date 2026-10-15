@@ -1001,3 +1001,65 @@ fn cpp_expr(expr: &Expr, lvl: usize, top_fns: &HashSet<String>) -> String {
                 .map(|(k, v)| format!("{{\"{}\", {}}}", escape_str(k), cpp_expr(v, lvl, top_fns)))
                 .collect();
             format!("steel::make_map({{{}}})", inner.join(", "))
+        }
+        Expr::New { class_name, args } => {
+            let arg_strs: Vec<String> = args.iter().map(|a| cpp_expr(a, lvl, top_fns)).collect();
+            format!("{}({})", cpp_safe_ident(class_name), arg_strs.join(", "))
+        }
+        Expr::Ternary {
+            cond,
+            then_expr,
+            else_expr,
+        } => format!(
+            "(({}).truthy() ? ({}) : ({}))",
+            cpp_expr(cond, lvl, top_fns),
+            cpp_expr(then_expr, lvl, top_fns),
+            cpp_expr(else_expr, lvl, top_fns)
+        ),
+        Expr::Binary { left, op, right } => {
+            let l = cpp_expr(left, lvl, top_fns);
+            let r = cpp_expr(right, lvl, top_fns);
+            match op {
+                BinaryOp::Add => format!("({} + {})", l, r),
+                BinaryOp::Sub => format!("({} - {})", l, r),
+                BinaryOp::Mul => format!("({} * {})", l, r),
+                BinaryOp::Div => format!("({} / {})", l, r),
+                BinaryOp::Mod => format!("({} % {})", l, r),
+                BinaryOp::Pow => format!("steel::Val(std::pow(({}).as_num(), ({}).as_num()))", l, r),
+                BinaryOp::Eq => format!("steel::Val({} == {})", l, r),
+                BinaryOp::Neq => format!("steel::Val({} != {})", l, r),
+                BinaryOp::Lt => format!("steel::Val({} < {})", l, r),
+                BinaryOp::Gt => format!("steel::Val({} > {})", l, r),
+                BinaryOp::Lte => format!("steel::Val({} <= {})", l, r),
+                BinaryOp::Gte => format!("steel::Val({} >= {})", l, r),
+                BinaryOp::And => format!("steel::Val(({}).truthy() && ({}).truthy())", l, r),
+                BinaryOp::Or => format!("steel::Val(({}).truthy() || ({}).truthy())", l, r),
+                BinaryOp::BitAnd => format!(
+                    "steel::Val(static_cast<double>(static_cast<long long>(({}).as_num()) & static_cast<long long>(({}).as_num())))",
+                    l, r
+                ),
+                BinaryOp::BitOr => format!(
+                    "steel::Val(static_cast<double>(static_cast<long long>(({}).as_num()) | static_cast<long long>(({}).as_num())))",
+                    l, r
+                ),
+                BinaryOp::BitXor => format!(
+                    "steel::Val(static_cast<double>(static_cast<long long>(({}).as_num()) ^ static_cast<long long>(({}).as_num())))",
+                    l, r
+                ),
+                BinaryOp::Shl => format!(
+                    "steel::Val(static_cast<double>(static_cast<long long>(({}).as_num()) << static_cast<long long>(({}).as_num())))",
+                    l, r
+                ),
+                BinaryOp::Shr => format!(
+                    "steel::Val(static_cast<double>(static_cast<long long>(({}).as_num()) >> static_cast<long long>(({}).as_num())))",
+                    l, r
+                ),
+                BinaryOp::NullCoalesce => format!(
+                    "([&]() -> steel::Val {{ steel::Val st_l = {}; return st_l.is_null() ? ({}) : st_l; }})()",
+                    l, r
+                ),
+            }
+        }
+        Expr::Unary { op, expr } => {
+            let v = cpp_expr(expr, lvl, top_fns);
+            match op {
