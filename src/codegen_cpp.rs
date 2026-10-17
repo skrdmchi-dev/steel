@@ -1189,3 +1189,65 @@ fn cpp_expr(expr: &Expr, lvl: usize, top_fns: &HashSet<String>) -> String {
                     }
                     "remove_file" if args.len() == 1 => {
                         return format!("steel::remove_file_val({})", arg_strs[0]);
+                    }
+                    "clock" if args.is_empty() => return "steel::clock_val()".to_string(),
+                    "abs" if args.len() == 1 => {
+                        return format!("steel::Val(std::fabs(({}).as_num()))", arg_strs[0]);
+                    }
+                    "sqrt" | "sin" | "cos" | "tan" | "floor" | "ceil" | "round" if args.len() == 1 => {
+                        return format!("steel::Val(std::{} (({}).as_num()))", name, arg_strs[0]);
+                    }
+                    "pow" if args.len() == 2 => {
+                        return format!("steel::Val(std::pow(({}).as_num(), ({}).as_num()))", arg_strs[0], arg_strs[1]);
+                    }
+                    "min" if args.len() == 2 => {
+                        return format!("steel::Val(std::fmin(({}).as_num(), ({}).as_num()))", arg_strs[0], arg_strs[1]);
+                    }
+                    "max" if args.len() == 2 => {
+                        return format!("steel::Val(std::fmax(({}).as_num(), ({}).as_num()))", arg_strs[0], arg_strs[1]);
+                    }
+                    "upper" if args.len() == 1 => return format!("steel::upper_str({})", arg_strs[0]),
+                    "lower" if args.len() == 1 => return format!("steel::lower_str({})", arg_strs[0]),
+                    "trim" if args.len() == 1 => return format!("steel::trim_str({})", arg_strs[0]),
+                    "contains" if args.len() == 2 => {
+                        return format!("steel::contains_val({}, {})", arg_strs[0], arg_strs[1]);
+                    }
+                    "starts_with" if args.len() == 2 => {
+                        return format!("steel::starts_with_str({}, {})", arg_strs[0], arg_strs[1]);
+                    }
+                    "ends_with" if args.len() == 2 => {
+                        return format!("steel::ends_with_str({}, {})", arg_strs[0], arg_strs[1]);
+                    }
+                    "split" if args.len() == 2 => {
+                        return format!("steel::split_str({}, {})", arg_strs[0], arg_strs[1]);
+                    }
+                    "join" if args.len() == 2 => {
+                        return format!("steel::join_arr({}, {})", arg_strs[0], arg_strs[1]);
+                    }
+                    "replace" if args.len() == 3 => {
+                        return format!("steel::replace_str({}, {}, {})", arg_strs[0], arg_strs[1], arg_strs[2]);
+                    }
+                    "reverse" if args.len() == 1 => return format!("steel::reverse_val({})", arg_strs[0]),
+                    "slice" if args.len() >= 2 => {
+                        let e = arg_strs.get(2).cloned().unwrap_or_else(|| "steel::Val()".to_string());
+                        return format!("steel::slice_val({}, {}, {})", arg_strs[0], arg_strs[1], e);
+                    }
+                    "sort" if args.len() == 1 => return format!("steel::sort_val({})", arg_strs[0]),
+                    "keys" if args.len() == 1 => return format!("steel::keys_of({})", arg_strs[0]),
+                    "values" if args.len() == 1 => return format!("steel::values_of({})", arg_strs[0]),
+                    "read_file" if args.len() == 1 => return format!("steel::read_file_str({})", arg_strs[0]),
+                    "write_file" if args.len() == 2 => {
+                        return format!("steel::write_file_str({}, {})", arg_strs[0], arg_strs[1]);
+                    }
+                    "file_exists" if args.len() == 1 => return format!("steel::file_exists_val({})", arg_strs[0]),
+                    "env" if args.len() == 1 => return format!("steel::env_val({})", arg_strs[0]),
+                    "time_ms" if args.is_empty() => return "steel::time_ms_val()".to_string(),
+                    _ => {
+                        if top_fns.contains(name) {
+                            return format!("{}({})", cpp_safe_ident(name), arg_strs.join(", "));
+                        }
+                    }
+                }
+            }
+            if let Expr::Member { target, field } = &**callee {
+                return format!(
