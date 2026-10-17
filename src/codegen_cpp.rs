@@ -1063,3 +1063,66 @@ fn cpp_expr(expr: &Expr, lvl: usize, top_fns: &HashSet<String>) -> String {
         Expr::Unary { op, expr } => {
             let v = cpp_expr(expr, lvl, top_fns);
             match op {
+                UnaryOp::Neg => format!("(-({}))", v),
+                UnaryOp::Not => format!("steel::Val(!({}).truthy())", v),
+                UnaryOp::BitNot => format!(
+                    "steel::Val(static_cast<double>(~static_cast<long long>(({}).as_num())))",
+                    v
+                ),
+            }
+        }
+        Expr::Call { callee, args } => {
+            let arg_strs: Vec<String> = args.iter().map(|a| cpp_expr(a, lvl, top_fns)).collect();
+            if let Expr::Ident(name) = &**callee {
+                match name.as_str() {
+                    "print" | "println" => {
+                        return format!("steel::print_vals({{{}}})", arg_strs.join(", "));
+                    }
+                    "str" if args.len() == 1 => {
+                        return format!("steel::Val(({}).to_string())", arg_strs[0]);
+                    }
+                    "num" if args.len() == 1 => {
+                        return format!("steel::Val(({}).as_num())", arg_strs[0]);
+                    }
+                    "len" if args.len() == 1 => return format!("steel::len_of({})", arg_strs[0]),
+                    "push" if args.len() == 2 => {
+                        return format!("steel::push_val({}, {})", arg_strs[0], arg_strs[1]);
+                    }
+                    "pop" if args.len() == 1 => return format!("steel::pop_val({})", arg_strs[0]),
+                    "range" if args.len() >= 2 => {
+                        let st = arg_strs.get(2).cloned().unwrap_or_else(|| "steel::Val(1.0)".to_string());
+                        return format!("steel::range_val({}, {}, {})", arg_strs[0], arg_strs[1], st);
+                    }
+                    "map" if args.len() == 2 => {
+                        return format!("steel::map_hof({}, {})", arg_strs[0], arg_strs[1]);
+                    }
+                    "filter" if args.len() == 2 => {
+                        return format!("steel::filter_hof({}, {})", arg_strs[0], arg_strs[1]);
+                    }
+                    "reduce" if args.len() >= 2 => {
+                        let has_init = args.len() >= 3;
+                        let init = arg_strs.get(2).cloned().unwrap_or_else(|| "steel::Val()".to_string());
+                        return format!("steel::reduce_hof({}, {}, {}, {})", arg_strs[0], arg_strs[1], init, has_init);
+                    }
+                    "find" if args.len() == 2 => {
+                        return format!("steel::find_hof({}, {})", arg_strs[0], arg_strs[1]);
+                    }
+                    "any" if args.len() == 2 => {
+                        return format!("steel::any_hof({}, {})", arg_strs[0], arg_strs[1]);
+                    }
+                    "all" if args.len() == 2 => {
+                        return format!("steel::all_hof({}, {})", arg_strs[0], arg_strs[1]);
+                    }
+                    "int" if args.len() == 1 => {
+                        return format!("steel::Val(std::trunc(({}).as_num()))", arg_strs[0]);
+                    }
+                    "bool" if args.len() == 1 => {
+                        return format!("steel::Val(({}).truthy())", arg_strs[0]);
+                    }
+                    "type" if args.len() == 1 => {
+                        return format!("steel::type_of({})", arg_strs[0]);
+                    }
+                    "assert" if !args.is_empty() => {
+                        if args.len() >= 2 {
+                            return format!("steel::assert_val({}, {})", arg_strs[0], arg_strs[1]);
+                        }
