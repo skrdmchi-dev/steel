@@ -1126,3 +1126,66 @@ fn cpp_expr(expr: &Expr, lvl: usize, top_fns: &HashSet<String>) -> String {
                         if args.len() >= 2 {
                             return format!("steel::assert_val({}, {})", arg_strs[0], arg_strs[1]);
                         }
+                        return format!("steel::assert_val({})", arg_strs[0]);
+                    }
+                    "has_key" if args.len() == 2 => {
+                        return format!("steel::has_key_val({}, {})", arg_strs[0], arg_strs[1]);
+                    }
+                    "delete_key" if args.len() == 2 => {
+                        return format!("steel::delete_key_val({}, {})", arg_strs[0], arg_strs[1]);
+                    }
+                    "concat" if args.len() == 2 => {
+                        return format!("steel::concat_val({}, {})", arg_strs[0], arg_strs[1]);
+                    }
+                    "index_of" if args.len() == 2 => {
+                        return format!("steel::index_of_val({}, {})", arg_strs[0], arg_strs[1]);
+                    }
+                    "repeat" if args.len() == 2 => {
+                        return format!("steel::repeat_str({}, {})", arg_strs[0], arg_strs[1]);
+                    }
+                    "pad_start" if args.len() >= 2 => {
+                        let ch = arg_strs.get(2).cloned().unwrap_or_else(|| "steel::Val(\" \")".to_string());
+                        return format!("steel::pad_start_str({}, {}, {})", arg_strs[0], arg_strs[1], ch);
+                    }
+                    "pad_end" if args.len() >= 2 => {
+                        let ch = arg_strs.get(2).cloned().unwrap_or_else(|| "steel::Val(\" \")".to_string());
+                        return format!("steel::pad_end_str({}, {}, {})", arg_strs[0], arg_strs[1], ch);
+                    }
+                    "char_code" if args.len() == 1 => {
+                        return format!("steel::char_code_val({})", arg_strs[0]);
+                    }
+                    "from_char_code" if args.len() == 1 => {
+                        return format!("steel::from_char_code_val({})", arg_strs[0]);
+                    }
+                    "sum" if args.len() == 1 => return format!("steel::sum_val({})", arg_strs[0]),
+                    "avg" if args.len() == 1 => return format!("steel::avg_val({})", arg_strs[0]),
+                    "unique" if args.len() == 1 => return format!("steel::unique_val({})", arg_strs[0]),
+                    "flat" if args.len() == 1 => return format!("steel::flat_val({})", arg_strs[0]),
+                    "zip" if args.len() == 2 => return format!("steel::zip_val({}, {})", arg_strs[0], arg_strs[1]),
+                    "enumerate" if args.len() == 1 => return format!("steel::enumerate_val({})", arg_strs[0]),
+                    "clamp" if args.len() == 3 => {
+                        return format!("steel::Val(std::fmin(std::fmax(({}).as_num(), ({}).as_num()), ({}).as_num()))", arg_strs[0], arg_strs[1], arg_strs[2]);
+                    }
+                    "sign" if args.len() == 1 => {
+                        return format!("steel::Val((({}).as_num() > 0.0) ? 1.0 : ((({}).as_num() < 0.0) ? -1.0 : 0.0))", arg_strs[0], arg_strs[0]);
+                    }
+                    "atan2" if args.len() == 2 => {
+                        return format!("steel::Val(std::atan2(({}).as_num(), ({}).as_num()))", arg_strs[0], arg_strs[1]);
+                    }
+                    "log" | "exp" if args.len() == 1 => {
+                        return format!("steel::Val(std::{}(({}).as_num()))", name, arg_strs[0]);
+                    }
+                    "json_stringify" if args.len() == 1 => {
+                        return format!("steel::json_stringify_val({})", arg_strs[0]);
+                    }
+                    "json_parse" if args.len() == 1 => {
+                        return format!("steel::json_parse_val({})", arg_strs[0]);
+                    }
+                    "hash" if args.len() == 1 => {
+                        return format!("steel::hash_val({})", arg_strs[0]);
+                    }
+                    "append_file" if args.len() == 2 => {
+                        return format!("steel::append_file_str({}, {})", arg_strs[0], arg_strs[1]);
+                    }
+                    "remove_file" if args.len() == 1 => {
+                        return format!("steel::remove_file_val({})", arg_strs[0]);
