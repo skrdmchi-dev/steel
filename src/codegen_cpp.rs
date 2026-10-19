@@ -1314,3 +1314,66 @@ fn cpp_expr(expr: &Expr, lvl: usize, top_fns: &HashSet<String>) -> String {
 fn cpp_top_fn(
     name: &str,
     params: &[(String, Option<Expr>)],
+    body: &[Stmt],
+    top_fns: &HashSet<String>,
+) -> String {
+    let sn = cpp_safe_ident(name);
+    let mut declared = HashSet::new();
+    let sig: Vec<String> = params
+        .iter()
+        .map(|(p, _)| {
+            let sp = cpp_safe_ident(p);
+            declared.insert(sp.clone());
+            format!("steel::Val {}", sp)
+        })
+        .collect();
+    let mut s = format!("steel::Val {}({}) {{\n", sn, sig.join(", "));
+    for st in body {
+        s.push_str(&cpp_stmt(st, 1, top_fns, &mut declared));
+    }
+    if !matches!(body.last(), Some(Stmt::Return(_))) {
+        s.push_str("    return steel::Val();\n");
+    }
+    s.push_str("}\n");
+    let wrap_args: Vec<String> = (0..params.len())
+        .map(|i| format!("(st_args.size() > {} ? st_args[{}] : steel::Val())", i, i))
+        .collect();
+    s.push_str(&format!(
+        "steel::Val st_fn_{}(steel::Val, const std::vector<steel::Val>& st_args) {{ (void)st_args; return {}({}); }}\n\n",
+        sn,
+        sn,
+        wrap_args.join(", ")
+    ));
+    s
+}
+
+pub fn emit_cpp_single(program: &Program) -> String {
+    let mut top_fns = HashSet::new();
+    let mut protos = String::new();
+    for stmt in &program.statements {
+        match stmt {
+            Stmt::FnDecl { name, params, .. } => {
+                top_fns.insert(name.clone());
+                let sn = cpp_safe_ident(name);
+                let sig: Vec<String> = params.iter().map(|_| "steel::Val".to_string()).collect();
+                protos.push_str(&format!("steel::Val {}({});\n", sn, sig.join(", ")));
+                protos.push_str(&format!(
+                    "steel::Val st_fn_{}(steel::Val, const std::vector<steel::Val>&);\n",
+                    sn
+                ));
+            }
+            Stmt::ClassDecl {
+                name,
+                parent,
+                methods,
+            } => {
+                top_fns.insert(name.clone());
+                if let Stmt::FnDecl { name, params, .. } = desugar_class(name, parent, methods) {
+                    let sn = cpp_safe_ident(&name);
+                    let sig: Vec<String> = params.iter().map(|_| "steel::Val".to_string()).collect();
+                    protos.push_str(&format!("steel::Val {}({});\n", sn, sig.join(", ")));
+                    protos.push_str(&format!(
+                        "steel::Val st_fn_{}(steel::Val, const std::vector<steel::Val>&);\n",
+                        sn
+                    ));
+                }
