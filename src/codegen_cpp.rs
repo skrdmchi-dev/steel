@@ -1251,3 +1251,66 @@ fn cpp_expr(expr: &Expr, lvl: usize, top_fns: &HashSet<String>) -> String {
             }
             if let Expr::Member { target, field } = &**callee {
                 return format!(
+                    "steel::call_method({}, \"{}\", {{{}}})",
+                    cpp_expr(target, lvl, top_fns),
+                    escape_str(field),
+                    arg_strs.join(", ")
+                );
+            }
+            format!(
+                "({}).call({{{}}})",
+                cpp_expr(callee, lvl, top_fns),
+                arg_strs.join(", ")
+            )
+        }
+        Expr::Index { target, index } => format!(
+            "steel::idx_get({}, {})",
+            cpp_expr(target, lvl, top_fns),
+            cpp_expr(index, lvl, top_fns)
+        ),
+        Expr::Member { target, field } => format!(
+            "steel::map_get({}, \"{}\")",
+            cpp_expr(target, lvl, top_fns),
+            escape_str(field)
+        ),
+        Expr::FnExpr { params, body } => {
+            let mut inner_decl = HashSet::new();
+            inner_decl.insert("st_this".to_string());
+            let mut s = String::from(
+                "steel::Val(steel::Fn([=](steel::Val st_this, const std::vector<steel::Val>& st_args) mutable -> steel::Val {\n",
+            );
+            s.push_str(&format!("{}    (void)st_this; (void)st_args;\n", indent(lvl)));
+            for (i, (p, def)) in params.iter().enumerate() {
+                let sp = cpp_safe_ident(p);
+                inner_decl.insert(sp.clone());
+                let fb = def
+                    .as_ref()
+                    .map(|d| cpp_expr(d, lvl + 1, top_fns))
+                    .unwrap_or_else(|| "steel::Val()".to_string());
+                s.push_str(&format!(
+                    "{}    steel::Val {} = (st_args.size() > {}) ? st_args[{}] : {};\n",
+                    indent(lvl),
+                    sp,
+                    i,
+                    i,
+                    fb
+                ));
+            }
+            for st in body {
+                s.push_str(&cpp_stmt(st, lvl + 1, top_fns, &mut inner_decl));
+            }
+            s.push_str(&format!("{}    return steel::Val();\n{}}}))", indent(lvl), indent(lvl)));
+            s
+        }
+        Expr::Range { start, end } => format!(
+            "steel::range_val({}, {})",
+            cpp_expr(start, lvl, top_fns),
+            cpp_expr(end, lvl, top_fns)
+        ),
+        Expr::Spread(inner) => cpp_expr(inner, lvl, top_fns),
+    }
+}
+
+fn cpp_top_fn(
+    name: &str,
+    params: &[(String, Option<Expr>)],
