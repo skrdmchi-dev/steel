@@ -1439,3 +1439,66 @@ pub fn emit_cpp_project(modules: &[ModuleUnit]) -> Vec<(String, String)> {
         let mut main_out = String::new();
         let mut declared = HashSet::new();
 
+        for stmt in &m.program.statements {
+            match stmt {
+                Stmt::Import(_) => {}
+                Stmt::FnDecl { name, params, body } => {
+                    let sn = cpp_safe_ident(name);
+                    let sig: Vec<String> = params.iter().map(|_| "steel::Val".to_string()).collect();
+                    hdr.push_str(&format!("steel::Val {}({});\n", sn, sig.join(", ")));
+                    hdr.push_str(&format!(
+                        "steel::Val st_fn_{}(steel::Val, const std::vector<steel::Val>&);\n",
+                        sn
+                    ));
+                    fns_out.push_str(&cpp_top_fn(name, params, body, &top_fns));
+                }
+                Stmt::ClassDecl {
+                    name,
+                    parent,
+                    methods,
+                } => {
+                    if let Stmt::FnDecl { name, params, body } = desugar_class(name, parent, methods)
+                    {
+                        let sn = cpp_safe_ident(&name);
+                        let sig: Vec<String> =
+                            params.iter().map(|_| "steel::Val".to_string()).collect();
+                        hdr.push_str(&format!("steel::Val {}({});\n", sn, sig.join(", ")));
+                        hdr.push_str(&format!(
+                            "steel::Val st_fn_{}(steel::Val, const std::vector<steel::Val>&);\n",
+                            sn
+                        ));
+                        fns_out.push_str(&cpp_top_fn(&name, &params, &body, &top_fns));
+                    }
+                }
+                other => main_out.push_str(&cpp_stmt(other, 1, &top_fns, &mut declared)),
+            }
+        }
+
+        if !m.is_entry {
+            files.push((format!("{}.hpp", m.name), hdr));
+        }
+
+        let mut src = String::new();
+        if m.is_entry {
+            src.push_str("#include \"steel_rt.hpp\"\n");
+        } else {
+            src.push_str(&format!("#include \"{}.hpp\"\n", m.name));
+        }
+        let mut included = HashSet::new();
+        for imp in &m.imports {
+            if imp != &m.name && included.insert(imp.clone()) {
+                src.push_str(&format!("#include \"{}.hpp\"\n", imp));
+            }
+        }
+        src.push('\n');
+        src.push_str(&fns_out);
+        if m.is_entry {
+            src.push_str("int main() {\n");
+            src.push_str(&main_out);
+            src.push_str("    return 0;\n}\n");
+        }
+        files.push((format!("{}.cpp", m.name), src));
+    }
+
+    files
+}
