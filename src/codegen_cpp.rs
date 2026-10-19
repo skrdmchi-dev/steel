@@ -1377,3 +1377,65 @@ pub fn emit_cpp_single(program: &Program) -> String {
                         sn
                     ));
                 }
+            }
+            _ => {}
+        }
+    }
+
+    let mut fns_out = String::new();
+    let mut main_out = String::new();
+    let mut declared = HashSet::new();
+    for stmt in &program.statements {
+        match stmt {
+            Stmt::Import(_) => {}
+            Stmt::FnDecl { name, params, body } => {
+                fns_out.push_str(&cpp_top_fn(name, params, body, &top_fns));
+            }
+            Stmt::ClassDecl {
+                name,
+                parent,
+                methods,
+            } => {
+                if let Stmt::FnDecl { name, params, body } = desugar_class(name, parent, methods) {
+                    fns_out.push_str(&cpp_top_fn(&name, &params, &body, &top_fns));
+                }
+            }
+            other => main_out.push_str(&cpp_stmt(other, 1, &top_fns, &mut declared)),
+        }
+    }
+
+    let mut out = String::from(CPP_RUNTIME_HEADER);
+    out.push('\n');
+    if !protos.is_empty() {
+        out.push_str(&protos);
+        out.push('\n');
+    }
+    out.push_str(&fns_out);
+    out.push_str("int main() {\n");
+    out.push_str(&main_out);
+    out.push_str("    return 0;\n}\n");
+    out
+}
+
+pub fn emit_cpp_project(modules: &[ModuleUnit]) -> Vec<(String, String)> {
+    let mut top_fns = HashSet::new();
+    for m in modules {
+        for stmt in &m.program.statements {
+            match stmt {
+                Stmt::FnDecl { name, .. } | Stmt::ClassDecl { name, .. } => {
+                    top_fns.insert(name.clone());
+                }
+                _ => {}
+            }
+        }
+    }
+
+    let mut files = Vec::new();
+    files.push(("steel_rt.hpp".to_string(), CPP_RUNTIME_HEADER.to_string()));
+
+    for m in modules {
+        let mut hdr = String::from("#pragma once\n\n#include \"steel_rt.hpp\"\n\n");
+        let mut fns_out = String::new();
+        let mut main_out = String::new();
+        let mut declared = HashSet::new();
+
