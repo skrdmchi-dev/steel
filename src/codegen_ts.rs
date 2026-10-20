@@ -59,3 +59,64 @@ fn infer_quick_expr(expr: &Expr, syms: &BTreeMap<String, InferredType>) -> Infer
             | BinaryOp::Neq
             | BinaryOp::Lt
             | BinaryOp::Gt
+            | BinaryOp::Lte
+            | BinaryOp::Gte
+            | BinaryOp::And
+            | BinaryOp::Or => InferredType::Bool,
+            BinaryOp::Add => {
+                let lt = infer_quick_expr(left, syms);
+                let rt = infer_quick_expr(right, syms);
+                if lt == InferredType::Str || rt == InferredType::Str {
+                    InferredType::Str
+                } else if lt == InferredType::Num && rt == InferredType::Num {
+                    InferredType::Num
+                } else {
+                    InferredType::Any
+                }
+            }
+            BinaryOp::Sub
+            | BinaryOp::Mul
+            | BinaryOp::Div
+            | BinaryOp::Mod
+            | BinaryOp::Pow
+            | BinaryOp::BitAnd
+            | BinaryOp::BitOr
+            | BinaryOp::BitXor
+            | BinaryOp::Shl
+            | BinaryOp::Shr => InferredType::Num,
+            BinaryOp::NullCoalesce => InferredType::Any,
+        },
+        Expr::Call { callee, .. } => {
+            if let Expr::Ident(name) = &**callee {
+                match name.as_str() {
+                    "len" | "num" | "int" | "abs" | "sqrt" | "floor" | "ceil" | "round" | "sin" | "cos"
+                    | "tan" | "atan2" | "log" | "exp" | "pow" | "min" | "max" | "clamp" | "sign"
+                    | "sum" | "avg" | "index_of" | "char_code" | "time_ms" | "clock" => {
+                        return InferredType::Num;
+                    }
+                    "str" | "upper" | "lower" | "trim" | "join" | "replace" | "read_file"
+                    | "repeat" | "pad_start" | "pad_end" | "from_char_code" | "json_stringify"
+                    | "hash" | "type" => return InferredType::Str,
+                    "bool" | "contains" | "has_key" | "delete_key" | "starts_with" | "ends_with"
+                    | "any" | "all" | "file_exists" | "write_file" | "append_file" | "remove_file"
+                    | "assert" => return InferredType::Bool,
+                    "split" | "keys" | "values" | "range" | "map" | "filter" | "sort"
+                    | "concat" | "unique" | "flat" | "zip" | "enumerate" => {
+                        return InferredType::Array;
+                    }
+                    _ => {
+                        if let Some(InferredType::Func { ret, .. }) = syms.get(name) {
+                            return (**ret).clone();
+                        }
+                    }
+                }
+            }
+            InferredType::Any
+        }
+        Expr::New { class_name, .. } => InferredType::Class(class_name.clone()),
+        _ => InferredType::Any,
+    }
+}
+
+fn infer_param_types(
+    params: &[(String, Option<Expr>)],
