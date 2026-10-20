@@ -120,3 +120,65 @@ fn infer_quick_expr(expr: &Expr, syms: &BTreeMap<String, InferredType>) -> Infer
 
 fn infer_param_types(
     params: &[(String, Option<Expr>)],
+    body: &[Stmt],
+    syms: &BTreeMap<String, InferredType>,
+) -> Vec<&'static str> {
+    let mut types = Vec::with_capacity(params.len());
+    for (p, def) in params {
+        if let Some(d) = def {
+            let t = infer_quick_expr(d, syms);
+            if t != InferredType::Any && t != InferredType::Null {
+                types.push(ts_type(&t));
+                continue;
+            }
+        }
+        if is_param_numeric_only(p, body) {
+            types.push("number");
+        } else {
+            types.push("any");
+        }
+    }
+    types
+}
+
+fn is_param_numeric_only(param: &str, body: &[Stmt]) -> bool {
+    let mut used_num = false;
+    let mut used_other = false;
+    fn scan_expr(e: &Expr, p: &str, num: &mut bool, other: &mut bool) {
+        match e {
+            Expr::Binary { left, op, right } => {
+                let is_num_op = matches!(
+                    op,
+                    BinaryOp::Sub
+                        | BinaryOp::Mul
+                        | BinaryOp::Div
+                        | BinaryOp::Mod
+                        | BinaryOp::Pow
+                        | BinaryOp::Lt
+                        | BinaryOp::Gt
+                        | BinaryOp::Lte
+                        | BinaryOp::Gte
+                );
+                if is_num_op {
+                    if matches!(&**left, Expr::Ident(n) if n == p)
+                        || matches!(&**right, Expr::Ident(n) if n == p)
+                    {
+                        *num = true;
+                    }
+                } else if matches!(op, BinaryOp::Add) {
+                    if (matches!(&**left, Expr::Ident(n) if n == p)
+                        && matches!(&**right, Expr::String(_)))
+                        || (matches!(&**right, Expr::Ident(n) if n == p)
+                            && matches!(&**left, Expr::String(_)))
+                    {
+                        *other = true;
+                    }
+                }
+                scan_expr(left, p, num, other);
+                scan_expr(right, p, num, other);
+            }
+            Expr::Member { target, .. } | Expr::Index { target, .. } => {
+                if matches!(&**target, Expr::Ident(n) if n == p) {
+                    *other = true;
+                }
+                scan_expr(target, p, num, other);
