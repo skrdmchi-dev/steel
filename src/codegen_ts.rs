@@ -182,3 +182,64 @@ fn is_param_numeric_only(param: &str, body: &[Stmt]) -> bool {
                     *other = true;
                 }
                 scan_expr(target, p, num, other);
+            }
+            Expr::Call { callee, args } => {
+                if matches!(&**callee, Expr::Ident(n) if n == p) {
+                    *other = true;
+                }
+                for a in args {
+                    scan_expr(a, p, num, other);
+                }
+            }
+            Expr::Unary { expr, .. } | Expr::Spread(expr) => scan_expr(expr, p, num, other),
+            Expr::Ternary {
+                cond,
+                then_expr,
+                else_expr,
+            } => {
+                scan_expr(cond, p, num, other);
+                scan_expr(then_expr, p, num, other);
+                scan_expr(else_expr, p, num, other);
+            }
+            Expr::Array(xs) => {
+                for x in xs {
+                    scan_expr(x, p, num, other);
+                }
+            }
+            Expr::Map(es) => {
+                for (_, v) in es {
+                    scan_expr(v, p, num, other);
+                }
+            }
+            _ => {}
+        }
+    }
+    fn scan_stmts(stmts: &[Stmt], p: &str, num: &mut bool, other: &mut bool) {
+        for s in stmts {
+            match s {
+                Stmt::Let { value, .. }
+                | Stmt::Expr(value)
+                | Stmt::Throw(value)
+                | Stmt::Assign { value, .. } => scan_expr(value, p, num, other),
+                Stmt::Return(Some(e)) => scan_expr(e, p, num, other),
+                Stmt::If {
+                    cond,
+                    then_branch,
+                    else_branch,
+                } => {
+                    scan_expr(cond, p, num, other);
+                    scan_stmts(then_branch, p, num, other);
+                    if let Some(eb) = else_branch {
+                        scan_stmts(eb, p, num, other);
+                    }
+                }
+                Stmt::While { cond, body } => {
+                    scan_expr(cond, p, num, other);
+                    scan_stmts(body, p, num, other);
+                }
+                Stmt::For { iterable, body, .. } => {
+                    scan_expr(iterable, p, num, other);
+                    scan_stmts(body, p, num, other);
+                }
+                Stmt::TryCatch {
+                    try_body,
