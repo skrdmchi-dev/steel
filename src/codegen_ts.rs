@@ -243,3 +243,64 @@ fn is_param_numeric_only(param: &str, body: &[Stmt]) -> bool {
                 }
                 Stmt::TryCatch {
                     try_body,
+                    catch_body,
+                    ..
+                } => {
+                    scan_stmts(try_body, p, num, other);
+                    scan_stmts(catch_body, p, num, other);
+                }
+                _ => {}
+            }
+        }
+    }
+    scan_stmts(body, param, &mut used_num, &mut used_other);
+    used_num && !used_other
+}
+
+fn infer_return_type(
+    body: &[Stmt],
+    local_syms: &BTreeMap<String, InferredType>,
+) -> &'static str {
+    let mut ret_types: Vec<InferredType> = Vec::new();
+    fn collect(stmts: &[Stmt], syms: &BTreeMap<String, InferredType>, out: &mut Vec<InferredType>) {
+        for s in stmts {
+            match s {
+                Stmt::Return(Some(e)) => out.push(infer_quick_expr(e, syms)),
+                Stmt::Return(None) => out.push(InferredType::Null),
+                Stmt::If {
+                    then_branch,
+                    else_branch,
+                    ..
+                } => {
+                    collect(then_branch, syms, out);
+                    if let Some(eb) = else_branch {
+                        collect(eb, syms, out);
+                    }
+                }
+                Stmt::While { body, .. } | Stmt::For { body, .. } => collect(body, syms, out),
+                Stmt::TryCatch {
+                    try_body,
+                    catch_body,
+                    ..
+                } => {
+                    collect(try_body, syms, out);
+                    collect(catch_body, syms, out);
+                }
+                _ => {}
+            }
+        }
+    }
+    collect(body, local_syms, &mut ret_types);
+    if ret_types.is_empty() {
+        return "void";
+    }
+    let first = &ret_types[0];
+    if *first == InferredType::Any || *first == InferredType::Null {
+        return "any";
+    }
+    if ret_types.iter().all(|t| t == first) {
+        ts_type(first)
+    } else {
+        "any"
+    }
+}
