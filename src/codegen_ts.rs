@@ -304,3 +304,64 @@ fn infer_return_type(
         "any"
     }
 }
+
+fn ts_helpers_preamble(body_out: &str) -> String {
+    let mut out = String::new();
+    if body_out.contains("read_file(")
+        || body_out.contains("write_file(")
+        || body_out.contains("append_file(")
+        || body_out.contains("remove_file(")
+        || body_out.contains("file_exists(")
+    {
+        out.push_str("import * as fs from \"node:fs\";\n");
+    }
+    if body_out.contains("PI") || body_out.contains(" E") || body_out.contains("(E") {
+        out.push_str("const PI: number = Math.PI;\nconst E: number = Math.E;\n");
+    }
+    if [
+        "abs(", "floor(", "ceil(", "round(", "sqrt(", "sin(", "cos(", "tan(", "atan2(", "log(",
+        "exp(", "min(", "max(", "pow(",
+    ]
+    .iter()
+    .any(|m| body_out.contains(m))
+    {
+        out.push_str(
+            "const { abs, floor, ceil, round, sqrt, sin, cos, tan, atan2, log, exp, min, max, pow } = Math;\n",
+        );
+    }
+    for (helper, def) in [
+        (
+            "_print",
+            "const _print = (...args: any[]): void => console.log(...args.map((a: any) => typeof a === \"object\" && a !== null ? JSON.stringify(a) : a));\n",
+        ),
+        (
+            "_len",
+            "const _len = (x: any): number => Array.isArray(x) || typeof x === \"string\" ? x.length : Object.keys(x || {}).length;\n",
+        ),
+        (
+            "_push",
+            "const _push = (arr: any[], v: any): any[] => { arr.push(v); return arr; };\n",
+        ),
+        ("_pop", "const _pop = (arr: any[]): any => arr.pop();\n"),
+        (
+            "_get",
+            "const _get = (t: any, i: any): any => Array.isArray(t) && typeof i === \"number\" && i < 0 ? t[t.length + i] : t[i];\n",
+        ),
+        (
+            "_set",
+            "const _set = (t: any, i: any, v: any): void => { if (Array.isArray(t) && typeof i === \"number\" && i < 0) t[t.length + i] = v; else t[i] = v; };\n",
+        ),
+        (
+            "_keys",
+            "const _keys = (obj: Record<string, any>): string[] => Object.keys(obj);\n",
+        ),
+        (
+            "_values",
+            "const _values = (obj: Record<string, any>): any[] => Object.values(obj);\n",
+        ),
+        (
+            "_has_key",
+            "const _has_key = (obj: Record<string, any>, k: string): boolean => Object.prototype.hasOwnProperty.call(obj || {}, k);\n",
+        ),
+        (
+            "_delete_key",
