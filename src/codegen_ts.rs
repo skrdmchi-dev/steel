@@ -365,3 +365,64 @@ fn ts_helpers_preamble(body_out: &str) -> String {
         ),
         (
             "_delete_key",
+            "const _delete_key = (obj: Record<string, any>, k: string): boolean => { if (obj && Object.prototype.hasOwnProperty.call(obj, k)) { delete obj[k]; return true; } return false; };\n",
+        ),
+        (
+            "_concat",
+            "const _concat = (a: any[], b: any[]): any[] => [...a, ...b];\n",
+        ),
+        (
+            "_contains",
+            "const _contains = (x: any, v: any): boolean => Array.isArray(x) || typeof x === \"string\" ? x.includes(v) : Object.prototype.hasOwnProperty.call(x || {}, v);\n",
+        ),
+        (
+            "_index_of",
+            "const _index_of = (x: any, v: any): number => (Array.isArray(x) || typeof x === \"string\") ? x.indexOf(v) : -1;\n",
+        ),
+        (
+            "_starts_with",
+            "const _starts_with = (s: any, p: any): boolean => String(s).startsWith(String(p));\n",
+        ),
+        (
+            "_ends_with",
+            "const _ends_with = (s: any, p: any): boolean => String(s).endsWith(String(p));\n",
+        ),
+        (
+            "_repeat",
+            "const _repeat = (s: any, n: number): string => String(s).repeat(Math.max(0, Math.trunc(n)));\n",
+        ),
+        (
+            "_pad_start",
+            "const _pad_start = (s: any, w: number, ch = \" \"): string => String(s).padStart(w, ch);\n",
+        ),
+        (
+            "_pad_end",
+            "const _pad_end = (s: any, w: number, ch = \" \"): string => String(s).padEnd(w, ch);\n",
+        ),
+        (
+            "_char_code",
+            "const _char_code = (s: string): number => s.length > 0 ? (s.codePointAt(0) ?? 0) : 0;\n",
+        ),
+        (
+            "_from_char_code",
+            "const _from_char_code = (n: number): string => String.fromCodePoint(Math.max(0, Math.trunc(n)));\n",
+        ),
+        (
+            "_str",
+            "const _str = (x: any): string => typeof x === \"object\" && x !== null ? JSON.stringify(x) : String(x);\n",
+        ),
+        ("_num", "const _num = (x: any): number => Number(x);\n"),
+        ("_int", "const _int = (x: any): number => Math.trunc(Number(x));\n"),
+        ("_bool", "const _bool = (x: any): boolean => Boolean(x);\n"),
+        (
+            "_type",
+            "const _type = (x: any): string => x === null || x === undefined ? \"null\" : Array.isArray(x) ? \"array\" : typeof x === \"object\" ? \"map\" : typeof x;\n",
+        ),
+        (
+            "_range",
+            "const _range = (a: number, b: number, step = 1): number[] => { const r: number[] = []; if (step > 0) { for (let i = a; i < b; i += step) r.push(i); } else if (step < 0) { for (let i = a; i > b; i += step) r.push(i); } return r; };\n",
+        ),
+        (
+            "_map",
+            "const _map = (arr: any[], fn: (v: any) => any): any[] => arr.map(fn);\n",
+        ),
