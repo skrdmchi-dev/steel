@@ -426,3 +426,64 @@ fn ts_helpers_preamble(body_out: &str) -> String {
             "_map",
             "const _map = (arr: any[], fn: (v: any) => any): any[] => arr.map(fn);\n",
         ),
+        (
+            "_filter",
+            "const _filter = (arr: any[], fn: (v: any) => any): any[] => arr.filter(fn);\n",
+        ),
+        (
+            "_reduce",
+            "const _reduce = (arr: any[], fn: (a: any, b: any) => any, init?: any): any => init !== undefined ? arr.reduce(fn, init) : arr.reduce(fn);\n",
+        ),
+        (
+            "_find",
+            "const _find = (arr: any[], fn: (v: any) => any): any => { const r = arr.find(fn); return r === undefined ? null : r; };\n",
+        ),
+        (
+            "_any",
+            "const _any = (arr: any[], fn: (v: any) => any): boolean => arr.some(fn);\n",
+        ),
+        (
+            "_all",
+            "const _all = (arr: any[], fn: (v: any) => any): boolean => arr.every(fn);\n",
+        ),
+        (
+            "_sum",
+            "const _sum = (arr: any[]): number => arr.reduce((a: number, b: any) => a + (typeof b === \"number\" ? b : 0), 0);\n",
+        ),
+        (
+            "_avg",
+            "const _avg = (arr: any[]): number => arr.length === 0 ? 0 : arr.reduce((a: number, b: any) => a + (typeof b === \"number\" ? b : 0), 0) / arr.length;\n",
+        ),
+        (
+            "_unique",
+            "const _unique = (arr: any[]): any[] => { const out: any[] = []; for (const v of arr) if (!out.includes(v)) out.push(v); return out; };\n",
+        ),
+        (
+            "_flat",
+            "const _flat = (arr: any[]): any[] => arr.flat(1);\n",
+        ),
+        (
+            "_zip",
+            "const _zip = (a: any[], b: any[]): any[] => { const n = Math.min(a.length, b.length), out: any[] = []; for (let i = 0; i < n; i++) out.push([a[i], b[i]]); return out; };\n",
+        ),
+        (
+            "_enumerate",
+            "const _enumerate = (arr: any[]): any[] => arr.map((v: any, i: number) => [i, v]);\n",
+        ),
+        (
+            "_clamp",
+            "const _clamp = (x: number, lo: number, hi: number): number => Math.min(Math.max(x, lo), hi);\n",
+        ),
+        (
+            "_sign",
+            "const _sign = (x: number): number => x > 0 ? 1 : x < 0 ? -1 : 0;\n",
+        ),
+        (
+            "_split",
+            "const _split = (s: string, sep: string): string[] => s.split(sep);\n",
+        ),
+        (
+            "_join",
+            "const _join = (arr: any[], sep: string): string => arr.join(sep);\n",
+        ),
+        ("_trim", "const _trim = (s: string): string => s.trim();\n"),
