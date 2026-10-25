@@ -548,3 +548,65 @@ fn ts_helpers_preamble(body_out: &str) -> String {
             "const file_exists = (p: string): boolean => fs.existsSync(p);\n",
         ),
         (
+            "env(",
+            "const env = (k: string): string | null => process.env[k] ?? null;\n",
+        ),
+        ("time_ms(", "const time_ms = (): number => Date.now();\n"),
+        ("clock(", "const clock = (): number => Date.now() / 1000;\n"),
+    ] {
+        if body_out.contains(helper) {
+            out.push_str(def);
+        }
+    }
+    out
+}
+
+fn ts_safe_ident(name: &str) -> String {
+    match name {
+        "arguments" | "await" | "break" | "case" | "catch" | "class" | "const" | "continue"
+        | "debugger" | "default" | "delete" | "do" | "else" | "enum" | "eval" | "export"
+        | "extends" | "false" | "finally" | "for" | "function" | "if" | "implements" | "import"
+        | "in" | "instanceof" | "interface" | "let" | "new" | "null" | "package" | "private"
+        | "protected" | "public" | "return" | "static" | "super" | "switch" | "throw" | "true"
+        | "try" | "typeof" | "var" | "void" | "while" | "with" | "yield" => format!("_{}", name),
+        _ => name.to_string(),
+    }
+}
+
+fn ts_params_typed(
+    params: &[(String, Option<Expr>)],
+    param_types: &[&str],
+    lvl: usize,
+) -> String {
+    params
+        .iter()
+        .enumerate()
+        .map(|(i, (n, def))| {
+            let ty = param_types.get(i).copied().unwrap_or("any");
+            let sn = ts_safe_ident(n);
+            match def {
+                Some(e) => format!("{}: {} = {}", sn, ty, ts_expr(e, lvl)),
+                None => format!("{}: {}", sn, ty),
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+fn collect_class_fields(methods: &[ClassMethod]) -> Vec<(String, &'static str)> {
+    let mut seen = HashSet::new();
+    let mut fields = Vec::new();
+    let empty = BTreeMap::new();
+    for m in methods {
+        for st in &m.body {
+            if let Stmt::Assign {
+                target: AssignTarget::Member { target, field },
+                value,
+            } = st
+            {
+                if matches!(target, Expr::Ident(n) if n == "this") && seen.insert(field.clone()) {
+                    let ty = infer_quick_expr(value, &empty);
+                    let ts_t = if ty == InferredType::Null {
+                        "any"
+                    } else {
+                        ts_type(&ty)
