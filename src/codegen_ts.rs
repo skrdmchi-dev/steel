@@ -671,3 +671,64 @@ fn ts_stmt(stmt: &Stmt, lvl: usize, syms: &BTreeMap<String, InferredType>, expor
                         "string" => InferredType::Str,
                         "boolean" => InferredType::Bool,
                         _ => InferredType::Any,
+                    },
+                );
+            }
+            let ret_ty = infer_return_type(body, &local_syms);
+            let mut s = format!(
+                "{}{}function {}({}): {} {{\n",
+                pad,
+                exp,
+                ts_safe_ident(name),
+                ts_params_typed(params, &p_types, lvl),
+                ret_ty
+            );
+            for st in body {
+                s.push_str(&ts_stmt(st, lvl + 1, &local_syms, false));
+            }
+            s.push_str(&format!("{}}}\n", pad));
+            s
+        }
+        Stmt::ClassDecl {
+            name,
+            parent,
+            methods,
+        } => {
+            let ext = parent
+                .as_ref()
+                .map(|p| format!(" extends {}", p))
+                .unwrap_or_default();
+            let mut s = format!("{}{}class {}{} {{\n", pad, exp, name, ext);
+            let fields = collect_class_fields(methods);
+            for (f, ty) in fields {
+                s.push_str(&format!("{}    {}: {};\n", pad, f, ty));
+            }
+            for m in methods {
+                let m_name = &m.name;
+                let params = &m.params;
+                let body = &m.body;
+                let p_types = infer_param_types(params, body, syms);
+                let mut local_syms = syms.clone();
+                for ((p, _), ty) in params.iter().zip(p_types.iter()) {
+                    local_syms.insert(
+                        p.clone(),
+                        match *ty {
+                            "number" => InferredType::Num,
+                            "string" => InferredType::Str,
+                            "boolean" => InferredType::Bool,
+                            _ => InferredType::Any,
+                        },
+                    );
+                }
+                if m_name == "init" {
+                    s.push_str(&format!(
+                        "{}    constructor({}) {{\n",
+                        pad,
+                        ts_params_typed(params, &p_types, lvl + 1)
+                    ));
+                    if parent.is_some() {
+                        s.push_str(&format!("{}        super();\n", pad));
+                    }
+                } else {
+                    let ret_ty = infer_return_type(body, &local_syms);
+                    s.push_str(&format!(
