@@ -487,3 +487,64 @@ fn ts_helpers_preamble(body_out: &str) -> String {
             "const _join = (arr: any[], sep: string): string => arr.join(sep);\n",
         ),
         ("_trim", "const _trim = (s: string): string => s.trim();\n"),
+        (
+            "_upper",
+            "const _upper = (s: string): string => s.toUpperCase();\n",
+        ),
+        (
+            "_lower",
+            "const _lower = (s: string): string => s.toLowerCase();\n",
+        ),
+        (
+            "_replace",
+            "const _replace = (s: string, a: string, b: string): string => s.split(a).join(b);\n",
+        ),
+        (
+            "_slice",
+            "const _slice = (x: any, s: number, e?: number): any => x.slice(s, e);\n",
+        ),
+        (
+            "_reverse",
+            "const _reverse = (x: any): any => Array.isArray(x) ? [...x].reverse() : String(x).split(\"\").reverse().join(\"\");\n",
+        ),
+        (
+            "_sort",
+            "const _sort = (x: any[]): any[] => [...x].sort((a, b) => String(a) < String(b) ? -1 : String(a) > String(b) ? 1 : 0);\n",
+        ),
+        (
+            "_json_stringify",
+            "const _json_stringify = (x: any): string => JSON.stringify(x);\n",
+        ),
+        (
+            "_json_parse",
+            "const _json_parse = (s: string): any => JSON.parse(s);\n",
+        ),
+        (
+            "_hash",
+            "const _hash = (x: any): string => { const s = String(x); let h = 0xcbf29ce484222325n; for (let i = 0; i < s.length; i++) { const c = s.charCodeAt(i); if (c < 0x80) { h ^= BigInt(c); h = (h * 0x0100000001b3n) & 0xffffffffffffffffn; } else { for (const b of encodeURIComponent(s[i]).match(/%[0-9A-F]{2}|./g) || []) { const byte = b.startsWith(\"%\") ? parseInt(b.slice(1), 16) : b.charCodeAt(0); h ^= BigInt(byte); h = (h * 0x0100000001b3n) & 0xffffffffffffffffn; } } } return h.toString(16).padStart(16, \"0\"); };\n",
+        ),
+        (
+            "_assert",
+            "const _assert = (c: any, m = \"Assertion failed\"): boolean => { if (!c) throw new Error(m); return true; };\n",
+        ),
+        (
+            "read_file(",
+            "const read_file = (p: string): string => fs.readFileSync(p, \"utf8\");\n",
+        ),
+        (
+            "write_file(",
+            "const write_file = (p: string, c: any): boolean => { fs.writeFileSync(p, String(c)); return true; };\n",
+        ),
+        (
+            "append_file(",
+            "const append_file = (p: string, c: any): boolean => { fs.appendFileSync(p, String(c)); return true; };\n",
+        ),
+        (
+            "remove_file(",
+            "const remove_file = (p: string): boolean => { fs.unlinkSync(p); return true; };\n",
+        ),
+        (
+            "file_exists(",
+            "const file_exists = (p: string): boolean => fs.existsSync(p);\n",
+        ),
+        (
