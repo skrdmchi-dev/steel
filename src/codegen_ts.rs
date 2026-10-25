@@ -610,3 +610,64 @@ fn collect_class_fields(methods: &[ClassMethod]) -> Vec<(String, &'static str)> 
                         "any"
                     } else {
                         ts_type(&ty)
+                    };
+                    fields.push((field.clone(), ts_t));
+                }
+            }
+        }
+    }
+    fields
+}
+
+fn ts_stmt(stmt: &Stmt, lvl: usize, syms: &BTreeMap<String, InferredType>, export_top: bool) -> String {
+    let pad = indent(lvl);
+    let exp = if export_top && lvl == 0 { "export " } else { "" };
+    match stmt {
+        Stmt::Import(_) => String::new(),
+        Stmt::Let {
+            name,
+            is_const,
+            value,
+        } => {
+            let kw = if *is_const { "const" } else { "let" };
+            let ty = infer_quick_expr(value, syms);
+            let ann = match ty {
+                InferredType::Num => ": number",
+                InferredType::Str => ": string",
+                InferredType::Bool => ": boolean",
+                InferredType::Array => ": any[]",
+                InferredType::Map => ": Record<string, any>",
+                _ => ": any",
+            };
+            format!("{}{}{} {}{} = {};\n", pad, exp, kw, ts_safe_ident(name), ann, ts_expr(value, lvl))
+        }
+        Stmt::Assign { target, value } => {
+            if let AssignTarget::Index { target, index } = target {
+                return format!(
+                    "{}_set({}, {}, {});\n",
+                    pad,
+                    ts_expr(target, lvl),
+                    ts_expr(index, lvl),
+                    ts_expr(value, lvl)
+                );
+            }
+            let lhs = match target {
+                AssignTarget::Ident(n) => ts_safe_ident(n),
+                AssignTarget::Member { target, field } => {
+                    format!("{}.{}", ts_expr(target, lvl), field)
+                }
+                AssignTarget::Index { .. } => unreachable!(),
+            };
+            format!("{}{} = {};\n", pad, lhs, ts_expr(value, lvl))
+        }
+        Stmt::FnDecl { name, params, body } => {
+            let p_types = infer_param_types(params, body, syms);
+            let mut local_syms = syms.clone();
+            for ((p, _), ty) in params.iter().zip(p_types.iter()) {
+                local_syms.insert(
+                    p.clone(),
+                    match *ty {
+                        "number" => InferredType::Num,
+                        "string" => InferredType::Str,
+                        "boolean" => InferredType::Bool,
+                        _ => InferredType::Any,
