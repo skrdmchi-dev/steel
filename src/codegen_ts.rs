@@ -732,3 +732,64 @@ fn ts_stmt(stmt: &Stmt, lvl: usize, syms: &BTreeMap<String, InferredType>, expor
                 } else {
                     let ret_ty = infer_return_type(body, &local_syms);
                     s.push_str(&format!(
+                        "{}    {}({}): {} {{\n",
+                        pad,
+                        m_name,
+                        ts_params_typed(params, &p_types, lvl + 1),
+                        ret_ty
+                    ));
+                }
+                for st in body {
+                    s.push_str(&ts_stmt(st, lvl + 2, &local_syms, false));
+                }
+                s.push_str(&format!("{}    }}\n", pad));
+            }
+            s.push_str(&format!("{}}}\n", pad));
+            s
+        }
+        Stmt::TryCatch {
+            try_body,
+            err_var,
+            catch_body,
+        } => {
+            let mut s = format!("{}try {{\n", pad);
+            for st in try_body {
+                s.push_str(&ts_stmt(st, lvl + 1, syms, false));
+            }
+            s.push_str(&format!("{}}} catch ({}: any) {{\n", pad, err_var));
+            for st in catch_body {
+                s.push_str(&ts_stmt(st, lvl + 1, syms, false));
+            }
+            s.push_str(&format!("{}}}\n", pad));
+            s
+        }
+        Stmt::Throw(e) => format!("{}throw {};\n", pad, ts_expr(e, lvl)),
+        Stmt::Test { name, body } => {
+            let mut s = format!("{}// test: {}\n{}{{\n", pad, escape_str(name), pad);
+            for st in body {
+                s.push_str(&ts_stmt(st, lvl + 1, syms, false));
+            }
+            s.push_str(&format!("{}}}\n", pad));
+            s
+        }
+        Stmt::Defer(inner) => ts_stmt(inner, lvl, syms, false),
+        Stmt::Return(expr) => match expr {
+            Some(e) => format!("{}return {};\n", pad, ts_expr(e, lvl)),
+            None => format!("{}return;\n", pad),
+        },
+        Stmt::If {
+            cond,
+            then_branch,
+            else_branch,
+        } => {
+            let mut s = format!("{}if ({}) {{\n", pad, ts_expr(cond, lvl));
+            for st in then_branch {
+                s.push_str(&ts_stmt(st, lvl + 1, syms, false));
+            }
+            if let Some(eb) = else_branch {
+                s.push_str(&format!("{}}} else {{\n", pad));
+                for st in eb {
+                    s.push_str(&ts_stmt(st, lvl + 1, syms, false));
+                }
+            }
+            s.push_str(&format!("{}}}\n", pad));
