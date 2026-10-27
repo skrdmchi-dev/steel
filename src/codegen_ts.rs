@@ -793,3 +793,64 @@ fn ts_stmt(stmt: &Stmt, lvl: usize, syms: &BTreeMap<String, InferredType>, expor
                 }
             }
             s.push_str(&format!("{}}}\n", pad));
+            s
+        }
+        Stmt::While { cond, body } => {
+            let mut s = format!("{}while ({}) {{\n", pad, ts_expr(cond, lvl));
+            for st in body {
+                s.push_str(&ts_stmt(st, lvl + 1, syms, false));
+            }
+            s.push_str(&format!("{}}}\n", pad));
+            s
+        }
+        Stmt::For {
+            var,
+            iterable,
+            body,
+        } => {
+            if let Expr::Range { start, end } = iterable {
+                let mut s = format!(
+                    "{}for (let {}: number = {}; {} < {}; {}++) {{\n",
+                    pad,
+                    var,
+                    ts_expr(start, lvl),
+                    var,
+                    ts_expr(end, lvl),
+                    var
+                );
+                for st in body {
+                    s.push_str(&ts_stmt(st, lvl + 1, syms, false));
+                }
+                s.push_str(&format!("{}}}\n", pad));
+                return s;
+            }
+            let mut s = format!("{}for (const {} of {}) {{\n", pad, var, ts_expr(iterable, lvl));
+            for st in body {
+                s.push_str(&ts_stmt(st, lvl + 1, syms, false));
+            }
+            s.push_str(&format!("{}}}\n", pad));
+            s
+        }
+        Stmt::Break => format!("{}break;\n", pad),
+        Stmt::Continue => format!("{}continue;\n", pad),
+        Stmt::Expr(e) => format!("{}{};\n", pad, ts_expr(e, lvl)),
+    }
+}
+
+fn ts_expr(expr: &Expr, lvl: usize) -> String {
+    match expr {
+        Expr::Number(n) => fmt_num(*n),
+        Expr::String(s) => format!("\"{}\"", escape_str(s)),
+        Expr::Bool(b) => b.to_string(),
+        Expr::Null => "null".to_string(),
+        Expr::Ident(name) => match name.as_str() {
+            "print" | "println" => "_print".to_string(),
+            "len" => "_len".to_string(),
+            "push" => "_push".to_string(),
+            "pop" => "_pop".to_string(),
+            "keys" => "_keys".to_string(),
+            "values" => "_values".to_string(),
+            "has_key" => "_has_key".to_string(),
+            "delete_key" => "_delete_key".to_string(),
+            "concat" => "_concat".to_string(),
+            "contains" => "_contains".to_string(),
