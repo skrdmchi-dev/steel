@@ -916,3 +916,64 @@ fn ts_expr(expr: &Expr, lvl: usize) -> String {
             cond,
             then_expr,
             else_expr,
+        } => format!(
+            "({} ? {} : {})",
+            ts_expr(cond, lvl),
+            ts_expr(then_expr, lvl),
+            ts_expr(else_expr, lvl)
+        ),
+        Expr::Binary { left, op, right } => {
+            let op_s = match op {
+                BinaryOp::Add => "+",
+                BinaryOp::Sub => "-",
+                BinaryOp::Mul => "*",
+                BinaryOp::Div => "/",
+                BinaryOp::Mod => "%",
+                BinaryOp::Pow => "**",
+                BinaryOp::Eq => {
+                    let ls = ts_expr(left, lvl);
+                    let rs = ts_expr(right, lvl);
+                    if matches!(&**left, Expr::String(_) | Expr::Bool(_) | Expr::Number(_) | Expr::Null)
+                        && matches!(&**right, Expr::String(_) | Expr::Bool(_) | Expr::Number(_) | Expr::Null)
+                    {
+                        return format!("(({} as unknown) === ({} as unknown))", ls, rs);
+                    }
+                    "==="
+                }
+                BinaryOp::Neq => {
+                    let ls = ts_expr(left, lvl);
+                    let rs = ts_expr(right, lvl);
+                    if matches!(&**left, Expr::String(_) | Expr::Bool(_) | Expr::Number(_) | Expr::Null)
+                        && matches!(&**right, Expr::String(_) | Expr::Bool(_) | Expr::Number(_) | Expr::Null)
+                    {
+                        return format!("(({} as unknown) !== ({} as unknown))", ls, rs);
+                    }
+                    "!=="
+                }
+                BinaryOp::Lt => "<",
+                BinaryOp::Gt => ">",
+                BinaryOp::Lte => "<=",
+                BinaryOp::Gte => ">=",
+                BinaryOp::And => "&&",
+                BinaryOp::Or => "||",
+                BinaryOp::BitAnd => "&",
+                BinaryOp::BitOr => "|",
+                BinaryOp::BitXor => "^",
+                BinaryOp::Shl => "<<",
+                BinaryOp::Shr => ">>",
+                BinaryOp::NullCoalesce => "??",
+            };
+            format!("({} {} {})", ts_expr(left, lvl), op_s, ts_expr(right, lvl))
+        }
+        Expr::Unary { op, expr } => {
+            let op_s = match op {
+                UnaryOp::Neg => "-",
+                UnaryOp::Not => "!",
+                UnaryOp::BitNot => "~",
+            };
+            format!("({}{})", op_s, ts_expr(expr, lvl))
+        }
+        Expr::Call { callee, args } => {
+            let arg_strs: Vec<String> = args.iter().map(|a| ts_expr(a, lvl)).collect();
+            format!("{}({})", ts_expr(callee, lvl), arg_strs.join(", "))
+        }
