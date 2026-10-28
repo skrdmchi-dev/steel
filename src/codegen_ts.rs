@@ -854,3 +854,65 @@ fn ts_expr(expr: &Expr, lvl: usize) -> String {
             "delete_key" => "_delete_key".to_string(),
             "concat" => "_concat".to_string(),
             "contains" => "_contains".to_string(),
+            "index_of" => "_index_of".to_string(),
+            "starts_with" => "_starts_with".to_string(),
+            "ends_with" => "_ends_with".to_string(),
+            "repeat" => "_repeat".to_string(),
+            "pad_start" => "_pad_start".to_string(),
+            "pad_end" => "_pad_end".to_string(),
+            "char_code" => "_char_code".to_string(),
+            "from_char_code" => "_from_char_code".to_string(),
+            "str" => "_str".to_string(),
+            "num" => "_num".to_string(),
+            "int" => "_int".to_string(),
+            "bool" => "_bool".to_string(),
+            "type" => "_type".to_string(),
+            "range" => "_range".to_string(),
+            "map" => "_map".to_string(),
+            "filter" => "_filter".to_string(),
+            "reduce" => "_reduce".to_string(),
+            "find" => "_find".to_string(),
+            "any" => "_any".to_string(),
+            "all" => "_all".to_string(),
+            "sum" => "_sum".to_string(),
+            "avg" => "_avg".to_string(),
+            "unique" => "_unique".to_string(),
+            "flat" => "_flat".to_string(),
+            "zip" => "_zip".to_string(),
+            "enumerate" => "_enumerate".to_string(),
+            "clamp" => "_clamp".to_string(),
+            "sign" => "_sign".to_string(),
+            "split" => "_split".to_string(),
+            "join" => "_join".to_string(),
+            "trim" => "_trim".to_string(),
+            "upper" => "_upper".to_string(),
+            "lower" => "_lower".to_string(),
+            "replace" => "_replace".to_string(),
+            "slice" => "_slice".to_string(),
+            "reverse" => "_reverse".to_string(),
+            "sort" => "_sort".to_string(),
+            "json_stringify" => "_json_stringify".to_string(),
+            "json_parse" => "_json_parse".to_string(),
+            "hash" => "_hash".to_string(),
+            "assert" => "_assert".to_string(),
+            _ => ts_safe_ident(name),
+        },
+        Expr::Array(items) => {
+            let inner: Vec<String> = items.iter().map(|e| ts_expr(e, lvl)).collect();
+            format!("[{}]", inner.join(", "))
+        }
+        Expr::Map(entries) => {
+            let inner: Vec<String> = entries
+                .iter()
+                .map(|(k, v)| format!("\"{}\": {}", escape_str(k), ts_expr(v, lvl)))
+                .collect();
+            format!("{{ {} }}", inner.join(", "))
+        }
+        Expr::New { class_name, args } => {
+            let arg_strs: Vec<String> = args.iter().map(|a| ts_expr(a, lvl)).collect();
+            format!("new {}({})", class_name, arg_strs.join(", "))
+        }
+        Expr::Ternary {
+            cond,
+            then_expr,
+            else_expr,
