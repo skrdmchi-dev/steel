@@ -1038,3 +1038,64 @@ pub fn emit_ts_project(modules: &[ModuleUnit]) -> Vec<(String, String)> {
 
     for m in modules {
         let report = analyze_program(&m.program);
+        let mut body_out = String::new();
+        for stmt in &m.program.statements {
+            if matches!(stmt, Stmt::Import(_)) {
+                continue;
+            }
+            body_out.push_str(&ts_stmt(stmt, 0, &report.symbols, !m.is_entry));
+        }
+
+        let mut header = String::new();
+        let mut imported_mods = HashSet::new();
+        for imp in &m.imports {
+            if imp != &m.name && imported_mods.insert(imp.clone()) {
+                if let Some(names) = exports_by_mod.get(imp) {
+                    if !names.is_empty() {
+                        header.push_str(&format!(
+                            "import {{ {} }} from \"./{}.ts\";\n",
+                            names.join(", "),
+                            imp
+                        ));
+                    }
+                }
+            }
+        }
+        let preamble = ts_helpers_preamble(&body_out);
+        let mut content = String::new();
+        if !header.is_empty() {
+            content.push_str(&header);
+        }
+        if !preamble.is_empty() {
+            content.push_str(&preamble);
+        }
+        if !content.is_empty() {
+            content.push('\n');
+        }
+        content.push_str(&body_out);
+        files.push((format!("{}.ts", m.name), content));
+    }
+
+    let needs_node_types = files.iter().any(|(_, c)| c.contains("node:fs") || c.contains("process.env"));
+    if needs_node_types {
+        files.push((
+            "env.d.ts".to_string(),
+            "declare module \"node:fs\" {\n  export function readFileSync(path: string, encoding: string): string;\n  export function writeFileSync(path: string, data: string): void;\n  export function appendFileSync(path: string, data: string): void;\n  export function unlinkSync(path: string): void;\n  export function existsSync(path: string): boolean;\n}\ndeclare const process: { env: Record<string, string | undefined> };\n".to_string(),
+        ));
+    }
+
+    let tsconfig = r#"{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "strict": true,
+    "allowImportingTsExtensions": true,
+    "noEmit": true
+  },
+  "include": ["./**/*.ts"]
+}
+"#;
+    files.push(("tsconfig.json".to_string(), tsconfig.to_string()));
+    files
+}
