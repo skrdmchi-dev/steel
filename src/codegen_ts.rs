@@ -977,3 +977,64 @@ fn ts_expr(expr: &Expr, lvl: usize) -> String {
             let arg_strs: Vec<String> = args.iter().map(|a| ts_expr(a, lvl)).collect();
             format!("{}({})", ts_expr(callee, lvl), arg_strs.join(", "))
         }
+        Expr::Index { target, index } => {
+            format!("_get({}, {})", ts_expr(target, lvl), ts_expr(index, lvl))
+        }
+        Expr::Member { target, field } => format!("{}.{}", ts_expr(target, lvl), field),
+        Expr::FnExpr { params, body } => {
+            let p_types = vec!["any"; params.len()];
+            let p_str = ts_params_typed(params, &p_types, lvl);
+            let empty = BTreeMap::new();
+            if body.len() == 1 {
+                if let Stmt::Return(Some(e)) = &body[0] {
+                    return format!("({}) => {}", p_str, ts_expr(e, lvl));
+                }
+            }
+            let mut s = format!("({}) => {{\n", p_str);
+            for st in body {
+                s.push_str(&ts_stmt(st, lvl + 1, &empty, false));
+            }
+            s.push_str(&format!("{}}}", indent(lvl)));
+            s
+        }
+        Expr::Range { start, end } => {
+            format!("_range({}, {})", ts_expr(start, lvl), ts_expr(end, lvl))
+        }
+        Expr::Spread(inner) => format!("...{}", ts_expr(inner, lvl)),
+    }
+}
+
+pub fn emit_ts_single(program: &Program) -> String {
+    let report = analyze_program(program);
+    let mut body_out = String::new();
+    for stmt in &program.statements {
+        body_out.push_str(&ts_stmt(stmt, 0, &report.symbols, false));
+    }
+    let preamble = ts_helpers_preamble(&body_out);
+    if preamble.is_empty() {
+        body_out
+    } else {
+        format!("{}\n{}", preamble, body_out)
+    }
+}
+
+fn module_exports(program: &Program) -> Vec<String> {
+    let mut out = Vec::new();
+    for stmt in &program.statements {
+        match stmt {
+            Stmt::FnDecl { name, .. } | Stmt::ClassDecl { name, .. } => out.push(name.clone()),
+            _ => {}
+        }
+    }
+    out
+}
+
+pub fn emit_ts_project(modules: &[ModuleUnit]) -> Vec<(String, String)> {
+    let mut files = Vec::new();
+    let exports_by_mod: BTreeMap<String, Vec<String>> = modules
+        .iter()
+        .map(|m| (m.name.clone(), module_exports(&m.program)))
+        .collect();
+
+    for m in modules {
+        let report = analyze_program(&m.program);
