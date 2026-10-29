@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 160" width="160" height="160">
+  <!-- Upper Steel 'S' Chevron -->
+  <polygon fill="#1f2328" points="50,30 130,30 109,51 60,51 49,63 77,73 61,93 30,81 30,52" />
+  <!-- Lower Steel 'S' Chevron -->
+  <polygon fill="#1f2328" points="99,67 130,79 130,108 110,130 30,130 51,109 100,109 111,97 83,87" />
+</svg>
