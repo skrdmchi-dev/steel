@@ -1,0 +1,78 @@
+{
+  "name": "steel-lang-vscode",
+  "displayName": "Steel Language (.steel)",
+  "description": "Official VS Code syntax highlighting, inferred type hover intelligence, code snippets, and one-click multi-target compilation (--visual, C, Rust, Python, Go, JS, Lua) for the Steel programming language.",
+  "version": "1.0.0",
+  "icon": "logo.png",
+  "publisher": "steel-lang",
+  "engines": {
+    "vscode": "^1.75.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "activationEvents": [
+    "onLanguage:steel"
+  ],
+  "main": "./extension.js",
+  "contributes": {
+    "languages": [
+      {
+        "id": "steel",
+        "aliases": [
+          "Steel",
+          "steel"
+        ],
+        "extensions": [
+          ".steel"
+        ],
+        "icon": {
+          "light": "./logo.png",
+          "dark": "./logo.png"
+        },
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "steel",
+        "scopeName": "source.steel",
+        "path": "./syntaxes/steel.tmLanguage.json"
+      }
+    ],
+    "snippets": [
+      {
+        "language": "steel",
+        "path": "./snippets/steel.json"
+      }
+    ],
+    "commands": [
+      {
+        "command": "steel.runFile",
+        "title": "Steel: Run Current File"
+      },
+      {
+        "command": "steel.compileVisual",
+        "title": "Steel: Compile with --visual Morphing..."
+      },
+      {
+        "command": "steel.runTests",
+        "title": "Steel: Run Unit Tests (steel test)"
+      }
+    ],
+    "menus": {
+      "editor/title": [
+        {
+          "when": "resourceLangId == steel",
+          "command": "steel.runFile",
+          "group": "navigation"
+        },
+        {
+          "when": "resourceLangId == steel",
+          "command": "steel.compileVisual",
+          "group": "navigation"
+        }
+      ]
+    }
+  }
+}
