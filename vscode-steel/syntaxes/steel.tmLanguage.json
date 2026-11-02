@@ -67,3 +67,72 @@
         }
       ]
     },
+    "numbers": {
+      "patterns": [
+        {
+          "name": "constant.numeric.hex.steel",
+          "match": "\\b0[xX][0-9a-fA-F_]+\\b"
+        },
+        {
+          "name": "constant.numeric.binary.steel",
+          "match": "\\b0[bB][01_]+\\b"
+        },
+        {
+          "name": "constant.numeric.decimal.steel",
+          "match": "\\b[0-9][0-9_]*(\\.[0-9_]+)?\\b"
+        }
+      ]
+    },
+    "declarations": {
+      "patterns": [
+        {
+          "match": "\\b(class)\\s+([A-Za-z_][A-Za-z0-9_]*)(?:\\s+(extends)\\s+([A-Za-z_][A-Za-z0-9_]*))?",
+          "captures": {
+            "1": { "name": "keyword.declaration.class.steel" },
+            "2": { "name": "entity.name.type.class.steel" },
+            "3": { "name": "keyword.other.extends.steel" },
+            "4": { "name": "entity.other.inherited-class.steel" }
+          }
+        },
+        {
+          "match": "\\b(fn)\\s+([A-Za-z_][A-Za-z0-9_]*)",
+          "captures": {
+            "1": { "name": "keyword.declaration.function.steel" },
+            "2": { "name": "entity.name.function.steel" }
+          }
+        },
+        {
+          "match": "\\b(new)\\s+([A-Za-z_][A-Za-z0-9_]*)",
+          "captures": {
+            "1": { "name": "keyword.operator.new.steel" },
+            "2": { "name": "entity.name.type.class.steel" }
+          }
+        }
+      ]
+    },
+    "keywords": {
+      "patterns": [
+        {
+          "name": "keyword.control.steel",
+          "match": "\\b(if|else|while|for|in|break|continue|return|match|try|catch|throw|import|test|defer)\\b"
+        },
+        {
+          "name": "storage.type.steel",
+          "match": "\\b(let|const|fn|class|extends|enum)\\b"
+        },
+        {
+          "name": "constant.language.boolean.steel",
+          "match": "\\b(true|false)\\b"
+        },
+        {
+          "name": "constant.language.null.steel",
+          "match": "\\b(null|nil)\\b"
+        },
+        {
+          "name": "variable.language.this.steel",
+          "match": "\\b(this|self)\\b"
+        }
+      ]
+    },
+    "types": {
+      "patterns": [
