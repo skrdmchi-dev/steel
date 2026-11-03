@@ -1,0 +1,25 @@
+{
+  "Function Declaration": {
+    "prefix": "fn",
+    "body": [
+      "fn ${1:name}(${2:params}) {",
+      "    $0",
+      "}"
+    ],
+    "description": "Declare a Steel function"
+  },
+  "Class Declaration": {
+    "prefix": "class",
+    "body": [
+      "class ${1:ClassName} {",
+      "    init(${2:params}) {",
+      "        this.${3:field} = ${2:params}",
+      "    }",
+      "}"
+    ],
+    "description": "Declare a Steel class with constructor"
+  },
+  "Match Statement": {
+    "prefix": "match",
+    "body": [
+      "match ${1:value} {",
