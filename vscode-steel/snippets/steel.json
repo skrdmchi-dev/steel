@@ -23,3 +23,28 @@
     "prefix": "match",
     "body": [
       "match ${1:value} {",
+      "    ${2:pattern} => ${3:print(\"Matched\")},",
+      "    _ => ${0:print(\"Default\")}",
+      "}"
+    ],
+    "description": "Steel pattern matching block"
+  },
+  "Unit Test Block": {
+    "prefix": "test",
+    "body": [
+      "test \"${1:should work}\" {",
+      "    assert(${0:true}, \"Assertion failed\")",
+      "}"
+    ],
+    "description": "Steel unit test block (run with `steel test`)"
+  },
+  "For Range Loop": {
+    "prefix": "for",
+    "body": [
+      "for ${1:i} in ${2:0}..${3:10} {",
+      "    $0",
+      "}"
+    ],
+    "description": "Steel range for-loop"
+  }
+}
