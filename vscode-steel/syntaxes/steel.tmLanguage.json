@@ -136,3 +136,72 @@
     },
     "types": {
       "patterns": [
+        {
+          "match": "(:|->)\\s*(num|str|bool|array|map|any|void|null)\\b",
+          "captures": {
+            "1": { "name": "keyword.operator.type.annotation.steel" },
+            "2": { "name": "support.type.primitive.steel" }
+          }
+        }
+      ]
+    },
+    "builtins": {
+      "patterns": [
+        {
+          "name": "support.function.builtin.steel",
+          "match": "\\b(print|println|input|assert|type|str|num|len|push|pop|keys|values|contains|range|slice|reverse|sort|map|filter|reduce|split|join|trim|upper|lower|replace|abs|floor|ceil|round|sqrt|pow|min|max|sin|cos|clamp|atan2|log|exp|sign|sum|avg|unique|flat|enumerate|zip|json_parse|json_stringify|args|env|set_env|cwd|exec|exit|file_exists|list_dir|make_dir|remove_file|append_file|sleep|random|rand_int|hash|uuid|read_file|write_file|clock|init)\\b"
+        },
+        {
+          "name": "support.constant.math.steel",
+          "match": "\\b(PI|E)\\b"
+        }
+      ]
+    },
+    "operators": {
+      "patterns": [
+        {
+          "name": "keyword.operator.pipe.steel",
+          "match": "\\|>"
+        },
+        {
+          "name": "keyword.operator.arrow.steel",
+          "match": "=>|->"
+        },
+        {
+          "name": "keyword.operator.range.steel",
+          "match": "\\.\\."
+        },
+        {
+          "name": "keyword.operator.null-coalesce.steel",
+          "match": "\\?\\?"
+        },
+        {
+          "name": "keyword.operator.assignment.compound.steel",
+          "match": "\\+=|-=|\\*=|/=|%="
+        },
+        {
+          "name": "keyword.operator.comparison.steel",
+          "match": "==|!=|<=|>=|<|>"
+        },
+        {
+          "name": "keyword.operator.logical.steel",
+          "match": "&&|\\|\\||!"
+        },
+        {
+          "name": "keyword.operator.arithmetic.steel",
+          "match": "\\*\\*|\\+|-|\\*|/|%"
+        }
+      ]
+    },
+    "calls": {
+      "patterns": [
+        {
+          "match": "\\b([A-Za-z_][A-Za-z0-9_]*)\\s*(?=\\()",
+          "captures": {
+            "1": { "name": "entity.name.function.call.steel" }
+          }
+        }
+      ]
+    }
+  }
+}
