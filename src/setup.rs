@@ -198,3 +198,203 @@ fn find_source_steel_exe() -> Option<PathBuf> {
     }
     let debug_candidate = PathBuf::from("target/debug/steel.exe");
     if debug_candidate.exists() {
+        return Some(debug_candidate);
+    }
+    None
+}
+
+fn register_in_extensions_json(base_ext_dir: &Path, ext_folder: &Path) {
+    let json_path = base_ext_dir.join("extensions.json");
+    let loc_path = ext_folder.to_string_lossy().replace('\\', "/");
+    let loc_uri = format!(
+        "file:///{}",
+        loc_path.trim_start_matches('/').replace(':', "%3A")
+    );
+    let entry = format!(
+        r#"{{"identifier":{{"id":"steel-lang.steel-lang-vscode"}},"version":"1.0.0","location":{{"$mid":1,"fsPath":"{}","external":"{}","path":"/{}","scheme":"file"}},"relativeLocation":"steel-lang.steel-lang-vscode-1.0.0","metadata":{{"installedTimestamp":1732195000000,"source":"vsix"}}}}"#,
+        ext_folder.to_string_lossy().replace('\\', "\\\\"),
+        loc_uri,
+        loc_path
+    );
+
+    if let Ok(existing) = fs::read_to_string(&json_path) {
+        if existing.contains("steel-lang.steel-lang-vscode") {
+            return;
+        }
+        let trimmed = existing.trim();
+        if trimmed == "[]" {
+            let _ = fs::write(&json_path, format!("[{}]", entry));
+        } else if let Some(stripped) = trimmed.strip_suffix(']') {
+            let _ = fs::write(&json_path, format!("{},{}]", stripped, entry));
+        }
+    } else {
+        let _ = fs::write(&json_path, format!("[{}]", entry));
+    }
+}
+
+fn configure_ide_settings(settings_path: &Path) {
+    if let Some(parent) = settings_path.parent() {
+        let _ = fs::create_dir_all(parent);
+    }
+    if let Ok(existing) = fs::read_to_string(settings_path) {
+        if existing.contains("\"*.steel\"") {
+            return;
+        }
+        let trimmed = existing.trim();
+        if trimmed == "{}" {
+            let _ = fs::write(
+                settings_path,
+                "{\n  \"files.associations\": {\n    \"*.steel\": \"steel\"\n  }\n}\n",
+            );
+        } else if let Some(stripped) = trimmed.strip_suffix('}') {
+            let comma = if stripped.trim_end().ends_with('{') {
+                ""
+            } else {
+                ","
+            };
+            let _ = fs::write(
+                settings_path,
+                format!(
+                    "{}{}\n  \"files.associations\": {{ \"*.steel\": \"steel\" }}\n}}\n",
+                    stripped, comma
+                ),
+            );
+        }
+    } else {
+        let _ = fs::write(
+            settings_path,
+            "{\n  \"files.associations\": {\n    \"*.steel\": \"steel\"\n  }\n}\n",
+        );
+    }
+}
+
+fn install_vscode_extension_full(home_dir: &Path, vsix_path: &Path, logo_path: &Path) {
+    let ext_roots = [
+        (home_dir.join(".vscode").join("extensions"), "Visual Studio Code"),
+        (
+            home_dir.join(".vscode-shared").join("extensions"),
+            "VS Code Shared",
+        ),
+        (home_dir.join(".cursor").join("extensions"), "Cursor IDE"),
+    ];
+
+    for (base_ext_dir, ide_name) in &ext_roots {
+        let dest = base_ext_dir.join("steel-lang.steel-lang-vscode-1.0.0");
+        let syntaxes_dir = dest.join("syntaxes");
+        let snippets_dir = dest.join("snippets");
+
+        if fs::create_dir_all(&syntaxes_dir).is_ok() && fs::create_dir_all(&snippets_dir).is_ok() {
+            let _ = fs::copy(logo_path, dest.join("logo.png"));
+            let _ = fs::write(dest.join("logo.svg"), EMBEDDED_LOGO_SVG);
+            let _ = fs::write(dest.join("package.json"), PKG_JSON);
+            let _ = fs::write(dest.join("language-configuration.json"), LANG_CFG);
+            let _ = fs::write(syntaxes_dir.join("steel.tmLanguage.json"), TM_GRAMMAR);
+            let _ = fs::write(snippets_dir.join("steel.json"), SNIPPETS);
+            let _ = fs::write(dest.join("extension.js"), EXT_JS);
+            register_in_extensions_json(base_ext_dir, &dest);
+            println!(
+                "  \x1b[1;32m[OK]\x1b[0m Registered Steel Extension + Logo in \x1b[1m{}\x1b[0m",
+                ide_name
+            );
+        }
+    }
+
+    let vsix_str = vsix_path.to_string_lossy().to_string();
+    let code_cmd = home_dir
+        .join("AppData")
+        .join("Local")
+        .join("Programs")
+        .join("Microsoft VS Code")
+        .join("bin")
+        .join("code.cmd");
+    if code_cmd.exists() {
+        let status = Command::new(&code_cmd)
+            .creation_flags(CREATE_NO_WINDOW)
+            .args(["--install-extension", &vsix_str, "--force"])
+            .status();
+        if matches!(status, Ok(s) if s.success()) {
+            println!("  \x1b[1;32m[OK]\x1b[0m Installed VSIX via official VS Code CLI (`code --install-extension`)");
+        }
+    }
+}
+
+fn associate_files(home_dir: &Path) {
+    let roaming = home_dir.join("AppData").join("Roaming");
+    for app in ["Code", "Cursor"] {
+        let settings = roaming.join(app).join("User").join("settings.json");
+        if settings.parent().map(|p| p.exists()).unwrap_or(false) {
+            configure_ide_settings(&settings);
+            println!(
+                "  \x1b[1;32m[OK]\x1b[0m Associated `*.steel` files in {} User settings.json",
+                app
+            );
+        }
+    }
+}
+
+/// Classic Inno Setup WizardStyle=classic GUI!
+/// - Standard Windows system gray dialog body (#F0F0F0)
+/// - Crisp white top banner header (or white left sidebar on Welcome page) with your Steel 'S' logo
+/// - Classic 3D etched horizontal separator lines
+/// - Standard native Windows buttons (< Back, Next >, Install, Cancel)
+fn run_classic_inno_setup_wizard(
+    default_install_dir: &str,
+    logo_path: &Path,
+) -> Option<(String, bool, bool, bool, bool)> {
+    let init_logo = logo_path.to_string_lossy().replace('\'', "''");
+    let init_dir = default_install_dir.replace('\'', "''");
+
+    let ps_wizard = format!(
+        r#"
+Add-Type -AssemblyName System.Windows.Forms
+Add-Type -AssemblyName System.Drawing
+[System.Windows.Forms.Application]::EnableVisualStyles()
+
+$script:logoPath = '{init_logo}'
+$script:installDir = '{init_dir}'
+$script:page = 1
+
+$form = New-Object System.Windows.Forms.Form
+$form.Text = "Setup - Steel Programming Language"
+$form.ClientSize = New-Object System.Drawing.Size(500, 362)
+$form.StartPosition = "CenterScreen"
+$form.FormBorderStyle = "FixedDialog"
+$form.MaximizeBox = $false
+$form.MinimizeBox = $false
+$form.BackColor = [System.Drawing.SystemColors]::Control
+$form.ForeColor = [System.Drawing.SystemColors]::ControlText
+$form.Font = New-Object System.Drawing.Font("Segoe UI", 9)
+
+# Load Steel Logo Image
+$steelLogoImg = $null
+if ($script:logoPath -and (Test-Path $script:logoPath)) {{
+    try {{
+        $steelLogoImg = [System.Drawing.Image]::FromFile($script:logoPath)
+        $bmpIcon = New-Object System.Drawing.Bitmap($steelLogoImg, 32, 32)
+        $form.Icon = [System.Drawing.Icon]::FromHandle($bmpIcon.GetHicon())
+    }} catch {{}}
+}}
+
+# =========================================================================
+# TOP WHITE HEADER BANNER (Shown on Pages 2 & 3 - Classic Inno Setup Style)
+# =========================================================================
+$topHeader = New-Object System.Windows.Forms.Panel
+$topHeader.Location = New-Object System.Drawing.Point(0, 0)
+$topHeader.Size = New-Object System.Drawing.Size(500, 60)
+$topHeader.BackColor = [System.Drawing.Color]::White
+$topHeader.Visible = $false
+$form.Controls.Add($topHeader)
+
+$headerTitle = New-Object System.Windows.Forms.Label
+$headerTitle.Location = New-Object System.Drawing.Point(16, 10)
+$headerTitle.Size = New-Object System.Drawing.Size(410, 20)
+$headerTitle.Font = New-Object System.Drawing.Font("Segoe UI", 9, [System.Drawing.FontStyle]::Bold)
+$topHeader.Controls.Add($headerTitle)
+
+$headerSub = New-Object System.Windows.Forms.Label
+$headerSub.Location = New-Object System.Drawing.Point(30, 30)
+$headerSub.Size = New-Object System.Drawing.Size(400, 24)
+$headerSub.Font = New-Object System.Drawing.Font("Segoe UI", 9)
+$topHeader.Controls.Add($headerSub)
+
+$headerSmallLogo = New-Object System.Windows.Forms.PictureBox
