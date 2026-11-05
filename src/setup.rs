@@ -598,3 +598,205 @@ function Refresh-ClassicWizard {{
 
     if ($script:page -eq 1) {{
         $btnNext.Text = "&Next >"
+    }} elseif ($script:page -eq 2) {{
+        $headerTitle.Text = "Select Destination Location && Components"
+        $headerSub.Text = "Where should Steel be installed and which tasks should be performed?"
+        $btnNext.Text = "&Next >"
+    }} elseif ($script:page -eq 3) {{
+        $headerTitle.Text = "Ready to Install"
+        $headerSub.Text = "Setup is now ready to begin installing Steel on your computer."
+        $btnNext.Text = "&Install"
+        $summaryBox.Text = "Destination location:`r`n      $($dirBox.Text)`r`n`r`nSelected components:`r`n      Steel Compiler & VM CLI:    $($cbCli.Checked)`r`n      Steel VS Code Extension:    $($cbVsCode.Checked)`r`n`r`nAdditional tasks:`r`n      Add to Windows PATH:        $($cbPath.Checked)`r`n      Associate *.steel files:    $($cbAssoc.Checked)"
+    }}
+}}
+
+$btnBack.Add_Click({{
+    if ($script:page -gt 1) {{
+        $script:page--
+        Refresh-ClassicWizard
+    }}
+}})
+
+$btnNext.Add_Click({{
+    if ($script:page -lt 3) {{
+        $script:page++
+        Refresh-ClassicWizard
+    }} else {{
+        $script:installDir = $dirBox.Text
+        $form.DialogResult = [System.Windows.Forms.DialogResult]::OK
+        $form.Close()
+    }}
+}})
+
+Refresh-ClassicWizard
+$res = $form.ShowDialog()
+if ($res -eq [System.Windows.Forms.DialogResult]::OK) {{
+    Write-Output "WIZARD_OK|$($script:installDir)|$($cbCli.Checked)|$($cbPath.Checked)|$($cbVsCode.Checked)|$($cbAssoc.Checked)"
+}} else {{
+    Write-Output "WIZARD_CANCEL"
+}}
+"#
+    );
+
+    let output = Command::new("powershell")
+        .creation_flags(CREATE_NO_WINDOW)
+        .args(["-NoProfile", "-WindowStyle", "Hidden", "-STA", "-Command", &ps_wizard])
+        .output()
+        .ok()?;
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    for line in stdout.lines() {
+        let trimmed = line.trim();
+        if let Some(rest) = trimmed.strip_prefix("WIZARD_OK|") {
+            let parts: Vec<&str> = rest.split('|').collect();
+            if parts.len() >= 5 {
+                let dir = parts[0].to_string();
+                let c1 = parts[1].eq_ignore_ascii_case("true");
+                let c2 = parts[2].eq_ignore_ascii_case("true");
+                let c3 = parts[3].eq_ignore_ascii_case("true");
+                let c4 = parts[4].eq_ignore_ascii_case("true");
+                return Some((dir, c1, c2, c3, c4));
+            }
+        } else if trimmed == "WIZARD_CANCEL" {
+            println!("Setup cancelled by user.");
+            std::process::exit(0);
+        }
+    }
+    None
+}
+
+fn prompt_yes_no(question: &str, default_yes: bool) -> bool {
+    let hint = if default_yes { "[Y/n]" } else { "[y/N]" };
+    print!("  \x1b[1;36m?\x1b[0m {} \x1b[90m{}\x1b[0m: ", question, hint);
+    let _ = io::stdout().flush();
+    let mut line = String::new();
+    if io::stdin().read_line(&mut line).is_ok() {
+        let t = line.trim().to_lowercase();
+        if t.is_empty() {
+            return default_yes;
+        }
+        return t.starts_with('y');
+    }
+    default_yes
+}
+
+fn main() {
+    let args: Vec<String> = env::args().skip(1).collect();
+    let silent_all = args.iter().any(|a| a == "--all" || a == "-y" || a == "--yes");
+    let cli_wizard = args.iter().any(|a| a == "--cli");
+
+    let user_profile = env::var("USERPROFILE")
+        .or_else(|_| env::var("HOME"))
+        .unwrap_or_else(|_| ".".to_string());
+    let home_dir = PathBuf::from(&user_profile);
+    let default_steel_dir = home_dir.join(".steel");
+    let _ = fs::create_dir_all(&default_steel_dir);
+    let default_dir_str = default_steel_dir.to_string_lossy().to_string();
+
+    // Extract the embedded Steel 'S' logo (PNG + SVG) right into ~/.steel/ so the wizard & VS Code extension always have it
+    let embedded_logo_path = ensure_embedded_logo_file(&default_steel_dir);
+
+    println!("\x1b[1;36m==========================================================================\x1b[0m");
+    println!("\x1b[1;37m         STEEL (.steel) v1.0.0 — CLASSIC SETUP WIZARD                     \x1b[0m");
+    println!("\x1b[1;36m==========================================================================\x1b[0m");
+    println!();
+
+    let (install_root_str, install_cli, add_path, install_vscode, assoc_files) = if silent_all {
+        println!("  \x1b[1;35m[Mode]\x1b[0m Automatic Full Installation (--yes)");
+        (default_dir_str, true, true, true, true)
+    } else if cli_wizard {
+        println!("  \x1b[1;33mWelcome to the Steel Setup Wizard (Terminal Mode)!\x1b[0m\n");
+        let c1 = prompt_yes_no("1. Install Steel Compiler & VM CLI (steel.exe)?", true);
+        let c2 = prompt_yes_no("2. Add 'steel' to Windows PATH?", true);
+        let c3 = prompt_yes_no("3. Install VS Code Extension (Syntax Colors & Logo)?", true);
+        let c4 = prompt_yes_no("4. Associate *.steel files in VS Code Settings?", true);
+        println!();
+        (default_dir_str, c1, c2, c3, c4)
+    } else {
+        println!("  Launching Classic Windows Setup Wizard...");
+        match run_classic_inno_setup_wizard(&default_dir_str, &embedded_logo_path) {
+            Some(res) => res,
+            None => {
+                let c1 = prompt_yes_no("1. Install Steel Compiler & VM CLI (steel.exe)?", true);
+                let c2 = prompt_yes_no("2. Add 'steel' to Windows PATH?", true);
+                let c3 = prompt_yes_no("3. Install VS Code Extension?", true);
+                let c4 = prompt_yes_no("4. Associate *.steel files in VS Code?", true);
+                (default_dir_str, c1, c2, c3, c4)
+            }
+        }
+    };
+
+    let steel_dir = PathBuf::from(&install_root_str);
+    let steel_bin_dir = steel_dir.join("bin");
+    let _ = fs::create_dir_all(&steel_bin_dir);
+    let logo_path = ensure_embedded_logo_file(&steel_dir);
+
+    let vsix_path = steel_dir.join("steel-lang-vscode-1.0.0.vsix");
+    if let Err(e) = build_vsix_file(&vsix_path, Some(&logo_path)) {
+        eprintln!("  \x1b[1;33m[WARN]\x1b[0m {}", e);
+    } else {
+        let _ = fs::copy(&vsix_path, PathBuf::from("steel-lang-vscode-1.0.0.vsix"));
+        println!(
+            "  \x1b[1;32m[OK]\x1b[0m Packaged VS Code Extension with Steel Logo (.vsix) -> \x1b[1;36m{}\x1b[0m",
+            vsix_path.display()
+        );
+    }
+
+    if install_cli {
+        if let Some(src_exe) = find_source_steel_exe() {
+            let dest_steel = steel_bin_dir.join("steel.exe");
+            if fs::copy(&src_exe, &dest_steel).is_ok() {
+                println!(
+                    "  \x1b[1;32m[OK]\x1b[0m Installed Steel Compiler CLI -> \x1b[1;36m{}\x1b[0m",
+                    dest_steel.display()
+                );
+            }
+            let cargo_bin_dir = home_dir.join(".cargo").join("bin");
+            if cargo_bin_dir.exists() {
+                let cargo_dest = cargo_bin_dir.join("steel.exe");
+                if fs::copy(&src_exe, &cargo_dest).is_ok() {
+                    println!(
+                        "  \x1b[1;32m[OK]\x1b[0m Linked global CLI in PATH    -> \x1b[1;36m{}\x1b[0m",
+                        cargo_dest.display()
+                    );
+                }
+            }
+        }
+    }
+
+    if add_path {
+        let bin_str = steel_bin_dir.to_string_lossy().to_string();
+        let ps_script = format!(
+            "$u = [Environment]::GetEnvironmentVariable('Path', 'User'); if ($u -notlike '*{}*') {{ [Environment]::SetEnvironmentVariable('Path', \"$u;{}\", 'User') }}",
+            bin_str, bin_str
+        );
+        let _ = Command::new("powershell")
+            .creation_flags(CREATE_NO_WINDOW)
+            .args(["-NoProfile", "-WindowStyle", "Hidden", "-Command", &ps_script])
+            .status();
+        println!(
+            "  \x1b[1;32m[OK]\x1b[0m Added \x1b[1m{}\x1b[0m to Windows User PATH",
+            bin_str
+        );
+    }
+
+    if install_vscode {
+        println!();
+        println!("\x1b[1;33mInstalling VS Code Extension & Steel Logo Icon...\x1b[0m");
+        install_vscode_extension_full(&home_dir, &vsix_path, &logo_path);
+    }
+
+    if assoc_files {
+        associate_files(&home_dir);
+    }
+
+    if !silent_all && !cli_wizard {
+        let done_msg = format!(
+            "Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.MessageBox]::Show('Steel (.steel) v1.0.0 has been successfully installed on your computer!`r`n`r`nLocation: {}\\bin\\steel.exe`r`nVS Code Extension: Installed (reload VS Code to activate)', 'Setup - Steel Programming Language', 'OK', 'Information')",
+            steel_dir.to_string_lossy().replace('\'', "''")
+        );
+        let _ = Command::new("powershell")
+            .creation_flags(CREATE_NO_WINDOW)
+            .args(["-NoProfile", "-WindowStyle", "Hidden", "-STA", "-Command", &done_msg])
+            .status();
+    }
+}
