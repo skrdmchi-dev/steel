@@ -398,3 +398,203 @@ $headerSub.Font = New-Object System.Drawing.Font("Segoe UI", 9)
 $topHeader.Controls.Add($headerSub)
 
 $headerSmallLogo = New-Object System.Windows.Forms.PictureBox
+$headerSmallLogo.Location = New-Object System.Drawing.Point(442, 8)
+$headerSmallLogo.Size = New-Object System.Drawing.Size(44, 44)
+$headerSmallLogo.SizeMode = "Zoom"
+$headerSmallLogo.Image = $steelLogoImg
+$topHeader.Controls.Add($headerSmallLogo)
+
+$topLine = New-Object System.Windows.Forms.Label
+$topLine.BorderStyle = [System.Windows.Forms.BorderStyle]::Fixed3D
+$topLine.Location = New-Object System.Drawing.Point(0, 60)
+$topLine.Size = New-Object System.Drawing.Size(500, 2)
+$topLine.Visible = $false
+$form.Controls.Add($topLine)
+
+# =========================================================================
+# PAGE 1: WELCOME PAGE (Classic White Left Sidebar + White Content Area)
+# =========================================================================
+$p1 = New-Object System.Windows.Forms.Panel
+$p1.Location = New-Object System.Drawing.Point(0, 0)
+$p1.Size = New-Object System.Drawing.Size(500, 312)
+$p1.BackColor = [System.Drawing.Color]::White
+$form.Controls.Add($p1)
+
+$p1LeftBanner = New-Object System.Windows.Forms.Panel
+$p1LeftBanner.Location = New-Object System.Drawing.Point(0, 0)
+$p1LeftBanner.Size = New-Object System.Drawing.Size(164, 312)
+$p1LeftBanner.BackColor = [System.Drawing.Color]::FromArgb(242, 244, 247)
+$p1.Controls.Add($p1LeftBanner)
+
+$p1BigLogo = New-Object System.Windows.Forms.PictureBox
+$p1BigLogo.Location = New-Object System.Drawing.Point(22, 36)
+$p1BigLogo.Size = New-Object System.Drawing.Size(120, 120)
+$p1BigLogo.SizeMode = "Zoom"
+$p1BigLogo.Image = $steelLogoImg
+$p1LeftBanner.Controls.Add($p1BigLogo)
+
+$p1SideText = New-Object System.Windows.Forms.Label
+$p1SideText.Location = New-Object System.Drawing.Point(16, 170)
+$p1SideText.Size = New-Object System.Drawing.Size(132, 60)
+$p1SideText.TextAlign = "TopCenter"
+$p1SideText.Font = New-Object System.Drawing.Font("Segoe UI", 8.5, [System.Drawing.FontStyle]::Bold)
+$p1SideText.ForeColor = [System.Drawing.Color]::FromArgb(70, 75, 85)
+$p1SideText.Text = "STEEL (.steel)`r`nVersion 1.0.0"
+$p1LeftBanner.Controls.Add($p1SideText)
+
+$p1VertLine = New-Object System.Windows.Forms.Label
+$p1VertLine.BorderStyle = [System.Windows.Forms.BorderStyle]::Fixed3D
+$p1VertLine.Location = New-Object System.Drawing.Point(164, 0)
+$p1VertLine.Size = New-Object System.Drawing.Size(2, 312)
+$p1.Controls.Add($p1VertLine)
+
+$p1WelcomeTitle = New-Object System.Windows.Forms.Label
+$p1WelcomeTitle.Location = New-Object System.Drawing.Point(184, 20)
+$p1WelcomeTitle.Size = New-Object System.Drawing.Size(296, 48)
+$p1WelcomeTitle.Font = New-Object System.Drawing.Font("Segoe UI", 12, [System.Drawing.FontStyle]::Bold)
+$p1WelcomeTitle.Text = "Welcome to the Steel Programming Language Setup Wizard"
+$p1.Controls.Add($p1WelcomeTitle)
+
+$p1WelcomeBody = New-Object System.Windows.Forms.Label
+$p1WelcomeBody.Location = New-Object System.Drawing.Point(184, 80)
+$p1WelcomeBody.Size = New-Object System.Drawing.Size(296, 210)
+$p1WelcomeBody.Text = "This will install Steel (.steel) version 1.0.0 on your computer.`r`n`r`nSteel includes:`r`n  • Multi-Target Compiler (C11, Rust, Python, Go, JS, Lua)`r`n  • Live 5-Stage Visual Morphing (--visual)`r`n  • Native Interpreter, Stack VM & Test Runner`r`n  • Official VS Code Extension with Syntax Highlighting`r`n`r`nIt is recommended that you close all other applications before continuing.`r`n`r`nClick Next to continue, or Cancel to exit Setup."
+$p1.Controls.Add($p1WelcomeBody)
+
+# =========================================================================
+# PAGE 2: SELECT DESTINATION LOCATION & COMPONENTS (Classic System Gray)
+# =========================================================================
+$p2 = New-Object System.Windows.Forms.Panel
+$p2.Location = New-Object System.Drawing.Point(0, 62)
+$p2.Size = New-Object System.Drawing.Size(500, 250)
+$p2.Visible = $false
+$form.Controls.Add($p2)
+
+$p2Desc = New-Object System.Windows.Forms.Label
+$p2Desc.Location = New-Object System.Drawing.Point(24, 14)
+$p2Desc.Size = New-Object System.Drawing.Size(450, 20)
+$p2Desc.Text = "Setup will install Steel into the following folder:"
+$p2.Controls.Add($p2Desc)
+
+$dirBox = New-Object System.Windows.Forms.TextBox
+$dirBox.Location = New-Object System.Drawing.Point(24, 38)
+$dirBox.Size = New-Object System.Drawing.Size(362, 23)
+$dirBox.Text = $script:installDir
+$p2.Controls.Add($dirBox)
+
+$btnBrowse = New-Object System.Windows.Forms.Button
+$btnBrowse.Text = "Browse..."
+$btnBrowse.Location = New-Object System.Drawing.Point(394, 37)
+$btnBrowse.Size = New-Object System.Drawing.Size(80, 25)
+$btnBrowse.UseVisualStyleBackColor = $true
+$btnBrowse.Add_Click({{
+    $fbd = New-Object System.Windows.Forms.FolderBrowserDialog
+    $fbd.SelectedPath = $dirBox.Text
+    if ($fbd.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {{
+        $dirBox.Text = $fbd.SelectedPath
+    }}
+}})
+$p2.Controls.Add($btnBrowse)
+
+$compGroup = New-Object System.Windows.Forms.GroupBox
+$compGroup.Text = "Select Components && Additional Tasks"
+$compGroup.Location = New-Object System.Drawing.Point(24, 74)
+$compGroup.Size = New-Object System.Drawing.Size(450, 158)
+$p2.Controls.Add($compGroup)
+
+$cbCli = New-Object System.Windows.Forms.CheckBox
+$cbCli.Text = "Steel Compiler, VM, Test Runner && Formatter (steel.exe)"
+$cbCli.Checked = $true
+$cbCli.Location = New-Object System.Drawing.Point(16, 26)
+$cbCli.Size = New-Object System.Drawing.Size(420, 22)
+$compGroup.Controls.Add($cbCli)
+
+$cbPath = New-Object System.Windows.Forms.CheckBox
+$cbPath.Text = "Add Steel to Windows PATH (use 'steel compile' in any terminal)"
+$cbPath.Checked = $true
+$cbPath.Location = New-Object System.Drawing.Point(16, 56)
+$cbPath.Size = New-Object System.Drawing.Size(420, 22)
+$compGroup.Controls.Add($cbPath)
+
+$cbVsCode = New-Object System.Windows.Forms.CheckBox
+$cbVsCode.Text = "Install Steel VS Code Extension (Syntax Colors, Logo && Hover Types)"
+$cbVsCode.Checked = $true
+$cbVsCode.Location = New-Object System.Drawing.Point(16, 86)
+$cbVsCode.Size = New-Object System.Drawing.Size(425, 22)
+$compGroup.Controls.Add($cbVsCode)
+
+$cbAssoc = New-Object System.Windows.Forms.CheckBox
+$cbAssoc.Text = "Associate *.steel files with Steel in VS Code Settings"
+$cbAssoc.Checked = $true
+$cbAssoc.Location = New-Object System.Drawing.Point(16, 116)
+$cbAssoc.Size = New-Object System.Drawing.Size(420, 22)
+$compGroup.Controls.Add($cbAssoc)
+
+# =========================================================================
+# PAGE 3: READY TO INSTALL (Classic Inno Setup Summary TextBox)
+# =========================================================================
+$p3 = New-Object System.Windows.Forms.Panel
+$p3.Location = New-Object System.Drawing.Point(0, 62)
+$p3.Size = New-Object System.Drawing.Size(500, 250)
+$p3.Visible = $false
+$form.Controls.Add($p3)
+
+$p3Desc = New-Object System.Windows.Forms.Label
+$p3Desc.Location = New-Object System.Drawing.Point(24, 14)
+$p3Desc.Size = New-Object System.Drawing.Size(450, 34)
+$p3Desc.Text = "Click Install to continue with the installation, or click Back if you want to review or change any settings."
+$p3.Controls.Add($p3Desc)
+
+$summaryBox = New-Object System.Windows.Forms.TextBox
+$summaryBox.Location = New-Object System.Drawing.Point(24, 52)
+$summaryBox.Size = New-Object System.Drawing.Size(450, 180)
+$summaryBox.Multiline = $true
+$summaryBox.ReadOnly = $true
+$summaryBox.ScrollBars = "Vertical"
+$summaryBox.BackColor = [System.Drawing.SystemColors]::ControlLightLight
+$summaryBox.Font = New-Object System.Drawing.Font("Consolas", 9)
+$p3.Controls.Add($summaryBox)
+
+# =========================================================================
+# BOTTOM SEPARATOR & STANDARD WINDOWS BUTTONS (< Back | Next > | Cancel)
+# =========================================================================
+$bottomLine = New-Object System.Windows.Forms.Label
+$bottomLine.BorderStyle = [System.Windows.Forms.BorderStyle]::Fixed3D
+$bottomLine.Location = New-Object System.Drawing.Point(0, 312)
+$bottomLine.Size = New-Object System.Drawing.Size(500, 2)
+$form.Controls.Add($bottomLine)
+
+$btnBack = New-Object System.Windows.Forms.Button
+$btnBack.Text = "< &Back"
+$btnBack.Location = New-Object System.Drawing.Point(242, 325)
+$btnBack.Size = New-Object System.Drawing.Size(75, 24)
+$btnBack.UseVisualStyleBackColor = $true
+$btnBack.Enabled = $false
+$form.Controls.Add($btnBack)
+
+$btnNext = New-Object System.Windows.Forms.Button
+$btnNext.Text = "&Next >"
+$btnNext.Location = New-Object System.Drawing.Point(322, 325)
+$btnNext.Size = New-Object System.Drawing.Size(75, 24)
+$btnNext.UseVisualStyleBackColor = $true
+$form.Controls.Add($btnNext)
+$form.AcceptButton = $btnNext
+
+$btnCancel = New-Object System.Windows.Forms.Button
+$btnCancel.Text = "Cancel"
+$btnCancel.Location = New-Object System.Drawing.Point(410, 325)
+$btnCancel.Size = New-Object System.Drawing.Size(75, 24)
+$btnCancel.UseVisualStyleBackColor = $true
+$btnCancel.DialogResult = [System.Windows.Forms.DialogResult]::Cancel
+$form.Controls.Add($btnCancel)
+
+function Refresh-ClassicWizard {{
+    $p1.Visible = ($script:page -eq 1)
+    $p2.Visible = ($script:page -eq 2)
+    $p3.Visible = ($script:page -eq 3)
+    $topHeader.Visible = ($script:page -gt 1)
+    $topLine.Visible = ($script:page -gt 1)
+    $btnBack.Enabled = ($script:page -gt 1)
+
+    if ($script:page -eq 1) {{
+        $btnNext.Text = "&Next >"
