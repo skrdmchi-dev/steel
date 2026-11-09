@@ -216,3 +216,57 @@ li {
   align-items: center;
   padding: 6px 14px;
   font-family: var(--font-mono);
+  font-size: 0.78rem;
+  color: var(--muted);
+  border-bottom: 1px solid var(--border);
+}
+
+.example-box pre {
+  margin: 0;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+}
+
+/* Tables */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 14px 0 20px;
+  font-size: 0.93rem;
+}
+
+th,
+td {
+  text-align: left;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+}
+
+th {
+  font-weight: 600;
+  background: var(--bg-subtle);
+}
+
+/* Docs layout */
+.docs-wrap {
+  max-width: 980px;
+  margin: 0 auto;
+  padding: 0 22px;
+  display: grid;
+  grid-template-columns: 210px minmax(0, 1fr);
+  gap: 40px;
+}
+
+.docs-toc {
+  padding-top: 36px;
+  position: sticky;
+  top: 0;
+  align-self: start;
+  font-size: 0.9rem;
+}
+
+.docs-toc ul {
+  list-style: none;
+  padding: 0;
