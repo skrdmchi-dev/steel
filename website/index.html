@@ -125,3 +125,35 @@ myproject_ts/
           <td><code>lua</code></td>
           <td>Lua 5.4 modules returning exported tables</td>
         </tr>
+      </tbody>
+    </table>
+
+    <h2>Install</h2>
+    <p>
+      On Windows, download <code>Steel-v1.0.0-Windows-x64.zip</code> from <a href="https://github.com/skrdmchi-dev/steel/releases" target="_blank" rel="noopener noreferrer">GitHub Releases</a> and run <code>steel-setup.exe</code>. To build from source with Rust:
+    </p>
+    <pre><code>git clone https://github.com/skrdmchi-dev/steel.git
+cd steel
+cargo build --release
+cargo test</code></pre>
+
+    <h2>Basic commands</h2>
+    <pre><code>steel                           # interactive REPL
+steel run app.steel             # run directly
+steel compile app.steel cpp     # compile to C++20
+steel compile app.steel ts      # compile to TypeScript
+steel compile app.steel all     # compile to all 8 targets
+steel test examples/tests.steel # run unit tests
+steel check app.steel           # syntax and type check
+steel fmt app.steel             # format source</code></pre>
+  </main>
+
+  <footer>
+    <div class="wrap">
+      Steel is licensed under the <a href="https://github.com/skrdmchi-dev/steel/blob/main/LICENSE" target="_blank" rel="noopener noreferrer">GNU GPL v3.0</a>.
+    </div>
+  </footer>
+
+  <script src="/app.js"></script>
+</body>
+</html>
