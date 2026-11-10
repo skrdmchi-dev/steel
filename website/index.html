@@ -30,3 +30,35 @@
       Steel (<code>.steel</code>) is a small programming language written in Rust. You can run files directly with the built-in interpreter or stack VM, or compile single files and multi-file projects into C11, C++20, Rust, Go, Python 3, JavaScript, TypeScript, or Lua.
     </p>
 
+    <div class="inline-links">
+      <a href="/docs">Documentation</a>
+      <a href="https://github.com/skrdmchi-dev/steel/releases" target="_blank" rel="noopener noreferrer">Download v1.0.0</a>
+      <a href="https://github.com/skrdmchi-dev/steel" target="_blank" rel="noopener noreferrer">Source code</a>
+    </div>
+
+    <div class="example-box">
+      <div class="tab-row" role="tablist" aria-label="Language output">
+        <button class="tab-btn" role="tab" type="button" aria-selected="true" data-lang="steel">Steel</button>
+        <button class="tab-btn" role="tab" type="button" aria-selected="false" data-lang="c">C11</button>
+        <button class="tab-btn" role="tab" type="button" aria-selected="false" data-lang="cpp">C++20</button>
+        <button class="tab-btn" role="tab" type="button" aria-selected="false" data-lang="rust">Rust</button>
+        <button class="tab-btn" role="tab" type="button" aria-selected="false" data-lang="go">Go</button>
+        <button class="tab-btn" role="tab" type="button" aria-selected="false" data-lang="python">Python</button>
+        <button class="tab-btn" role="tab" type="button" aria-selected="false" data-lang="js">JS</button>
+        <button class="tab-btn" role="tab" type="button" aria-selected="false" data-lang="ts">TS</button>
+        <button class="tab-btn" role="tab" type="button" aria-selected="false" data-lang="lua">Lua</button>
+      </div>
+      <div class="example-meta">
+        <span id="ex-file">damage.steel</span>
+        <span id="ex-cmd">steel run damage.steel</span>
+      </div>
+      <pre><code id="ex-code"></code></pre>
+    </div>
+
+    <h2>Working with other codebases</h2>
+    <p>
+      When you compile a folder or a file with <code>import</code> statements, Steel keeps every module as its own file instead of flattening the project into one giant output. Pass <code>--bundle</code> if you specifically want a single standalone file.
+    </p>
+    <pre><code>steel compile myproject cpp
+steel compile myproject ts
+
