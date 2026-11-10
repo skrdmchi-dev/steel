@@ -62,3 +62,34 @@
     <pre><code>steel compile myproject cpp
 steel compile myproject ts
 
+myproject_cpp/
+  steel_rt.hpp
+  world.hpp, world.cpp
+  main.cpp
+
+myproject_ts/
+  tsconfig.json
+  world.ts
+  main.ts</code></pre>
+    <p>
+      C++20 output uses standard library RAII types (<code>std::variant</code>, <code>std::shared_ptr</code>, <code>std::function</code>, native exceptions) and compiles cleanly under <code>g++ -std=c++20 -Wall -Wextra -Wpedantic</code>. TypeScript output emits inferred types with <code>strict: true</code> and no <code>@ts-nocheck</code>.
+    </p>
+
+    <h2>Targets</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Language</th>
+          <th>Flag</th>
+          <th>Output</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>C (C11)</td>
+          <td><code>c</code></td>
+          <td><code>.h</code> / <code>.c</code> modules + <code>steel_rt.h</code>, optional <code>--bin --release</code></td>
+        </tr>
+        <tr>
+          <td>C++ (C++20)</td>
+          <td><code>cpp</code></td>
