@@ -128,3 +128,47 @@ _print("Critical hit:", hit);`
         return base
     end
     return (base * mult)
+end
+
+local hit = calc_damage(24, 1.5)
+print("Critical hit:", hit)`
+  }
+};
+
+document.addEventListener("DOMContentLoaded", () => {
+  const tabs = document.querySelectorAll("[data-lang]");
+  const codeEl = document.getElementById("ex-code");
+  const fileEl = document.getElementById("ex-file");
+  const cmdEl = document.getElementById("ex-cmd");
+
+  if (tabs.length && codeEl) {
+    const pick = (key) => {
+      const item = EXAMPLES[key];
+      if (!item) return;
+      tabs.forEach((b) => b.setAttribute("aria-selected", String(b.dataset.lang === key)));
+      codeEl.textContent = item.code;
+      if (fileEl) fileEl.textContent = item.file;
+      if (cmdEl) cmdEl.textContent = item.cmd;
+    };
+    tabs.forEach((b) => b.addEventListener("click", () => pick(b.dataset.lang)));
+    pick("steel");
+  }
+
+  const filterInput = document.getElementById("docs-filter");
+  const sections = Array.from(document.querySelectorAll(".docs-main section"));
+  const tocLinks = Array.from(document.querySelectorAll(".docs-toc a"));
+
+  if (filterInput && sections.length) {
+    filterInput.addEventListener("input", () => {
+      const q = filterInput.value.trim().toLowerCase();
+      sections.forEach((sec) => {
+        const match = !q || sec.textContent.toLowerCase().includes(q);
+        sec.style.display = match ? "" : "none";
+      });
+      tocLinks.forEach((a) => {
+        const target = document.getElementById(a.getAttribute("href").slice(1));
+        a.parentElement.style.display = target && target.style.display !== "none" ? "" : "none";
+      });
+    });
+  }
+});
