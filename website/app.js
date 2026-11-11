@@ -85,3 +85,46 @@ func main() {
   },
   python: {
     file: "damage.py",
+    cmd: "steel compile damage.steel python",
+    code: `def calc_damage(base, mult):
+    if (mult <= 0):
+        return base
+    return (base * mult)
+
+hit = calc_damage(24, 1.5)
+print("Critical hit:", hit)`
+  },
+  js: {
+    file: "damage.js",
+    cmd: "steel compile damage.steel js",
+    code: `function calc_damage(base, mult) {
+    if (mult <= 0) {
+        return base;
+    }
+    return base * mult;
+}
+
+let hit = calc_damage(24, 1.5);
+console.log("Critical hit:", hit);`
+  },
+  ts: {
+    file: "damage.ts",
+    cmd: "steel compile damage.steel ts",
+    code: `function calc_damage(base: number, mult: number): number {
+    if ((mult <= 0)) {
+        return base;
+    }
+    return (base * mult);
+}
+
+let hit: number = calc_damage(24, 1.5);
+_print("Critical hit:", hit);`
+  },
+  lua: {
+    file: "damage.lua",
+    cmd: "steel compile damage.steel lua",
+    code: `local function calc_damage(base, mult)
+    if (mult <= 0) then
+        return base
+    end
+    return (base * mult)
