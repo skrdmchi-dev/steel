@@ -56,3 +56,31 @@ cargo test</code></pre>
       <section id="syntax">
         <h2>Syntax</h2>
         <p>Steel uses curly braces with optional semicolons and optional <code>let</code>. First-time assignments declare variables automatically, while <code>let</code> and <code>const</code> remain valid when you want explicit declarations.</p>
+        <pre><code>name = "Steel"
+const version = 1.0
+active = true
+items = [1, 2, 3]
+cfg = { host: "localhost", port: 8080 }
+
+print("Running ${name} v${version}")</code></pre>
+        <p>Control flow supports <code>if</code> / <code>else if</code> / <code>else</code>, <code>while</code>, <code>for i in 0..10</code>, <code>for x in arr</code>, <code>break</code>, <code>continue</code>, ternary <code>a ? b : c</code>, null coalescing <code>a ?? b</code>, and <code>try</code> / <code>catch</code> / <code>throw</code>.</p>
+      </section>
+
+      <section id="functions">
+        <h2>Functions &amp; closures</h2>
+        <p>Functions support block bodies, single-expression bodies (<code>=</code>), default parameters, arrow lambdas (<code>=&gt;</code>), pipes (<code>|&gt;</code>), and stateful closures across all 8 targets.</p>
+        <pre><code>fn double(x) = x * 2
+fn add(a, b = 10) = a + b
+
+score = 5 |&gt; double |&gt; add
+
+fn make_counter(start) {
+    count = start
+    return step =&gt; {
+        count += step
+        return count
+    }
+}
+
+cnt = make_counter(10)
+print(cnt(5), cnt(3)) // 15 18</code></pre>
