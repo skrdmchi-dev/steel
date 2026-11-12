@@ -27,3 +27,32 @@
   <div class="docs-wrap">
     <aside class="docs-toc" aria-label="Sections">
       <input id="docs-filter" class="docs-search" type="search" placeholder="Filter..." aria-label="Filter sections" />
+      <ul>
+        <li><a href="#install">Install</a></li>
+        <li><a href="#syntax">Syntax</a></li>
+        <li><a href="#functions">Functions &amp; closures</a></li>
+        <li><a href="#classes">Classes &amp; inheritance</a></li>
+        <li><a href="#modules">Multi-file projects</a></li>
+        <li><a href="#targets">Compilation targets</a></li>
+        <li><a href="#stdlib">Standard library</a></li>
+        <li><a href="#cli">CLI reference</a></li>
+      </ul>
+    </aside>
+
+    <main class="docs-main">
+      <h1>Documentation</h1>
+      <p class="lead">Language reference and CLI usage for Steel v1.0.</p>
+
+      <section id="install">
+        <h2>Install</h2>
+        <p>On Windows, download <code>Steel-v1.0.0-Windows-x64.zip</code> from <a href="https://github.com/skrdmchi-dev/steel/releases" target="_blank" rel="noopener noreferrer">GitHub Releases</a>, extract it, and run <code>steel-setup.exe</code>.</p>
+        <p>To build from source with Cargo:</p>
+        <pre><code>git clone https://github.com/skrdmchi-dev/steel.git
+cd steel
+cargo build --release
+cargo test</code></pre>
+      </section>
+
+      <section id="syntax">
+        <h2>Syntax</h2>
+        <p>Steel uses curly braces with optional semicolons and optional <code>let</code>. First-time assignments declare variables automatically, while <code>let</code> and <code>const</code> remain valid when you want explicit declarations.</p>
