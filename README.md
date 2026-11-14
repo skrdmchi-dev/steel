@@ -48,3 +48,28 @@ print("Winner: ${best} pts")
 ```
 
 ## CLI
+
+```bash
+steel                           # start REPL
+steel run app.steel             # run file or project directory
+steel compile app.steel cpp     # compile to C++20
+steel compile myproj ts         # compile multi-file project to TypeScript
+steel compile myproj c --bundle # combine multi-file project into one C file
+steel compile app.steel rust --bin --release
+steel check app.steel           # static check
+steel test examples/tests.steel # run tests
+steel fmt app.steel             # format source
+steel watch app.steel           # rerun on save
+steel vm app.steel --run        # run on bytecode VM
+steel init my-app               # scaffold new project
+```
+
+## Running compiler tests
+
+```bash
+cargo test
+```
+
+## License
+
+GNU General Public License v3.0. See [LICENSE](LICENSE).
