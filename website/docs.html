@@ -113,3 +113,32 @@ steel compile myproject c --bundle</code></pre>
       </section>
 
       <section id="targets">
+        <h2>Compilation targets</h2>
+        <pre><code>steel compile app.steel c
+steel compile app.steel cpp
+steel compile app.steel rust --bin --release
+steel compile app.steel go
+steel compile app.steel python
+steel compile app.steel js
+steel compile app.steel ts
+steel compile app.steel lua
+steel compile app.steel all</code></pre>
+        <p>C++20 output uses standard RAII containers (<code>std::variant</code>, <code>std::shared_ptr</code>, <code>std::function</code>, native exceptions) and compiles with <code>-Wall -Wextra -Wpedantic</code>. TypeScript output emits inferred types and a strict <code>tsconfig.json</code> without <code>@ts-nocheck</code>.</p>
+      </section>
+
+      <section id="stdlib">
+        <h2>Standard library</h2>
+        <p>All functions below are supported across the Steel VM and all 8 transpiled targets:</p>
+        <ul>
+          <li><strong>Types &amp; core:</strong> <code>print</code>, <code>println</code>, <code>assert</code>, <code>type</code>, <code>str</code>, <code>num</code>, <code>int</code>, <code>bool</code></li>
+          <li><strong>Math:</strong> <code>abs</code>, <code>sqrt</code>, <code>floor</code>, <code>ceil</code>, <code>round</code>, <code>min</code>, <code>max</code>, <code>clamp</code>, <code>sign</code>, <code>sin</code>, <code>cos</code>, <code>tan</code>, <code>atan2</code>, <code>log</code>, <code>exp</code>, <code>pow</code>, <code>PI</code>, <code>E</code></li>
+          <li><strong>Strings:</strong> <code>len</code>, <code>upper</code>, <code>lower</code>, <code>trim</code>, <code>split</code>, <code>join</code>, <code>replace</code>, <code>contains</code>, <code>index_of</code>, <code>starts_with</code>, <code>ends_with</code>, <code>slice</code>, <code>reverse</code>, <code>repeat</code>, <code>pad_start</code>, <code>pad_end</code>, <code>char_code</code>, <code>from_char_code</code></li>
+          <li><strong>Collections:</strong> <code>push</code>, <code>pop</code>, <code>concat</code>, <code>slice</code>, <code>sort</code>, <code>reverse</code>, <code>range</code>, <code>keys</code>, <code>values</code>, <code>has_key</code>, <code>delete_key</code>, <code>sum</code>, <code>avg</code>, <code>unique</code>, <code>flat</code>, <code>zip</code>, <code>enumerate</code></li>
+          <li><strong>Higher-order:</strong> <code>map</code>, <code>filter</code>, <code>reduce</code>, <code>find</code>, <code>any</code>, <code>all</code></li>
+          <li><strong>JSON &amp; hashing:</strong> <code>json_stringify</code>, <code>json_parse</code>, <code>hash</code> (FNV-1a 64-bit)</li>
+          <li><strong>Files &amp; system:</strong> <code>read_file</code>, <code>write_file</code>, <code>append_file</code>, <code>remove_file</code>, <code>file_exists</code>, <code>env</code>, <code>clock</code>, <code>time_ms</code></li>
+        </ul>
+      </section>
+
+      <section id="cli">
+        <h2>CLI reference</h2>
