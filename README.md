@@ -23,3 +23,28 @@ Website & docs: https://steel-lang.pages.dev
 
 ## Install
 
+### Windows
+Download `Steel-v1.0.0-Windows-x64.zip` from [Releases](https://github.com/skrdmchi-dev/steel/releases), extract it, and run `steel-setup.exe`.
+
+### Build from source
+```bash
+git clone https://github.com/skrdmchi-dev/steel.git
+cd steel
+cargo build --release
+```
+
+## Example
+
+```js
+fn boost(x) = x * 2
+fn bonus(x) = x + 15
+
+scores = [10, 25, 40]
+top = scores.filter(x => x >= 20).map(boost)
+best = top[1] |> bonus
+
+print("Top scores:", top)
+print("Winner: ${best} pts")
+```
+
+## CLI
