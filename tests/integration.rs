@@ -101,3 +101,55 @@ fn bfs_shortest(adj, start, goal) {
     }
     return -1
 }
+
+fn make_counter(start) {
+    count = start
+    return step => {
+        count += step
+        return count
+    }
+}
+
+d = new GuideDog("Rex", "Sam")
+csv = "eng,120\nsales,80\neng,55\nops,40\nsales,20"
+totals = parse_csv_totals(csv)
+graph = {
+    A: ["B", "C"],
+    B: ["D"],
+    C: ["D", "E"],
+    D: ["F"],
+    E: ["F"],
+    F: []
+}
+hops = bfs_shortest(graph, "A", "F")
+cnt = make_counter(10)
+c1 = cnt(5)
+c2 = cnt(3)
+print("INHERIT:", d.badge())
+print("CSV:", totals["eng"], totals["sales"], totals["ops"])
+print("BFS:", hops)
+print("CLOSURE:", c1, c2)
+"#;
+
+    let steel_file = tmp.join("app.steel");
+    fs::write(&steel_file, src).unwrap();
+
+    let run_steel = Command::new(steel_bin())
+        .args(["run", steel_file.to_str().unwrap()])
+        .output()
+        .expect("steel run failed");
+    assert!(
+        run_steel.status.success(),
+        "steel run failed:\n{}",
+        String::from_utf8_lossy(&run_steel.stderr)
+    );
+    let expected = String::from_utf8_lossy(&run_steel.stdout)
+        .replace("\r\n", "\n")
+        .trim()
+        .to_string();
+    assert_eq!(
+        expected,
+        "INHERIT: dog:Rex->Sam\nCSV: 175 100 40\nBFS: 3\nCLOSURE: 15 18"
+    );
+
+    // Verify TypeScript: no @ts-nocheck, real types, and identical runtime output
