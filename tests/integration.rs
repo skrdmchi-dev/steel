@@ -50,3 +50,54 @@ class Animal {
     describe() = this.kind() + ":" + this.name
 }
 
+class Dog extends Animal {
+    init(name) {
+        this.name = name
+    }
+    kind() = "dog"
+}
+
+class GuideDog extends Dog {
+    init(name, owner) {
+        this.name = name
+        this.owner = owner
+    }
+    badge() = this.describe() + "->" + this.owner
+}
+
+fn parse_csv_totals(raw) {
+    lines = split(trim(raw), "\n")
+    totals = {}
+    for line in lines {
+        cols = split(trim(line), ",")
+        if len(cols) == 2 {
+            dept = cols[0]
+            amt = num(cols[1])
+            prev = totals[dept] ?? 0
+            totals[dept] = prev + amt
+        }
+    }
+    return totals
+}
+
+fn bfs_shortest(adj, start, goal) {
+    queue = [start]
+    dist = {}
+    dist[start] = 0
+    head = 0
+    while head < len(queue) {
+        cur = queue[head]
+        head += 1
+        if cur == goal {
+            return dist[cur]
+        }
+        nbrs = adj[cur] ?? []
+        for nxt in nbrs {
+            if !contains(dist, nxt) {
+                dist[nxt] = dist[cur] + 1
+                push(queue, nxt)
+            }
+        }
+    }
+    return -1
+}
