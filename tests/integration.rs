@@ -153,3 +153,55 @@ print("CLOSURE:", c1, c2)
     );
 
     // Verify TypeScript: no @ts-nocheck, real types, and identical runtime output
+    let ts_file = tmp.join("app.ts");
+    let ts_comp = Command::new(steel_bin())
+        .args([
+            "compile",
+            steel_file.to_str().unwrap(),
+            "ts",
+            "--out",
+            ts_file.to_str().unwrap(),
+            "--force",
+        ])
+        .output()
+        .unwrap();
+    assert!(ts_comp.status.success());
+    let ts_code = fs::read_to_string(&ts_file).unwrap();
+    assert!(!ts_code.contains("@ts-nocheck"));
+    if has_cmd("node") {
+        let out = Command::new("node").arg(&ts_file).output().unwrap();
+        assert!(
+            out.status.success(),
+            "node ts failed:\n{}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        let actual = String::from_utf8_lossy(&out.stdout)
+            .replace("\r\n", "\n")
+            .trim()
+            .to_string();
+        assert_eq!(actual, expected, "TypeScript output mismatch");
+    }
+
+    // Verify C++20: strict -Wall -Wextra -Wpedantic and identical output
+    let cpp_file = tmp.join("app.cpp");
+    let cpp_comp = Command::new(steel_bin())
+        .args([
+            "compile",
+            steel_file.to_str().unwrap(),
+            "cpp",
+            "--out",
+            cpp_file.to_str().unwrap(),
+            "--force",
+        ])
+        .output()
+        .unwrap();
+    assert!(cpp_comp.status.success());
+    let cpp_code = fs::read_to_string(&cpp_file).unwrap();
+    assert!(cpp_code.contains("std::variant"));
+    assert!(!cpp_code.contains("calloc("));
+    if has_cmd("g++") {
+        let exe = tmp.join("app_cpp.exe");
+        let build = Command::new("g++")
+            .args([
+                "-std=c++20",
+                "-O2",
