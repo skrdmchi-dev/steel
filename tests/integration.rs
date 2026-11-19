@@ -205,3 +205,54 @@ print("CLOSURE:", c1, c2)
             .args([
                 "-std=c++20",
                 "-O2",
+                "-Wall",
+                "-Wextra",
+                "-Wpedantic",
+                cpp_file.to_str().unwrap(),
+                "-o",
+                exe.to_str().unwrap(),
+            ])
+            .output()
+            .unwrap();
+        assert!(
+            build.status.success(),
+            "g++ C++20 build failed:\n{}",
+            String::from_utf8_lossy(&build.stderr)
+        );
+        let run = Command::new(&exe).output().unwrap();
+        let actual = String::from_utf8_lossy(&run.stdout)
+            .replace("\r\n", "\n")
+            .trim()
+            .to_string();
+        assert_eq!(actual, expected, "C++20 output mismatch");
+    }
+
+    // Verify Python, JS, C11, Rust, Go, Lua
+    for (lang, ext) in [
+        ("python", "py"),
+        ("js", "js"),
+        ("c", "c"),
+        ("rust", "rs"),
+        ("go", "go"),
+        ("lua", "lua"),
+    ] {
+        let out_file = tmp.join(format!("app.{}", ext));
+        let comp = Command::new(steel_bin())
+            .args([
+                "compile",
+                steel_file.to_str().unwrap(),
+                lang,
+                "--out",
+                out_file.to_str().unwrap(),
+                "--force",
+            ])
+            .output()
+            .unwrap();
+        assert!(
+            comp.status.success(),
+            "compile {} failed:\n{}",
+            lang,
+            String::from_utf8_lossy(&comp.stderr)
+        );
+        assert!(Path::new(&out_file).exists());
+    }
