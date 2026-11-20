@@ -256,3 +256,55 @@ print("CLOSURE:", c1, c2)
         );
         assert!(Path::new(&out_file).exists());
     }
+
+    if has_cmd("python") {
+        let out = Command::new("python").arg(tmp.join("app.py")).output().unwrap();
+        assert!(out.status.success(), "python failed: {}", String::from_utf8_lossy(&out.stderr));
+        assert_eq!(String::from_utf8_lossy(&out.stdout).replace("\r\n", "\n").trim(), expected);
+    }
+    if has_cmd("node") {
+        let out = Command::new("node").arg(tmp.join("app.js")).output().unwrap();
+        assert!(out.status.success(), "js failed: {}", String::from_utf8_lossy(&out.stderr));
+        assert_eq!(String::from_utf8_lossy(&out.stdout).replace("\r\n", "\n").trim(), expected);
+    }
+    if has_cmd("gcc") {
+        let exe = tmp.join("app_c.exe");
+        let build = Command::new("gcc")
+            .args(["-std=c11", "-O2", tmp.join("app.c").to_str().unwrap(), "-lm", "-o", exe.to_str().unwrap()])
+            .output()
+            .unwrap();
+        assert!(build.status.success(), "gcc failed:\n{}", String::from_utf8_lossy(&build.stderr));
+        let out = Command::new(&exe).output().unwrap();
+        assert_eq!(String::from_utf8_lossy(&out.stdout).replace("\r\n", "\n").trim(), expected, "C11 mismatch");
+    }
+    if has_cmd("rustc") {
+        let exe = tmp.join("app_rs.exe");
+        let build = Command::new("rustc")
+            .args(["-O", "-A", "warnings", tmp.join("app.rs").to_str().unwrap(), "-o", exe.to_str().unwrap()])
+            .output()
+            .unwrap();
+        assert!(build.status.success(), "rustc failed:\n{}", String::from_utf8_lossy(&build.stderr));
+        let out = Command::new(&exe).output().unwrap();
+        assert_eq!(String::from_utf8_lossy(&out.stdout).replace("\r\n", "\n").trim(), expected, "Rust mismatch");
+    }
+    if has_cmd("go") {
+        let out = Command::new("go")
+            .args(["run", tmp.join("app.go").to_str().unwrap()])
+            .output()
+            .unwrap();
+        assert!(out.status.success(), "go run failed:\n{}", String::from_utf8_lossy(&out.stderr));
+        assert_eq!(String::from_utf8_lossy(&out.stdout).replace("\r\n", "\n").trim(), expected, "Go mismatch");
+    }
+    if has_cmd("lua") {
+        let out = Command::new("lua").arg(tmp.join("app.lua")).output().unwrap();
+        assert!(out.status.success(), "lua failed:\n{}", String::from_utf8_lossy(&out.stderr));
+        let actual = String::from_utf8_lossy(&out.stdout)
+            .replace("\r\n", "\n")
+            .replace(".0", "")
+            .trim()
+            .to_string();
+        assert_eq!(actual, expected, "Lua mismatch");
+    }
+
+    let _ = fs::remove_dir_all(&tmp);
+}
