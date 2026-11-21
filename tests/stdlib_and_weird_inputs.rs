@@ -137,3 +137,73 @@ fn run_all_9_runtimes(test_name: &str, src: &str) {
         );
         let run_cpp = Command::new(&cpp_exe).output().unwrap();
         assert!(
+            run_cpp.status.success(),
+            "[{}] cpp binary failed:\n{}",
+            test_name,
+            String::from_utf8_lossy(&run_cpp.stderr)
+        );
+        let got = String::from_utf8_lossy(&run_cpp.stdout).replace("\r\n", "\n").trim().to_string();
+        assert_eq!(got, expected, "[{}] C++20 output mismatch", test_name);
+    }
+
+    // 4. Python 3
+    if has_cmd("python") {
+        let py_file = tmp.join("app.py");
+        let c = Command::new(steel_bin())
+            .args(["compile", steel_file.to_str().unwrap(), "--target", "python", "-o", py_file.to_str().unwrap()])
+            .output()
+            .unwrap();
+        assert!(c.status.success());
+        let r = Command::new("python").arg(&py_file).output().unwrap();
+        assert!(
+            r.status.success(),
+            "[{}] python failed:\n{}\n--- PY ---\n{}",
+            test_name,
+            String::from_utf8_lossy(&r.stderr),
+            fs::read_to_string(&py_file).unwrap()
+        );
+        let got = String::from_utf8_lossy(&r.stdout).replace("\r\n", "\n").trim().to_string();
+        assert_eq!(got, expected, "[{}] Python output mismatch", test_name);
+    }
+
+    // 5. JavaScript
+    if has_cmd("node") {
+        let js_file = tmp.join("app.js");
+        let c = Command::new(steel_bin())
+            .args(["compile", steel_file.to_str().unwrap(), "--target", "js", "-o", js_file.to_str().unwrap()])
+            .output()
+            .unwrap();
+        assert!(c.status.success());
+        let r = Command::new("node").arg(&js_file).output().unwrap();
+        assert!(
+            r.status.success(),
+            "[{}] js failed:\n{}",
+            test_name,
+            String::from_utf8_lossy(&r.stderr)
+        );
+        let got = String::from_utf8_lossy(&r.stdout).replace("\r\n", "\n").trim().to_string();
+        assert_eq!(got, expected, "[{}] JS output mismatch", test_name);
+    }
+
+    // 6. C11
+    if has_cmd("gcc") {
+        let c_file = tmp.join("app.c");
+        let c = Command::new(steel_bin())
+            .args(["compile", steel_file.to_str().unwrap(), "--target", "c", "-o", c_file.to_str().unwrap()])
+            .output()
+            .unwrap();
+        assert!(c.status.success());
+        let c_exe = tmp.join(if cfg!(windows) { "app_c.exe" } else { "app_c" });
+        let gcc = Command::new("gcc")
+            .args([c_file.to_str().unwrap(), "-O2", "-lm", "-o", c_exe.to_str().unwrap()])
+            .output()
+            .unwrap();
+        assert!(
+            gcc.status.success(),
+            "[{}] gcc failed:\n{}",
+            test_name,
+            String::from_utf8_lossy(&gcc.stderr)
+        );
+        let r = Command::new(&c_exe).output().unwrap();
+        assert!(r.status.success(), "[{}] C11 binary failed", test_name);
+        let got = String::from_utf8_lossy(&r.stdout).replace("\r\n", "\n").trim().to_string();
