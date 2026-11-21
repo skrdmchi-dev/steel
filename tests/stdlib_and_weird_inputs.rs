@@ -68,3 +68,72 @@ fn run_all_9_runtimes(test_name: &str, src: &str) {
         ts_dir.join("env.d.ts"),
         "declare module \"node:fs\" { export function readFileSync(p: string, e: string): string; export function writeFileSync(p: string, d: string): void; export function appendFileSync(p: string, d: string): void; export function unlinkSync(p: string): void; export function existsSync(p: string): boolean; }\ndeclare const process: { env: Record<string, string | undefined> };\n",
     )
+    .unwrap();
+    if has_cmd("tsc.cmd") {
+        let tsc = Command::new("tsc.cmd")
+            .args(["--noEmit", "-p", ts_dir.join("tsconfig.json").to_str().unwrap()])
+            .output()
+            .expect("tsc failed");
+        assert!(
+            tsc.status.success(),
+            "[{}] tsc --noEmit failed:\n{}\n{}\n--- TS ---\n{}",
+            test_name,
+            String::from_utf8_lossy(&tsc.stdout),
+            String::from_utf8_lossy(&tsc.stderr),
+            ts_code
+        );
+    }
+    if has_cmd("node") {
+        let run_ts = Command::new("node").arg(&ts_file).output().unwrap();
+        assert!(
+            run_ts.status.success(),
+            "[{}] node ts failed:\n{}",
+            test_name,
+            String::from_utf8_lossy(&run_ts.stderr)
+        );
+        let got = String::from_utf8_lossy(&run_ts.stdout).replace("\r\n", "\n").trim().to_string();
+        assert_eq!(got, expected, "[{}] TS output mismatch", test_name);
+    }
+
+    // 3. C++20 (-std=c++20 -O2 -Wall -Wextra -Wpedantic)
+    let cpp_file = tmp.join("app.cpp");
+    let cpp_comp = Command::new(steel_bin())
+        .args([
+            "compile",
+            steel_file.to_str().unwrap(),
+            "--target",
+            "cpp",
+            "-o",
+            cpp_file.to_str().unwrap(),
+        ])
+        .output()
+        .expect("cpp compile failed");
+    assert!(
+        cpp_comp.status.success(),
+        "[{}] cpp compile failed: {}",
+        test_name,
+        String::from_utf8_lossy(&cpp_comp.stderr)
+    );
+    if has_cmd("g++") {
+        let cpp_exe = tmp.join(if cfg!(windows) { "app_cpp.exe" } else { "app_cpp" });
+        let gpp = Command::new("g++")
+            .args([
+                "-std=c++20",
+                "-O2",
+                "-Wall",
+                "-Wextra",
+                "-Wpedantic",
+                cpp_file.to_str().unwrap(),
+                "-o",
+                cpp_exe.to_str().unwrap(),
+            ])
+            .output()
+            .unwrap();
+        assert!(
+            gpp.status.success(),
+            "[{}] g++ failed:\n{}",
+            test_name,
+            String::from_utf8_lossy(&gpp.stderr)
+        );
+        let run_cpp = Command::new(&cpp_exe).output().unwrap();
+        assert!(
