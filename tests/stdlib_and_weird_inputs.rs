@@ -346,3 +346,72 @@ print("IO:", ex1, txt, rm, ex2)
 "#,
         io_tmp
     );
+
+    run_all_9_runtimes("stdlib_parity", &src);
+}
+
+#[test]
+fn weird_inputs_parity_across_all_9_runtimes() {
+    let src = r#"
+// 1. Weird strings & escapes
+e = ""
+q = "say \"hi\""
+bs = "a\\b\\c"
+print("W_STR:", len(e), q, bs, len(split("abc", "")), replace("aaa", "a", ""), replace("abc", "z", "q"))
+
+// 2. Weird numbers, unary chains, null coalesce, short-circuit
+print("W_NUM:", -(-5), -(1 + 2) * -3, ((((1 + 2) * 3) - 4) / 2))
+print("W_NULL:", null ?? null ?? 0 ?? 99, null ?? false ?? true, null ?? "" ?? "fallback")
+
+side = 0
+fn bump() {
+    side += 1
+    return true
+}
+sc1 = false && bump()
+sc2 = true || bump()
+print("W_SC:", sc1, sc2, side)
+
+// 3. Nested ternary & deep closures + non-aliasing factories
+t = 1 > 2 ? "a" : (3 < 4 ? "b" : "c")
+print("W_TERN:", t)
+
+fn make_adder_factory(base) {
+    total = base
+    return step => {
+        return mult => {
+            total += step * mult
+            return total
+        }
+    }
+}
+f1 = make_adder_factory(10)(2)
+f2 = make_adder_factory(100)(5)
+print("W_CLOS:", f1(3), f1(4), f2(1), f2(2))
+
+// 4. Mutual recursion
+fn is_even(n) {
+    if n == 0 { return true }
+    return is_odd(n - 1)
+}
+fn is_odd(n) {
+    if n == 0 { return false }
+    return is_even(n - 1)
+}
+print("W_REC:", is_even(10), is_odd(10), is_even(7), is_odd(7))
+
+// 5. Weird control flow: return inside try inside loop, nested try/catch rethrow
+fn try_in_loop(limit) {
+    i = 0
+    while i < limit {
+        try {
+            if i == 3 {
+                return i * 10
+            }
+            if i == 1 {
+                throw "skip1"
+            }
+        } catch (err) {
+            i += 1
+            continue
+        }
