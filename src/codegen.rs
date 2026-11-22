@@ -1596,21 +1596,30 @@ fn emit_rust(program: &Program) -> String {
          \x20   pub fn call(&self, args: Vec<SVal>) -> SVal {\n\
          \x20       if let SVal::Func(f) = self { f(args) } else { panic!(\"Attempted to call non-function: {}\", self) }\n\
          \x20   }\n\
-         \x20   pub fn get(&self, idx: SVal) -> SVal {\n\
+         \x20   #[inline] pub fn get(&self, idx: SVal) -> SVal { self.get_ref(&idx) }\n\
+         \x20   #[inline] pub fn get_ref(&self, idx: &SVal) -> SVal {\n\
          \x20       match (self, idx) {\n\
-         \x20           (SVal::Arr(a), SVal::Num(n)) => { let b = a.borrow(); let mut i = n as isize; if i < 0 { i += b.len() as isize; } if i >= 0 { b.get(i as usize).cloned().unwrap_or(SVal::Null) } else { SVal::Null } },\n\
-         \x20           (SVal::Map(m), SVal::Str(k)) => m.borrow().get(&k).cloned().unwrap_or(SVal::Null),\n\
+         \x20           (SVal::Arr(a), SVal::Num(n)) => { let b = a.borrow(); let mut i = *n as isize; if i < 0 { i += b.len() as isize; } if i >= 0 { b.get(i as usize).cloned().unwrap_or(SVal::Null) } else { SVal::Null } },\n\
+         \x20           (SVal::Map(m), SVal::Str(k)) => m.borrow().get(k).cloned().unwrap_or(SVal::Null),\n\
          \x20           _ => SVal::Null,\n\
          \x20       }\n\
          \x20   }\n\
-         \x20   pub fn set(&self, idx: SVal, val: SVal) {\n\
+         \x20   #[inline] pub fn get_key(&self, k: &str) -> SVal {\n\
+         \x20       if let SVal::Map(m) = self { m.borrow().get(k).cloned().unwrap_or(SVal::Null) } else { SVal::Null }\n\
+         \x20   }\n\
+         \x20   #[inline] pub fn set(&self, idx: SVal, val: SVal) {\n\
          \x20       match (self, idx) {\n\
          \x20           (SVal::Arr(a), SVal::Num(n)) => { let mut b = a.borrow_mut(); let mut i = n as isize; if i < 0 { i += b.len() as isize; } if i >= 0 && (i as usize) < b.len() { b[i as usize] = val; } }\n\
          \x20           (SVal::Map(m), SVal::Str(k)) => { m.borrow_mut().insert(k, val); }\n\
          \x20           _ => {}\n\
          \x20       }\n\
          \x20   }\n\
-         \x20   pub fn iter_vec(&self) -> Vec<SVal> {\n\
+         \x20   #[inline] pub fn set_key(&self, k: &str, val: SVal) {\n\
+         \x20       if let SVal::Map(m) = self { m.borrow_mut().insert(k.to_string(), val); }\n\
+         \x20   }\n\
+         \x20   #[inline] pub fn eq_str(&self, s: &str) -> bool { matches!(self, SVal::Str(v) if v == s) }\n\
+         \x20   #[inline] pub fn eq_num(&self, n: f64) -> bool { matches!(self, SVal::Num(v) if *v == n) }\n\
+         \x20   #[inline] pub fn iter_vec(&self) -> Vec<SVal> {\n\
          \x20       match self { SVal::Arr(a) => a.borrow().clone(), _ => vec![] }\n\
          \x20   }\n\
          }\n\n\
@@ -1732,11 +1741,45 @@ fn emit_rust(program: &Program) -> String {
     }
     RS_GLOBALS.with(|gs| gs.borrow_mut().clear());
 
+    let all_rs = format!("{}{}", top_fns, main_body);
+    out.push_str(&rs_direct_stdlib_helpers(&all_rs));
     out.push_str(&top_fns);
     out.push_str("fn main() {\n");
     out.push_str(&rs_builtins_preamble(&main_body));
     out.push_str(&main_body);
     out.push_str("}\n");
+    out
+}
+
+fn rs_direct_stdlib_helpers(code: &str) -> String {
+    let mut out = String::new();
+    for (token, def) in [
+        ("__st_len(", "#[inline] fn __st_len(v: &SVal) -> SVal { match v { SVal::Arr(a) => SVal::Num(a.borrow().len() as f64), SVal::Str(s) => SVal::Num(s.chars().count() as f64), SVal::Map(m) => SVal::Num(m.borrow().len() as f64), _ => SVal::Num(0.0) } }\n"),
+        ("__st_push(", "#[inline] fn __st_push(a: &SVal, v: SVal) -> SVal { if let SVal::Arr(arr) = a { arr.borrow_mut().push(v); return a.clone(); } SVal::Null }\n"),
+        ("__st_pop(", "#[inline] fn __st_pop(a: &SVal) -> SVal { if let SVal::Arr(arr) = a { return arr.borrow_mut().pop().unwrap_or(SVal::Null); } SVal::Null }\n"),
+        ("__st_has_key(", "#[inline] fn __st_has_key(m: &SVal, k: &SVal) -> SVal { if let SVal::Map(mp) = m { if let SVal::Str(ks) = k { return SVal::Bool(mp.borrow().contains_key(ks)); } return SVal::Bool(mp.borrow().contains_key(&k.to_string())); } SVal::Bool(false) }\n"),
+        ("__st_delete_key(", "#[inline] fn __st_delete_key(m: &SVal, k: &SVal) -> SVal { if let SVal::Map(mp) = m { if let SVal::Str(ks) = k { return SVal::Bool(mp.borrow_mut().remove(ks).is_some()); } return SVal::Bool(mp.borrow_mut().remove(&k.to_string()).is_some()); } SVal::Bool(false) }\n"),
+        ("__st_contains(", "#[inline] fn __st_contains(h: &SVal, n: &SVal) -> SVal { match h { SVal::Map(m) => { if let SVal::Str(ks) = n { SVal::Bool(m.borrow().contains_key(ks)) } else { SVal::Bool(m.borrow().contains_key(&n.to_string())) } } SVal::Arr(a) => SVal::Bool(a.borrow().iter().any(|x| x == n)), SVal::Str(s) => { if let SVal::Str(sub) = n { SVal::Bool(s.contains(sub.as_str())) } else { SVal::Bool(s.contains(&n.to_string())) } } _ => SVal::Bool(false) } }\n"),
+        ("__st_starts_with(", "#[inline] fn __st_starts_with(h: &SVal, p: &SVal) -> SVal { match (h, p) { (SVal::Str(hs), SVal::Str(ps)) => SVal::Bool(hs.starts_with(ps.as_str())), _ => SVal::Bool(h.to_string().starts_with(&p.to_string())) } }\n"),
+        ("__st_ends_with(", "#[inline] fn __st_ends_with(h: &SVal, p: &SVal) -> SVal { match (h, p) { (SVal::Str(hs), SVal::Str(ps)) => SVal::Bool(hs.ends_with(ps.as_str())), _ => SVal::Bool(h.to_string().ends_with(&p.to_string())) } }\n"),
+        ("__st_index_of(", "#[inline] fn __st_index_of(h: &SVal, n: &SVal) -> SVal { match (h, n) { (SVal::Str(s), SVal::Str(sub)) => SVal::Num(s.find(sub.as_str()).map(|bi| s[..bi].chars().count() as f64).unwrap_or(-1.0)), (SVal::Arr(a), _) => SVal::Num(a.borrow().iter().position(|x| x == n).map(|i| i as f64).unwrap_or(-1.0)), _ => SVal::Num(-1.0) } }\n"),
+        ("__st_trim(", "#[inline] fn __st_trim(v: &SVal) -> SVal { if let SVal::Str(s) = v { SVal::Str(s.trim().to_string()) } else { SVal::Str(v.to_string().trim().to_string()) } }\n"),
+        ("__st_upper(", "#[inline] fn __st_upper(v: &SVal) -> SVal { if let SVal::Str(s) = v { SVal::Str(s.to_uppercase()) } else { SVal::Str(v.to_string().to_uppercase()) } }\n"),
+        ("__st_lower(", "#[inline] fn __st_lower(v: &SVal) -> SVal { if let SVal::Str(s) = v { SVal::Str(s.to_lowercase()) } else { SVal::Str(v.to_string().to_lowercase()) } }\n"),
+        ("__st_split(", "#[inline] fn __st_split(s: &SVal, sep: &SVal) -> SVal { let ss = match s { SVal::Str(v) => v.as_str(), _ => \"\" }; let sp = match sep { SVal::Str(v) => v.as_str(), _ => \"\" }; let parts: Vec<SVal> = if sp.is_empty() { ss.chars().map(|c| SVal::Str(c.to_string())).collect() } else { ss.split(sp).map(|p| SVal::Str(p.to_string())).collect() }; SVal::Arr(Rc::new(RefCell::new(parts))) }\n"),
+        ("__st_join(", "#[inline] fn __st_join(a: &SVal, sep: &SVal) -> SVal { if let SVal::Arr(arr) = a { let sp = match sep { SVal::Str(v) => v.as_str(), _ => \"\" }; return SVal::Str(arr.borrow().iter().map(|x| x.to_string()).collect::<Vec<_>>().join(sp)); } SVal::Str(String::new()) }\n"),
+        ("__st_replace(", "#[inline] fn __st_replace(s: &SVal, a: &SVal, b: &SVal) -> SVal { let ss = s.to_string(); let sa = a.to_string(); let sb = b.to_string(); SVal::Str(ss.replace(&sa, &sb)) }\n"),
+        ("__st_slice(", "#[inline] fn __st_slice(v: &SVal, s: &SVal, e: Option<&SVal>) -> SVal { let si = (s.as_num() as isize).max(0) as usize; match v { SVal::Arr(a) => { let b = a.borrow(); let ei = e.map(|x| (x.as_num() as isize).max(0) as usize).unwrap_or(b.len()).min(b.len()); let si = si.min(ei); SVal::Arr(Rc::new(RefCell::new(b[si..ei].to_vec()))) } SVal::Str(st) => { let cs: Vec<char> = st.chars().collect(); let ei = e.map(|x| (x.as_num() as isize).max(0) as usize).unwrap_or(cs.len()).min(cs.len()); let si = si.min(ei); SVal::Str(cs[si..ei].iter().collect()) } _ => SVal::Null } }\n"),
+        ("__st_reverse(", "#[inline] fn __st_reverse(v: &SVal) -> SVal { match v { SVal::Arr(a) => { let mut out = a.borrow().clone(); out.reverse(); SVal::Arr(Rc::new(RefCell::new(out))) } SVal::Str(s) => SVal::Str(s.chars().rev().collect()), _ => SVal::Null } }\n"),
+        ("__st_sort(", "#[inline] fn __st_sort(v: &SVal) -> SVal { if let SVal::Arr(a) = v { let mut out = a.borrow().clone(); out.sort_by(|x, y| x.to_string().cmp(&y.to_string())); return SVal::Arr(Rc::new(RefCell::new(out))); } SVal::Null }\n"),
+        ("__st_str(", "#[inline] fn __st_str(v: &SVal) -> SVal { if let SVal::Str(s) = v { SVal::Str(s.clone()) } else { SVal::Str(v.to_string()) } }\n"),
+        ("__st_json_stringify(", "fn __st_js_raw(v: &SVal) -> String { match v { SVal::Null => \"null\".into(), SVal::Bool(b) => b.to_string(), SVal::Num(n) => if n.fract() == 0.0 && n.abs() < 1e15 { format!(\"{}\", *n as i64) } else { format!(\"{}\", n) }, SVal::Str(s) => format!(\"\\\"{}\\\"\", s.replace('\\\\', \"\\\\\\\\\").replace('\"', \"\\\\\\\"\").replace('\\n', \"\\\\n\").replace('\\r', \"\\\\r\").replace('\\t', \"\\\\t\")), SVal::Arr(a) => format!(\"[{}]\", a.borrow().iter().map(__st_js_raw).collect::<Vec<_>>().join(\",\")), SVal::Map(m) => format!(\"{{{}}}\", m.borrow().iter().map(|(k, val)| format!(\"\\\"{}\\\": {}\", k.replace('\\\\', \"\\\\\\\\\").replace('\"', \"\\\\\\\"\"), __st_js_raw(val)).replace(\"\\\": \", \"\\\":\")).collect::<Vec<_>>().join(\",\")), SVal::Func(_) => \"null\".into() } }\n#[inline] fn __st_json_stringify(v: &SVal) -> SVal { SVal::Str(__st_js_raw(v)) }\n"),
+        ("__st_json_parse(", "fn __st_jp(cs: &[char], i: &mut usize) -> SVal { while *i < cs.len() && cs[*i].is_whitespace() { *i += 1; } if *i >= cs.len() { return SVal::Null; } match cs[*i] { '\"' => { *i += 1; let mut s = String::new(); while *i < cs.len() { let c = cs[*i]; *i += 1; if c == '\"' { break; } if c == '\\\\' && *i < cs.len() { let e = cs[*i]; *i += 1; match e { 'n' => s.push('\\n'), 'r' => s.push('\\r'), 't' => s.push('\\t'), o => s.push(o) } } else { s.push(c); } } SVal::Str(s) } '[' => { *i += 1; let mut a = Vec::new(); loop { while *i < cs.len() && cs[*i].is_whitespace() { *i += 1; } if *i >= cs.len() || cs[*i] == ']' { *i += 1; break; } a.push(__st_jp(cs, i)); while *i < cs.len() && cs[*i].is_whitespace() { *i += 1; } if *i < cs.len() && cs[*i] == ',' { *i += 1; } } SVal::Arr(Rc::new(RefCell::new(a))) } '{' => { *i += 1; let mut m = BTreeMap::new(); loop { while *i < cs.len() && cs[*i].is_whitespace() { *i += 1; } if *i >= cs.len() || cs[*i] == '}' { *i += 1; break; } let k = __st_jp(cs, i).to_string(); while *i < cs.len() && (cs[*i].is_whitespace() || cs[*i] == ':') { *i += 1; } let v = __st_jp(cs, i); m.insert(k, v); while *i < cs.len() && cs[*i].is_whitespace() { *i += 1; } if *i < cs.len() && cs[*i] == ',' { *i += 1; } } SVal::Map(Rc::new(RefCell::new(m))) } 't' => { *i += 4; SVal::Bool(true) } 'f' => { *i += 5; SVal::Bool(false) } 'n' => { *i += 4; SVal::Null } _ => { let st = *i; while *i < cs.len() && (cs[*i].is_ascii_digit() || matches!(cs[*i], '-' | '+' | '.' | 'e' | 'E')) { *i += 1; } let ns: String = cs[st..*i].iter().collect(); SVal::Num(ns.parse().unwrap_or(0.0)) } } }\n#[inline] fn __st_json_parse(v: &SVal) -> SVal { let s = match v { SVal::Str(st) => st.as_str(), _ => \"null\" }; let cs: Vec<char> = s.chars().collect(); let mut i = 0; __st_jp(&cs, &mut i) }\n"),
+    ] {
+        if code.contains(token) {
+            out.push_str(def);
+        }
+    }
     out
 }
 
@@ -2235,7 +2278,8 @@ fn rs_builtins_preamble(body_code: &str) -> String {
         ("max.clone()", "    let max = SVal::Func(Rc::new(|args: Vec<SVal>| SVal::Num(args.get(0).map(|a| a.as_num()).unwrap_or(0.0).max(args.get(1).map(|b| b.as_num()).unwrap_or(0.0)))));\n"),
         ("assert.clone()", "    let assert = SVal::Func(Rc::new(|args: Vec<SVal>| { if !args.first().map(|a| a.is_truthy()).unwrap_or(false) { panic!(\"{}\", args.get(1).map(|m| m.to_string()).unwrap_or_else(|| \"Assertion failed\".to_string())); } SVal::Bool(true) }));\n"),
     ] {
-        if body_code.contains(token) {
+        let base = token.trim_end_matches(".clone()");
+        if body_code.contains(token) || body_code.contains(&format!("&{}", base)) {
             out.push_str(decl);
         }
     }
@@ -2266,7 +2310,7 @@ fn rs_top_fn(
     for st in body {
         body_str.push_str(&rs_stmt(st, 1, top_fns));
     }
-    let mut s = format!("fn {}({}) -> SVal {{\n", rs_safe_ident(name), param_sig.join(", "));
+    let mut s = format!("pub fn {}({}) -> SVal {{\n", rs_safe_ident(name), param_sig.join(", "));
     s.push_str(&rs_builtins_preamble(&body_str));
     s.push_str(&body_str);
     s.push_str("    SVal::Null\n}\n");
@@ -2389,17 +2433,29 @@ fn rs_stmt(stmt: &Stmt, lvl: usize, top_fns: &std::collections::HashSet<String>)
                     format!("{}{} = {};\n", pad, rs_safe_ident(n), rs_expr(value, lvl, top_fns))
                 }
             }
-            AssignTarget::Index { target, index } => format!(
-                "{}{}.set({}, {});\n",
-                pad,
-                rs_expr(target, lvl, top_fns),
-                rs_expr(index, lvl, top_fns),
-                rs_expr(value, lvl, top_fns)
-            ),
+            AssignTarget::Index { target, index } => {
+                if let Expr::String(k) = index {
+                    format!(
+                        "{}({}).set_key(\"{}\", {});\n",
+                        pad,
+                        rs_ref_expr(target, lvl, top_fns),
+                        escape_str(k),
+                        rs_expr(value, lvl, top_fns)
+                    )
+                } else {
+                    format!(
+                        "{}({}).set({}, {});\n",
+                        pad,
+                        rs_ref_expr(target, lvl, top_fns),
+                        rs_expr(index, lvl, top_fns),
+                        rs_expr(value, lvl, top_fns)
+                    )
+                }
+            }
             AssignTarget::Member { target, field } => format!(
-                "{}{}.set(SVal::Str(\"{}\".to_string()), {});\n",
+                "{}({}).set_key(\"{}\", {});\n",
                 pad,
-                rs_expr(target, lvl, top_fns),
+                rs_ref_expr(target, lvl, top_fns),
                 escape_str(field),
                 rs_expr(value, lvl, top_fns)
             ),
@@ -2434,7 +2490,7 @@ fn rs_stmt(stmt: &Stmt, lvl: usize, top_fns: &std::collections::HashSet<String>)
             then_branch,
             else_branch,
         } => {
-            let mut s = format!("{}if ({}).is_truthy() {{\n", pad, rs_expr(cond, lvl, top_fns));
+            let mut s = format!("{}if {} {{\n", pad, rs_cond_expr(cond, lvl, top_fns));
             for st in then_branch {
                 s.push_str(&rs_stmt(st, lvl + 1, top_fns));
             }
@@ -2449,9 +2505,9 @@ fn rs_stmt(stmt: &Stmt, lvl: usize, top_fns: &std::collections::HashSet<String>)
         }
         Stmt::While { cond, body } => {
             let mut s = format!(
-                "{}while ({}).is_truthy() {{\n",
+                "{}while {} {{\n",
                 pad,
-                rs_expr(cond, lvl, top_fns)
+                rs_cond_expr(cond, lvl, top_fns)
             );
             for st in body {
                 s.push_str(&rs_stmt(st, lvl + 1, top_fns));
@@ -2467,8 +2523,8 @@ fn rs_stmt(stmt: &Stmt, lvl: usize, top_fns: &std::collections::HashSet<String>)
             let mut s = format!(
                 "{}for mut {} in ({}).iter_vec() {{\n",
                 pad,
-                var,
-                rs_expr(iterable, lvl, top_fns)
+                rs_safe_ident(var),
+                rs_ref_expr(iterable, lvl, top_fns)
             );
             for st in body {
                 s.push_str(&rs_stmt(st, lvl + 1, top_fns));
@@ -2479,6 +2535,59 @@ fn rs_stmt(stmt: &Stmt, lvl: usize, top_fns: &std::collections::HashSet<String>)
         Stmt::Break => format!("{}break;\n", pad),
         Stmt::Continue => format!("{}continue;\n", pad),
         Stmt::Expr(e) => format!("{}{};\n", pad, rs_expr(e, lvl, top_fns)),
+    }
+}
+
+fn rs_ref_expr(expr: &Expr, lvl: usize, top_fns: &std::collections::HashSet<String>) -> String {
+    if let Expr::Ident(name) = expr {
+        if !matches!(name.as_str(), "println" | "str" | "num" | "int" | "bool" | "type")
+            && !top_fns.contains(name)
+            && !rs_is_global(name)
+        {
+            return format!("&{}", rs_safe_ident(name));
+        }
+    }
+    format!("&({})", rs_expr(expr, lvl, top_fns))
+}
+
+fn rs_cond_expr(expr: &Expr, lvl: usize, top_fns: &std::collections::HashSet<String>) -> String {
+    match expr {
+        Expr::Bool(b) => b.to_string(),
+        Expr::Unary { op: UnaryOp::Not, expr: inner } => {
+            format!("(!{})", rs_cond_expr(inner, lvl, top_fns))
+        }
+        Expr::Binary { left, op, right } => match op {
+            BinaryOp::And => format!(
+                "({} && {})",
+                rs_cond_expr(left, lvl, top_fns),
+                rs_cond_expr(right, lvl, top_fns)
+            ),
+            BinaryOp::Or => format!(
+                "({} || {})",
+                rs_cond_expr(left, lvl, top_fns),
+                rs_cond_expr(right, lvl, top_fns)
+            ),
+            BinaryOp::Eq => match (&**left, &**right) {
+                (_, Expr::String(s)) => format!("({}).eq_str(\"{}\")", rs_ref_expr(left, lvl, top_fns), escape_str(s)),
+                (Expr::String(s), _) => format!("({}).eq_str(\"{}\")", rs_ref_expr(right, lvl, top_fns), escape_str(s)),
+                (_, Expr::Number(n)) => format!("({}).eq_num({:.6})", rs_ref_expr(left, lvl, top_fns), n),
+                (Expr::Number(n), _) => format!("({}).eq_num({:.6})", rs_ref_expr(right, lvl, top_fns), n),
+                _ => format!("({} == {})", rs_ref_expr(left, lvl, top_fns), rs_ref_expr(right, lvl, top_fns)),
+            },
+            BinaryOp::Neq => match (&**left, &**right) {
+                (_, Expr::String(s)) => format!("(!({}).eq_str(\"{}\"))", rs_ref_expr(left, lvl, top_fns), escape_str(s)),
+                (Expr::String(s), _) => format!("(!({}).eq_str(\"{}\"))", rs_ref_expr(right, lvl, top_fns), escape_str(s)),
+                (_, Expr::Number(n)) => format!("(!({}).eq_num({:.6}))", rs_ref_expr(left, lvl, top_fns), n),
+                (Expr::Number(n), _) => format!("(!({}).eq_num({:.6}))", rs_ref_expr(right, lvl, top_fns), n),
+                _ => format!("({} != {})", rs_ref_expr(left, lvl, top_fns), rs_ref_expr(right, lvl, top_fns)),
+            },
+            BinaryOp::Lt => format!("(({}).as_num() < ({}).as_num())", rs_ref_expr(left, lvl, top_fns), rs_ref_expr(right, lvl, top_fns)),
+            BinaryOp::Gt => format!("(({}).as_num() > ({}).as_num())", rs_ref_expr(left, lvl, top_fns), rs_ref_expr(right, lvl, top_fns)),
+            BinaryOp::Lte => format!("(({}).as_num() <= ({}).as_num())", rs_ref_expr(left, lvl, top_fns), rs_ref_expr(right, lvl, top_fns)),
+            BinaryOp::Gte => format!("(({}).as_num() >= ({}).as_num())", rs_ref_expr(left, lvl, top_fns), rs_ref_expr(right, lvl, top_fns)),
+            _ => format!("({}).is_truthy()", rs_ref_expr(expr, lvl, top_fns)),
+        },
+        _ => format!("({}).is_truthy()", rs_ref_expr(expr, lvl, top_fns)),
     }
 }
 
@@ -2537,82 +2646,141 @@ fn rs_expr(expr: &Expr, lvl: usize, top_fns: &std::collections::HashSet<String>)
             then_expr,
             else_expr,
         } => format!(
-            "(if ({}).is_truthy() {{ {} }} else {{ {} }})",
-            rs_expr(cond, lvl, top_fns),
+            "(if {} {{ {} }} else {{ {} }})",
+            rs_cond_expr(cond, lvl, top_fns),
             rs_expr(then_expr, lvl, top_fns),
             rs_expr(else_expr, lvl, top_fns)
         ),
         Expr::Binary { left, op, right } => {
+            if matches!(
+                op,
+                BinaryOp::Eq
+                    | BinaryOp::Neq
+                    | BinaryOp::Lt
+                    | BinaryOp::Gt
+                    | BinaryOp::Lte
+                    | BinaryOp::Gte
+                    | BinaryOp::And
+                    | BinaryOp::Or
+            ) {
+                return format!("SVal::Bool({})", rs_cond_expr(expr, lvl, top_fns));
+            }
             let l = rs_expr(left, lvl, top_fns);
             let r = rs_expr(right, lvl, top_fns);
             match op {
                 BinaryOp::Add => format!("({} + {})", l, r),
                 BinaryOp::Sub => format!("({} - {})", l, r),
                 BinaryOp::Mul => format!("({} * {})", l, r),
-                BinaryOp::Pow => format!("SVal::Num(({}).as_num().powf(({}).as_num()))", l, r),
+                BinaryOp::Pow => format!("SVal::Num(({}).as_num().powf(({}).as_num()))", rs_ref_expr(left, lvl, top_fns), rs_ref_expr(right, lvl, top_fns)),
                 BinaryOp::Div => format!("({} / {})", l, r),
                 BinaryOp::Mod => format!("({} % {})", l, r),
                 BinaryOp::BitAnd => {
-                    format!("SVal::Num(((({}).as_num() as i64) & (({}).as_num() as i64)) as f64)", l, r)
+                    format!("SVal::Num(((({}).as_num() as i64) & (({}).as_num() as i64)) as f64)", rs_ref_expr(left, lvl, top_fns), rs_ref_expr(right, lvl, top_fns))
                 }
                 BinaryOp::BitOr => {
-                    format!("SVal::Num(((({}).as_num() as i64) | (({}).as_num() as i64)) as f64)", l, r)
+                    format!("SVal::Num(((({}).as_num() as i64) | (({}).as_num() as i64)) as f64)", rs_ref_expr(left, lvl, top_fns), rs_ref_expr(right, lvl, top_fns))
                 }
                 BinaryOp::BitXor => {
-                    format!("SVal::Num(((({}).as_num() as i64) ^ (({}).as_num() as i64)) as f64)", l, r)
+                    format!("SVal::Num(((({}).as_num() as i64) ^ (({}).as_num() as i64)) as f64)", rs_ref_expr(left, lvl, top_fns), rs_ref_expr(right, lvl, top_fns))
                 }
                 BinaryOp::Shl => {
-                    format!("SVal::Num(((({}).as_num() as i64) << (({}).as_num() as i64)) as f64)", l, r)
+                    format!("SVal::Num(((({}).as_num() as i64) << (({}).as_num() as i64)) as f64)", rs_ref_expr(left, lvl, top_fns), rs_ref_expr(right, lvl, top_fns))
                 }
                 BinaryOp::Shr => {
-                    format!("SVal::Num(((({}).as_num() as i64) >> (({}).as_num() as i64)) as f64)", l, r)
+                    format!("SVal::Num(((({}).as_num() as i64) >> (({}).as_num() as i64)) as f64)", rs_ref_expr(left, lvl, top_fns), rs_ref_expr(right, lvl, top_fns))
                 }
                 BinaryOp::NullCoalesce => {
                     format!("{{ let __v = {}; if __v == SVal::Null {{ {} }} else {{ __v }} }}", l, r)
                 }
-                BinaryOp::Eq => format!("SVal::Bool({} == {})", l, r),
-                BinaryOp::Neq => format!("SVal::Bool({} != {})", l, r),
-                BinaryOp::Lt => format!("SVal::Bool(({}).as_num() < ({}).as_num())", l, r),
-                BinaryOp::Gt => format!("SVal::Bool(({}).as_num() > ({}).as_num())", l, r),
-                BinaryOp::Lte => format!("SVal::Bool(({}).as_num() <= ({}).as_num())", l, r),
-                BinaryOp::Gte => format!("SVal::Bool(({}).as_num() >= ({}).as_num())", l, r),
-                BinaryOp::And => {
-                    format!("SVal::Bool(({}).is_truthy() && ({}).is_truthy())", l, r)
-                }
-                BinaryOp::Or => format!("SVal::Bool(({}).is_truthy() || ({}).is_truthy())", l, r),
+                _ => unreachable!(),
             }
         }
         Expr::Unary { op, expr } => {
-            let e = rs_expr(expr, lvl, top_fns);
             match op {
-                UnaryOp::Neg => format!("(-{})", e),
-                UnaryOp::Not => format!("(!{})", e),
-                UnaryOp::BitNot => format!("SVal::Num((!(({}).as_num() as i64)) as f64)", e),
+                UnaryOp::Neg => format!("SVal::Num(-({}).as_num())", rs_ref_expr(expr, lvl, top_fns)),
+                UnaryOp::Not => format!("SVal::Bool(!{})", rs_cond_expr(expr, lvl, top_fns)),
+                UnaryOp::BitNot => format!("SVal::Num((!(({}).as_num() as i64)) as f64)", rs_ref_expr(expr, lvl, top_fns)),
             }
         }
         Expr::Call { callee, args } => {
-            let arg_strs: Vec<String> = args.iter().map(|a| rs_expr(a, lvl, top_fns)).collect();
             if let Expr::Ident(name) = &**callee {
                 if top_fns.contains(name) {
-                    return format!("{}({})", name, arg_strs.join(", "));
+                    let arg_strs: Vec<String> = args.iter().map(|a| rs_expr(a, lvl, top_fns)).collect();
+                    return format!("{}({})", rs_safe_ident(name), arg_strs.join(", "));
+                }
+                match name.as_str() {
+                    "len" if args.len() == 1 => return format!("__st_len({})", rs_ref_expr(&args[0], lvl, top_fns)),
+                    "push" if args.len() == 2 => return format!("__st_push({}, {})", rs_ref_expr(&args[0], lvl, top_fns), rs_expr(&args[1], lvl, top_fns)),
+                    "pop" if args.len() == 1 => return format!("__st_pop({})", rs_ref_expr(&args[0], lvl, top_fns)),
+                    "has_key" if args.len() == 2 => return format!("__st_has_key({}, {})", rs_ref_expr(&args[0], lvl, top_fns), rs_ref_expr(&args[1], lvl, top_fns)),
+                    "delete_key" if args.len() == 2 => return format!("__st_delete_key({}, {})", rs_ref_expr(&args[0], lvl, top_fns), rs_ref_expr(&args[1], lvl, top_fns)),
+                    "contains" if args.len() == 2 => return format!("__st_contains({}, {})", rs_ref_expr(&args[0], lvl, top_fns), rs_ref_expr(&args[1], lvl, top_fns)),
+                    "starts_with" if args.len() == 2 => return format!("__st_starts_with({}, {})", rs_ref_expr(&args[0], lvl, top_fns), rs_ref_expr(&args[1], lvl, top_fns)),
+                    "ends_with" if args.len() == 2 => return format!("__st_ends_with({}, {})", rs_ref_expr(&args[0], lvl, top_fns), rs_ref_expr(&args[1], lvl, top_fns)),
+                    "index_of" if args.len() == 2 => return format!("__st_index_of({}, {})", rs_ref_expr(&args[0], lvl, top_fns), rs_ref_expr(&args[1], lvl, top_fns)),
+                    "trim" if args.len() == 1 => return format!("__st_trim({})", rs_ref_expr(&args[0], lvl, top_fns)),
+                    "upper" if args.len() == 1 => return format!("__st_upper({})", rs_ref_expr(&args[0], lvl, top_fns)),
+                    "lower" if args.len() == 1 => return format!("__st_lower({})", rs_ref_expr(&args[0], lvl, top_fns)),
+                    "split" if args.len() == 2 => return format!("__st_split({}, {})", rs_ref_expr(&args[0], lvl, top_fns), rs_ref_expr(&args[1], lvl, top_fns)),
+                    "join" if args.len() == 2 => return format!("__st_join({}, {})", rs_ref_expr(&args[0], lvl, top_fns), rs_ref_expr(&args[1], lvl, top_fns)),
+                    "replace" if args.len() == 3 => return format!("__st_replace({}, {}, {})", rs_ref_expr(&args[0], lvl, top_fns), rs_ref_expr(&args[1], lvl, top_fns), rs_ref_expr(&args[2], lvl, top_fns)),
+                    "slice" if args.len() == 2 => return format!("__st_slice({}, {}, None)", rs_ref_expr(&args[0], lvl, top_fns), rs_ref_expr(&args[1], lvl, top_fns)),
+                    "slice" if args.len() == 3 => return format!("__st_slice({}, {}, Some({}))", rs_ref_expr(&args[0], lvl, top_fns), rs_ref_expr(&args[1], lvl, top_fns), rs_ref_expr(&args[2], lvl, top_fns)),
+                    "reverse" if args.len() == 1 => return format!("__st_reverse({})", rs_ref_expr(&args[0], lvl, top_fns)),
+                    "sort" if args.len() == 1 => return format!("__st_sort({})", rs_ref_expr(&args[0], lvl, top_fns)),
+                    "str" if args.len() == 1 => return format!("__st_str({})", rs_ref_expr(&args[0], lvl, top_fns)),
+                    "num" if args.len() == 1 => return format!("SVal::Num(({}).as_num())", rs_ref_expr(&args[0], lvl, top_fns)),
+                    "int" if args.len() == 1 => return format!("SVal::Num(({}).as_num().trunc())", rs_ref_expr(&args[0], lvl, top_fns)),
+                    "bool" if args.len() == 1 => return format!("SVal::Bool(({}).is_truthy())", rs_ref_expr(&args[0], lvl, top_fns)),
+                    "abs" if args.len() == 1 => return format!("SVal::Num(({}).as_num().abs())", rs_ref_expr(&args[0], lvl, top_fns)),
+                    "floor" if args.len() == 1 => return format!("SVal::Num(({}).as_num().floor())", rs_ref_expr(&args[0], lvl, top_fns)),
+                    "ceil" if args.len() == 1 => return format!("SVal::Num(({}).as_num().ceil())", rs_ref_expr(&args[0], lvl, top_fns)),
+                    "round" if args.len() == 1 => return format!("SVal::Num(({}).as_num().round())", rs_ref_expr(&args[0], lvl, top_fns)),
+                    "sqrt" if args.len() == 1 => return format!("SVal::Num(({}).as_num().sqrt())", rs_ref_expr(&args[0], lvl, top_fns)),
+                    "sin" if args.len() == 1 => return format!("SVal::Num(({}).as_num().sin())", rs_ref_expr(&args[0], lvl, top_fns)),
+                    "cos" if args.len() == 1 => return format!("SVal::Num(({}).as_num().cos())", rs_ref_expr(&args[0], lvl, top_fns)),
+                    "tan" if args.len() == 1 => return format!("SVal::Num(({}).as_num().tan())", rs_ref_expr(&args[0], lvl, top_fns)),
+                    "log" if args.len() == 1 => return format!("SVal::Num(({}).as_num().ln())", rs_ref_expr(&args[0], lvl, top_fns)),
+                    "exp" if args.len() == 1 => return format!("SVal::Num(({}).as_num().exp())", rs_ref_expr(&args[0], lvl, top_fns)),
+                    "pow" if args.len() == 2 => return format!("SVal::Num(({}).as_num().powf(({}).as_num()))", rs_ref_expr(&args[0], lvl, top_fns), rs_ref_expr(&args[1], lvl, top_fns)),
+                    "min" if args.len() == 2 => return format!("SVal::Num(({}).as_num().min(({}).as_num()))", rs_ref_expr(&args[0], lvl, top_fns), rs_ref_expr(&args[1], lvl, top_fns)),
+                    "max" if args.len() == 2 => return format!("SVal::Num(({}).as_num().max(({}).as_num()))", rs_ref_expr(&args[0], lvl, top_fns), rs_ref_expr(&args[1], lvl, top_fns)),
+                    "atan2" if args.len() == 2 => return format!("SVal::Num(({}).as_num().atan2(({}).as_num()))", rs_ref_expr(&args[0], lvl, top_fns), rs_ref_expr(&args[1], lvl, top_fns)),
+                    "clamp" if args.len() == 3 => return format!("SVal::Num(({}).as_num().max(({}).as_num()).min(({}).as_num()))", rs_ref_expr(&args[0], lvl, top_fns), rs_ref_expr(&args[1], lvl, top_fns), rs_ref_expr(&args[2], lvl, top_fns)),
+                    "json_stringify" if args.len() == 1 => return format!("__st_json_stringify({})", rs_ref_expr(&args[0], lvl, top_fns)),
+                    "json_parse" if args.len() == 1 => return format!("__st_json_parse({})", rs_ref_expr(&args[0], lvl, top_fns)),
+                    "print" | "println" => {
+                        let refs: Vec<String> = args.iter().map(|a| rs_ref_expr(a, lvl, top_fns)).collect();
+                        return format!("{{ let __pa: [&SVal; {}] = [{}]; println!(\"{{}}\", __pa.iter().map(|a| a.to_string()).collect::<Vec<_>>().join(\" \")); SVal::Null }}", refs.len(), refs.join(", "));
+                    }
+                    _ => {}
                 }
             }
+            let arg_strs: Vec<String> = args.iter().map(|a| rs_expr(a, lvl, top_fns)).collect();
             format!(
                 "({}).call(vec![{}])",
-                rs_expr(callee, lvl, top_fns),
+                rs_ref_expr(callee, lvl, top_fns),
                 arg_strs.join(", ")
             )
         }
         Expr::Index { target, index } => {
-            format!(
-                "({}).get({})",
-                rs_expr(target, lvl, top_fns),
-                rs_expr(index, lvl, top_fns)
-            )
+            if let Expr::String(k) = &**index {
+                format!(
+                    "({}).get_key(\"{}\")",
+                    rs_ref_expr(target, lvl, top_fns),
+                    escape_str(k)
+                )
+            } else {
+                format!(
+                    "({}).get_ref({})",
+                    rs_ref_expr(target, lvl, top_fns),
+                    rs_ref_expr(index, lvl, top_fns)
+                )
+            }
         }
         Expr::Member { target, field } => format!(
-            "({}).get(SVal::Str(\"{}\".to_string()))",
-            rs_expr(target, lvl, top_fns),
+            "({}).get_key(\"{}\")",
+            rs_ref_expr(target, lvl, top_fns),
             escape_str(field)
         ),
         Expr::FnExpr { params, body } => {
@@ -2654,7 +2822,10 @@ fn rs_expr(expr: &Expr, lvl: usize, top_fns: &std::collections::HashSet<String>)
                     "type" => "type_fn".to_string(),
                     other => rs_safe_ident(other),
                 };
-                if !bound.contains(&mapped) && body_str.contains(&format!("{}.clone()", mapped)) {
+                if !bound.contains(&mapped)
+                    && (body_str.contains(&format!("{}.clone()", mapped))
+                        || body_str.contains(&format!("&{}", mapped)))
+                {
                     captures.insert(mapped);
                 }
             }
@@ -6683,21 +6854,30 @@ fn emit_rust_project(modules: &[ModuleUnit]) -> Vec<(String, String)> {
          \x20   pub fn call(&self, args: Vec<SVal>) -> SVal {\n\
          \x20       if let SVal::Func(f) = self { f(args) } else { panic!(\"Attempted to call non-function: {}\", self) }\n\
          \x20   }\n\
-         \x20   pub fn get(&self, idx: SVal) -> SVal {\n\
+         \x20   #[inline] pub fn get(&self, idx: SVal) -> SVal { self.get_ref(&idx) }\n\
+         \x20   #[inline] pub fn get_ref(&self, idx: &SVal) -> SVal {\n\
          \x20       match (self, idx) {\n\
-         \x20           (SVal::Arr(a), SVal::Num(n)) => { let b = a.borrow(); let mut i = n as isize; if i < 0 { i += b.len() as isize; } if i >= 0 { b.get(i as usize).cloned().unwrap_or(SVal::Null) } else { SVal::Null } },\n\
-         \x20           (SVal::Map(m), SVal::Str(k)) => m.borrow().get(&k).cloned().unwrap_or(SVal::Null),\n\
+         \x20           (SVal::Arr(a), SVal::Num(n)) => { let b = a.borrow(); let mut i = *n as isize; if i < 0 { i += b.len() as isize; } if i >= 0 { b.get(i as usize).cloned().unwrap_or(SVal::Null) } else { SVal::Null } },\n\
+         \x20           (SVal::Map(m), SVal::Str(k)) => m.borrow().get(k).cloned().unwrap_or(SVal::Null),\n\
          \x20           _ => SVal::Null,\n\
          \x20       }\n\
          \x20   }\n\
-         \x20   pub fn set(&self, idx: SVal, val: SVal) {\n\
+         \x20   #[inline] pub fn get_key(&self, k: &str) -> SVal {\n\
+         \x20       if let SVal::Map(m) = self { m.borrow().get(k).cloned().unwrap_or(SVal::Null) } else { SVal::Null }\n\
+         \x20   }\n\
+         \x20   #[inline] pub fn set(&self, idx: SVal, val: SVal) {\n\
          \x20       match (self, idx) {\n\
          \x20           (SVal::Arr(a), SVal::Num(n)) => { let mut b = a.borrow_mut(); let mut i = n as isize; if i < 0 { i += b.len() as isize; } if i >= 0 && (i as usize) < b.len() { b[i as usize] = val; } }\n\
          \x20           (SVal::Map(m), SVal::Str(k)) => { m.borrow_mut().insert(k, val); }\n\
          \x20           _ => {}\n\
          \x20       }\n\
          \x20   }\n\
-         \x20   pub fn iter_vec(&self) -> Vec<SVal> {\n\
+         \x20   #[inline] pub fn set_key(&self, k: &str, val: SVal) {\n\
+         \x20       if let SVal::Map(m) = self { m.borrow_mut().insert(k.to_string(), val); }\n\
+         \x20   }\n\
+         \x20   #[inline] pub fn eq_str(&self, s: &str) -> bool { matches!(self, SVal::Str(v) if v == s) }\n\
+         \x20   #[inline] pub fn eq_num(&self, n: f64) -> bool { matches!(self, SVal::Num(v) if *v == n) }\n\
+         \x20   #[inline] pub fn iter_vec(&self) -> Vec<SVal> {\n\
          \x20       match self { SVal::Arr(a) => a.borrow().clone(), _ => vec![] }\n\
          \x20   }\n\
          }\n\n\
