@@ -276,3 +276,73 @@ fn run_all_9_runtimes(test_name: &str, src: &str) {
             String::from_utf8_lossy(&r.stderr)
         );
         let got = String::from_utf8_lossy(&r.stdout).replace("\r\n", "\n").trim().to_string();
+        assert_eq!(got, expected, "[{}] Lua output mismatch", test_name);
+    }
+
+    if Path::new(&tmp).exists() {
+        let _ = fs::remove_dir_all(&tmp);
+    }
+}
+
+#[test]
+fn stdlib_parity_across_all_9_runtimes() {
+    let io_tmp = std::env::temp_dir()
+        .join("steel_stdlib_io_probe.txt")
+        .to_string_lossy()
+        .replace('\\', "/");
+
+    let src = format!(
+        r#"
+assert(1 + 1 == 2, "math broke")
+print("TYPES:", type(null), type(true), type(42), type("hi"), type([1]), type({{a: 1}}), type(x => x))
+print("CONV:", int(-3.9), int("42.8"), bool(0), bool(""), bool("x"), num(" -12.5 "), str(123))
+
+print("STR1:", trim("  hello  "), upper("abC"), lower("AbC"), repeat("ab", 3), repeat("ab", 0))
+print("STR2:", pad_start("7", 4, "0"), pad_end("hi", 5, "."), pad_start("long", 2, "0"))
+print("STR3:", index_of("banana", "na"), index_of("banana", "zz"), char_code("A"), from_char_code(66))
+print("STR4:", starts_with("steel", "st"), ends_with("steel", "el"), replace("a-b-a", "a", "X"), reverse("abc"))
+print("STR5:", join(split("x,y,z", ","), "|"), slice("abcdef", 1, 4))
+
+a = [1, 2]
+push(a, 3)
+p = pop(a)
+c = concat(a, [4, 5])
+print("ARR1:", p, len(c), join(c, "-"), index_of(c, 4), index_of(c, 99))
+print("ARR2:", join(range(0, 7, 2), ","), join(range(6, 0, -2), ","), len(range(5, 2)))
+print("ARR3:", sum([1, 2, 3, 4]), avg([2, 4, 6]), join(unique([1, 2, 1, 3, 2]), ","))
+print("ARR4:", join(flat([[1, 2], [3], 4]), ","), len(zip([1, 2, 3], [10, 20])), len(enumerate(["a", "b"])))
+print("ARR5:", join(sort(["pear", "apple", "banana"]), ","), join(reverse([1, 2, 3]), ","))
+
+nums = [1, 2, 3, 4, 5]
+doubled = map(nums, x => x * 2)
+evens = filter(nums, x => x % 2 == 0)
+tot1 = reduce(nums, (acc, x) => acc + x, 10)
+tot2 = reduce(nums, (acc, x) => acc + x)
+print("HOF:", join(doubled, ","), join(evens, ","), tot1, tot2, find(nums, x => x > 3), find(nums, x => x > 9), any(nums, x => x == 4), all(nums, x => x > 0), all(nums, x => x > 2))
+
+m = {{a: 1, b: 2}}
+print("MAP1:", has_key(m, "a"), has_key(m, "z"), len(m))
+d1 = delete_key(m, "a")
+d2 = delete_key(m, "a")
+print("MAP2:", d1, d2, has_key(m, "a"), len(m))
+
+print("MATH:", abs(-7), floor(2.9), ceil(2.1), round(2.6), sqrt(9), pow(2, 5), min(3, 8), max(3, 8), clamp(15, 0, 10), clamp(-3, 0, 10), sign(-9), sign(0), sign(9))
+print("MATH2:", int(sin(PI / 2) * 1000), int(cos(0) * 1000), int(atan2(1, 1) * 1000), int(log(E) * 1000), int(exp(0) * 1000))
+
+obj = {{name: "steel", ok: true, n: 42, arr: [1, null, "x"]}}
+raw = json_stringify(obj)
+parsed = json_parse(raw)
+print("JSON:", parsed["name"], parsed["ok"], parsed["n"], parsed["arr"][0], parsed["arr"][1], parsed["arr"][2])
+print("HASH:", hash("steel"), hash(""))
+
+path = "{}"
+write_file(path, "hello")
+append_file(path, " world")
+ex1 = file_exists(path)
+txt = read_file(path)
+rm = remove_file(path)
+ex2 = file_exists(path)
+print("IO:", ex1, txt, rm, ex2)
+"#,
+        io_tmp
+    );
