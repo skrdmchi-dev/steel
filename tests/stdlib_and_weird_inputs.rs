@@ -207,3 +207,72 @@ fn run_all_9_runtimes(test_name: &str, src: &str) {
         let r = Command::new(&c_exe).output().unwrap();
         assert!(r.status.success(), "[{}] C11 binary failed", test_name);
         let got = String::from_utf8_lossy(&r.stdout).replace("\r\n", "\n").trim().to_string();
+        assert_eq!(got, expected, "[{}] C11 output mismatch", test_name);
+    }
+
+    // 7. Rust
+    if has_cmd("rustc") {
+        let rs_file = tmp.join("app.rs");
+        let c = Command::new(steel_bin())
+            .args(["compile", steel_file.to_str().unwrap(), "--target", "rust", "-o", rs_file.to_str().unwrap()])
+            .output()
+            .unwrap();
+        assert!(c.status.success());
+        let rs_exe = tmp.join(if cfg!(windows) { "app_rs.exe" } else { "app_rs" });
+        let rc = Command::new("rustc")
+            .args([rs_file.to_str().unwrap(), "-A", "warnings", "-o", rs_exe.to_str().unwrap()])
+            .output()
+            .unwrap();
+        assert!(
+            rc.status.success(),
+            "[{}] rustc failed:\n{}",
+            test_name,
+            String::from_utf8_lossy(&rc.stderr)
+        );
+        let r = Command::new(&rs_exe).output().unwrap();
+        assert!(r.status.success(), "[{}] Rust binary failed", test_name);
+        let got = String::from_utf8_lossy(&r.stdout).replace("\r\n", "\n").trim().to_string();
+        assert_eq!(got, expected, "[{}] Rust output mismatch", test_name);
+    }
+
+    // 8. Go
+    if Command::new("go").arg("version").output().is_ok() {
+        let go_file = tmp.join("app.go");
+        let c = Command::new(steel_bin())
+            .args(["compile", steel_file.to_str().unwrap(), "--target", "go", "-o", go_file.to_str().unwrap()])
+            .output()
+            .unwrap();
+        assert!(c.status.success());
+        let go_exe = tmp.join(if cfg!(windows) { "app_go.exe" } else { "app_go" });
+        let gb = Command::new("go")
+            .args(["build", "-o", go_exe.to_str().unwrap(), go_file.to_str().unwrap()])
+            .output()
+            .unwrap();
+        assert!(
+            gb.status.success(),
+            "[{}] go build failed:\n{}",
+            test_name,
+            String::from_utf8_lossy(&gb.stderr)
+        );
+        let r = Command::new(&go_exe).output().unwrap();
+        assert!(r.status.success(), "[{}] Go binary failed", test_name);
+        let got = String::from_utf8_lossy(&r.stdout).replace("\r\n", "\n").trim().to_string();
+        assert_eq!(got, expected, "[{}] Go output mismatch", test_name);
+    }
+
+    // 9. Lua 5.4
+    if Command::new("lua").arg("-v").output().is_ok() {
+        let lua_file = tmp.join("app.lua");
+        let c = Command::new(steel_bin())
+            .args(["compile", steel_file.to_str().unwrap(), "--target", "lua", "-o", lua_file.to_str().unwrap()])
+            .output()
+            .unwrap();
+        assert!(c.status.success());
+        let r = Command::new("lua").arg(&lua_file).output().unwrap();
+        assert!(
+            r.status.success(),
+            "[{}] lua failed:\n{}",
+            test_name,
+            String::from_utf8_lossy(&r.stderr)
+        );
+        let got = String::from_utf8_lossy(&r.stdout).replace("\r\n", "\n").trim().to_string();
