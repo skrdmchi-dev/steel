@@ -415,3 +415,73 @@ fn try_in_loop(limit) {
             i += 1
             continue
         }
+        i += 1
+    }
+    return -1
+}
+res_rethrow = ""
+try {
+    try {
+        throw "inner"
+    } catch (e1) {
+        throw e1 + "+outer"
+    }
+} catch (e2) {
+    res_rethrow = e2
+}
+print("W_TRY:", try_in_loop(10), res_rethrow)
+
+// 6. Negative indexing read + write & keyword-colliding map keys + identifiers
+arr = [10, 20, 30, 40]
+arr[-1] = 99
+arr[-3] = 77
+print("W_IDX:", arr[0], arr[-3], arr[-2], arr[-1])
+
+kw = {"default": 1, "items": [5, 6], "keys": "ok", "values": 7, "end": 8, "local": 9, "struct": 10, "match": 11}
+print("W_KW:", kw["default"], kw["items"][1], kw["keys"], kw["values"], kw["end"], kw["local"], kw["struct"], kw["match"])
+
+default = 10
+switch = 20
+end = 30
+local = 40
+struct = 50
+chan = 60
+package = 70
+print("W_ID:", default + switch + end + local + struct + chan + package)
+
+// 7. Nested containers & empty containers
+deep = {a: [{b: [1, {c: "deep"}]}]}
+print("W_DEEP:", deep["a"][0]["b"][1]["c"], len([]), len({}))
+
+// 8. Class with closure field + 3-level inheritance
+class Base {
+    init(x) {
+        this.x = x
+        this.fn_field = y => y + 1
+    }
+    tag() = "B"
+    info() = this.tag() + ":" + str(this.x)
+}
+class Mid extends Base {
+    init(x) {
+        this.x = x
+        this.fn_field = y => y + 2
+    }
+    tag() = "M"
+}
+class Leaf extends Mid {
+    init(x) {
+        this.x = x
+        this.fn_field = y => y + 3
+    }
+    run(v) {
+        f = this.fn_field
+        return this.info() + "=" + str(f(v))
+    }
+}
+lf = new Leaf(42)
+print("W_CLS:", lf.run(10))
+"#;
+
+    run_all_9_runtimes("weird_inputs", src);
+}
