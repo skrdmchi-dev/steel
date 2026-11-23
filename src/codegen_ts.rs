@@ -96,12 +96,15 @@ fn infer_quick_expr(expr: &Expr, syms: &BTreeMap<String, InferredType>) -> Infer
                     }
                     "str" | "upper" | "lower" | "trim" | "join" | "replace" | "read_file"
                     | "repeat" | "pad_start" | "pad_end" | "from_char_code" | "json_stringify"
-                    | "hash" | "type" => return InferredType::Str,
+                    | "hash" | "sha256" | "sha256_file" | "type" => return InferredType::Str,
                     "bool" | "contains" | "has_key" | "delete_key" | "starts_with" | "ends_with"
                     | "any" | "all" | "file_exists" | "write_file" | "append_file" | "remove_file"
-                    | "assert" => return InferredType::Bool,
+                    | "mkdir" | "make_dir" | "remove_dir" | "rename" | "assert" => {
+                        return InferredType::Bool;
+                    }
                     "split" | "keys" | "values" | "range" | "map" | "filter" | "sort"
-                    | "concat" | "unique" | "flat" | "zip" | "enumerate" => {
+                    | "concat" | "unique" | "flat" | "zip" | "enumerate" | "list_dir"
+                    | "args" => {
                         return InferredType::Array;
                     }
                     _ => {
@@ -312,8 +315,20 @@ fn ts_helpers_preamble(body_out: &str) -> String {
         || body_out.contains("append_file(")
         || body_out.contains("remove_file(")
         || body_out.contains("file_exists(")
+        || body_out.contains("mkdir(")
+        || body_out.contains("make_dir(")
+        || body_out.contains("list_dir(")
+        || body_out.contains("remove_dir(")
+        || body_out.contains("rename(")
+        || body_out.contains("sha256_file(")
     {
         out.push_str("import * as fs from \"node:fs\";\n");
+    }
+    if body_out.contains("sha256(") || body_out.contains("sha256_file(") {
+        out.push_str("import * as _st_crypto from \"node:crypto\";\n");
+    }
+    if body_out.contains("exec(") {
+        out.push_str("import * as _st_cp from \"node:child_process\";\n");
     }
     if body_out.contains("PI") || body_out.contains(" E") || body_out.contains("(E") {
         out.push_str("const PI: number = Math.PI;\nconst E: number = Math.E;\n");
@@ -553,6 +568,16 @@ fn ts_helpers_preamble(body_out: &str) -> String {
         ),
         ("time_ms(", "const time_ms = (): number => Date.now();\n"),
         ("clock(", "const clock = (): number => Date.now() / 1000;\n"),
+        ("args(", "const args = (): string[] => process.argv.slice(2);\n"),
+        ("exit(", "const exit = (c: number = 0): never => process.exit(Math.trunc(c));\n"),
+        ("mkdir(", "const mkdir = (p: string): boolean => { try { fs.mkdirSync(p, { recursive: true }); return true; } catch { return false; } };\n"),
+        ("make_dir(", "const make_dir = (p: string): boolean => { try { fs.mkdirSync(p, { recursive: true }); return true; } catch { return false; } };\n"),
+        ("list_dir(", "const list_dir = (p: string): string[] => { try { return fs.readdirSync(p).sort(); } catch { return []; } };\n"),
+        ("remove_dir(", "const remove_dir = (p: string): boolean => { try { fs.rmSync(p, { recursive: true, force: true }); return true; } catch { return false; } };\n"),
+        ("rename(", "const rename = (a: string, b: string): boolean => { try { fs.renameSync(a, b); return true; } catch { return false; } };\n"),
+        ("exec(", "const exec = (cmd: string, argv?: any[]): any => { if (Array.isArray(argv)) { const r = _st_cp.spawnSync(String(cmd), argv.map(String), { encoding: 'utf8' }); return { code: r.status ?? -1, stdout: r.stdout || '', stderr: r.stderr || '' }; } return _st_cp.execSync(String(cmd), { encoding: 'utf8' }).trimEnd(); };\n"),
+        ("sha256(", "const sha256 = (s: any): string => _st_crypto.createHash('sha256').update(String(s), 'utf8').digest('hex');\n"),
+        ("sha256_file(", "const sha256_file = (p: string): string => { try { return _st_crypto.createHash('sha256').update(fs.readFileSync(p)).digest('hex'); } catch { return ''; } };\n"),
     ] {
         if body_out.contains(helper) {
             out.push_str(def);
