@@ -49,7 +49,7 @@ pub fn analyze_program(program: &Program) -> TypeReport {
         "sum", "avg", "unique", "flat", "enumerate", "zip", "split", "join", "trim",
         "upper", "lower", "replace", "json_parse", "json_stringify", "args", "env", "set_env",
         "cwd", "exec", "exit", "file_exists", "read_file", "write_file", "append_file",
-        "list_dir", "make_dir", "remove_file", "clock", "sleep", "random", "rand_int", "hash",
+        "list_dir", "make_dir", "mkdir", "remove_dir", "rename", "remove_file", "clock", "sleep", "random", "rand_int", "hash", "sha256", "sha256_file",
         "uuid", "abs", "sqrt", "pow", "floor", "ceil", "round", "min", "max", "clamp", "sin",
         "cos", "tan", "atan2", "log", "exp", "sign", "PI", "E", "this", "self",
     ] {
@@ -88,7 +88,7 @@ pub fn analyze_program(program: &Program) -> TypeReport {
         "sum", "avg", "unique", "flat", "enumerate", "zip", "split", "join", "trim",
         "upper", "lower", "replace", "json_parse", "json_stringify", "args", "env", "set_env",
         "cwd", "exec", "exit", "file_exists", "read_file", "write_file", "append_file",
-        "list_dir", "make_dir", "remove_file", "clock", "sleep", "random", "rand_int", "hash",
+        "list_dir", "make_dir", "mkdir", "remove_dir", "rename", "remove_file", "clock", "sleep", "random", "rand_int", "hash", "sha256", "sha256_file",
         "uuid", "abs", "sqrt", "pow", "floor", "ceil", "round", "min", "max", "clamp", "sin",
         "cos", "tan", "atan2", "log", "exp", "sign", "PI", "E", "this", "self",
     ] {
