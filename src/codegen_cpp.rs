@@ -608,6 +608,148 @@ inline Val remove_file_val(const Val& p) {
     return Val(std::filesystem::remove(p.to_string()));
 }
 
+inline std::vector<std::string>& cli_args_store() {
+    static std::vector<std::string> store;
+    return store;
+}
+
+inline Val args_val() {
+    auto arr = std::make_shared<Arr>();
+    for (const auto& s : cli_args_store()) arr->push_back(Val(s));
+    return Val(arr);
+}
+
+inline Val exit_val(const Val& c) {
+    std::exit(static_cast<int>(c.as_num()));
+}
+
+inline Val mkdir_val(const Val& p) {
+    std::error_code ec;
+    std::filesystem::create_directories(p.to_string(), ec);
+    return Val(!ec);
+}
+
+inline Val list_dir_val(const Val& p) {
+    std::error_code ec;
+    std::vector<std::string> names;
+    for (const auto& e : std::filesystem::directory_iterator(p.to_string(), ec)) {
+        names.push_back(e.path().filename().string());
+    }
+    std::sort(names.begin(), names.end());
+    auto arr = std::make_shared<Arr>();
+    for (auto& n : names) arr->push_back(Val(std::move(n)));
+    return Val(arr);
+}
+
+inline Val remove_dir_val(const Val& p) {
+    std::error_code ec;
+    std::filesystem::remove_all(p.to_string(), ec);
+    return Val(!ec);
+}
+
+inline Val rename_val(const Val& a, const Val& b) {
+    std::error_code ec;
+    std::filesystem::rename(a.to_string(), b.to_string(), ec);
+    return Val(!ec);
+}
+
+inline Val exec_val(const Val& cmd, const Val* argv) {
+    std::string full = cmd.to_string();
+    if (argv && argv->is_arr()) {
+        for (const auto& a : *std::get<ArrPtr>(argv->data)) {
+            full += " \"" + a.to_string() + "\"";
+        }
+    }
+    std::string out;
+#ifdef _WIN32
+    FILE* pipe = _popen(full.c_str(), "r");
+#else
+    FILE* pipe = popen(full.c_str(), "r");
+#endif
+    int code = -1;
+    if (pipe) {
+        char buf[4096];
+        while (fgets(buf, sizeof(buf), pipe)) out += buf;
+#ifdef _WIN32
+        code = _pclose(pipe);
+#else
+        code = pclose(pipe);
+#endif
+    }
+    if (argv && argv->is_arr()) {
+        auto m = std::make_shared<Map>();
+        (*m)["code"] = Val(static_cast<double>(code));
+        (*m)["stdout"] = Val(out);
+        (*m)["stderr"] = Val(std::string(""));
+        return Val(m);
+    }
+    while (!out.empty() && (out.back() == '\n' || out.back() == '\r')) out.pop_back();
+    return Val(out);
+}
+
+inline std::string sha256_bytes_hex(const std::string& input) {
+    static const uint32_t primes[64] = {
+        2,3,5,7,11,13,17,19,23,29,31,37,41,43,47,53,
+        59,61,67,71,73,79,83,89,97,101,103,107,109,113,127,131,
+        137,139,149,151,157,163,167,173,179,181,191,193,197,199,211,223,
+        227,229,233,239,241,251,257,263,269,271,277,281,283,293,307,311
+    };
+    uint32_t k[64];
+    for (int i = 0; i < 64; ++i) {
+        double r = std::cbrt(static_cast<double>(primes[i]));
+        k[i] = static_cast<uint32_t>((r - std::floor(r)) * 4294967296.0);
+    }
+    uint32_t h[8];
+    for (int i = 0; i < 8; ++i) {
+        double r = std::sqrt(static_cast<double>(primes[i]));
+        h[i] = static_cast<uint32_t>((r - std::floor(r)) * 4294967296.0);
+    }
+    auto rr = [](uint32_t x, uint32_t n) -> uint32_t { return (x >> n) | (x << (32 - n)); };
+    std::vector<uint8_t> msg(input.begin(), input.end());
+    uint64_t bitlen = static_cast<uint64_t>(msg.size()) * 8ULL;
+    msg.push_back(0x80);
+    while ((msg.size() % 64) != 56) msg.push_back(0);
+    for (int i = 7; i >= 0; --i) msg.push_back(static_cast<uint8_t>((bitlen >> (i * 8)) & 0xff));
+    for (size_t off = 0; off < msg.size(); off += 64) {
+        uint32_t w[64];
+        for (int i = 0; i < 16; ++i) {
+            w[i] = (uint32_t(msg[off + 4*i]) << 24) | (uint32_t(msg[off + 4*i + 1]) << 16) |
+                   (uint32_t(msg[off + 4*i + 2]) << 8) | uint32_t(msg[off + 4*i + 3]);
+        }
+        for (int i = 16; i < 64; ++i) {
+            uint32_t s0 = rr(w[i-15], 7) ^ rr(w[i-15], 18) ^ (w[i-15] >> 3);
+            uint32_t s1 = rr(w[i-2], 17) ^ rr(w[i-2], 19) ^ (w[i-2] >> 10);
+            w[i] = w[i-16] + s0 + w[i-7] + s1;
+        }
+        uint32_t a=h[0], b=h[1], c=h[2], d=h[3], e=h[4], f=h[5], g=h[6], hh=h[7];
+        for (int i = 0; i < 64; ++i) {
+            uint32_t s1 = rr(e, 6) ^ rr(e, 11) ^ rr(e, 25);
+            uint32_t ch = (e & f) ^ ((~e) & g);
+            uint32_t t1 = hh + s1 + ch + k[i] + w[i];
+            uint32_t s0 = rr(a, 2) ^ rr(a, 13) ^ rr(a, 22);
+            uint32_t maj = (a & b) ^ (a & c) ^ (b & c);
+            uint32_t t2 = s0 + maj;
+            hh = g; g = f; f = e; e = d + t1;
+            d = c; c = b; b = a; a = t1 + t2;
+        }
+        h[0]+=a; h[1]+=b; h[2]+=c; h[3]+=d; h[4]+=e; h[5]+=f; h[6]+=g; h[7]+=hh;
+    }
+    std::ostringstream oss;
+    oss << std::hex << std::setfill('0');
+    for (int i = 0; i < 8; ++i) oss << std::setw(8) << h[i];
+    return oss.str();
+}
+
+inline Val sha256_val(const Val& v) { return Val(sha256_bytes_hex(v.to_string())); }
+
+inline Val sha256_file_val(const Val& p) {
+    std::ifstream f(p.to_string(), std::ios::binary);
+    if (!f) return Val(std::string(""));
+    std::ostringstream ss;
+    ss << f.rdbuf();
+    return Val(sha256_bytes_hex(ss.str()));
+}
+
 inline Val clock_val() {
     using namespace std::chrono;
     auto us = duration_cast<microseconds>(system_clock::now().time_since_epoch()).count();
@@ -1190,6 +1332,33 @@ fn cpp_expr(expr: &Expr, lvl: usize, top_fns: &HashSet<String>) -> String {
                     "remove_file" if args.len() == 1 => {
                         return format!("steel::remove_file_val({})", arg_strs[0]);
                     }
+                    "args" if args.is_empty() => return "steel::args_val()".to_string(),
+                    "exit" if args.is_empty() => return "steel::exit_val(steel::Val(0.0))".to_string(),
+                    "exit" if args.len() == 1 => return format!("steel::exit_val({})", arg_strs[0]),
+                    "mkdir" | "make_dir" if args.len() == 1 => {
+                        return format!("steel::mkdir_val({})", arg_strs[0]);
+                    }
+                    "list_dir" if args.len() == 1 => {
+                        return format!("steel::list_dir_val({})", arg_strs[0]);
+                    }
+                    "remove_dir" if args.len() == 1 => {
+                        return format!("steel::remove_dir_val({})", arg_strs[0]);
+                    }
+                    "rename" if args.len() == 2 => {
+                        return format!("steel::rename_val({}, {})", arg_strs[0], arg_strs[1]);
+                    }
+                    "exec" if args.len() == 1 => {
+                        return format!("steel::exec_val({}, nullptr)", arg_strs[0]);
+                    }
+                    "exec" if args.len() == 2 => {
+                        return format!("([&](){{ steel::Val __av = {}; return steel::exec_val({}, &__av); }}())", arg_strs[1], arg_strs[0]);
+                    }
+                    "sha256" if args.len() == 1 => {
+                        return format!("steel::sha256_val({})", arg_strs[0]);
+                    }
+                    "sha256_file" if args.len() == 1 => {
+                        return format!("steel::sha256_file_val({})", arg_strs[0]);
+                    }
                     "clock" if args.is_empty() => return "steel::clock_val()".to_string(),
                     "abs" if args.len() == 1 => {
                         return format!("steel::Val(std::fabs(({}).as_num()))", arg_strs[0]);
@@ -1547,7 +1716,7 @@ pub fn emit_cpp_single(program: &Program) -> String {
         out.push('\n');
     }
     out.push_str(&fns_out);
-    out.push_str("int main() {\n");
+    out.push_str("int main(int argc, char** argv) {\n    for (int i = 1; i < argc; ++i) steel::cli_args_store().emplace_back(argv[i]);\n");
     out.push_str(&main_out);
     out.push_str("    return 0;\n}\n");
     out
