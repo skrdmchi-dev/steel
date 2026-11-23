@@ -154,8 +154,20 @@ fn emit_js(program: &Program) -> String {
         || body_out.contains("append_file(")
         || body_out.contains("remove_file(")
         || body_out.contains("file_exists(")
+        || body_out.contains("mkdir(")
+        || body_out.contains("make_dir(")
+        || body_out.contains("list_dir(")
+        || body_out.contains("remove_dir(")
+        || body_out.contains("rename(")
+        || body_out.contains("sha256_file(")
     {
         out.push_str("const fs = require('fs');\n");
+    }
+    if body_out.contains("sha256(") || body_out.contains("sha256_file(") {
+        out.push_str("const _st_crypto = require('crypto');\n");
+    }
+    if body_out.contains("exec(") {
+        out.push_str("const _st_cp = require('child_process');\n");
     }
     if body_out.contains("PI") || body_out.contains("E") {
         out.push_str("const PI = Math.PI, E = Math.E;\n");
@@ -228,6 +240,16 @@ fn emit_js(program: &Program) -> String {
         ("env(", "const env = (k) => process.env[k] ?? null;\n"),
         ("time_ms(", "const time_ms = () => Date.now();\n"),
         ("clock(", "const clock = () => Date.now() / 1000;\n"),
+        ("args(", "const args = () => process.argv.slice(2);\n"),
+        ("exit(", "const exit = (c = 0) => process.exit(Math.trunc(c));\n"),
+        ("mkdir(", "const mkdir = (p) => { try { fs.mkdirSync(p, { recursive: true }); return true; } catch { return false; } };\n"),
+        ("make_dir(", "const make_dir = (p) => { try { fs.mkdirSync(p, { recursive: true }); return true; } catch { return false; } };\n"),
+        ("list_dir(", "const list_dir = (p) => { try { return fs.readdirSync(p).sort(); } catch { return []; } };\n"),
+        ("remove_dir(", "const remove_dir = (p) => { try { fs.rmSync(p, { recursive: true, force: true }); return true; } catch { return false; } };\n"),
+        ("rename(", "const rename = (a, b) => { try { fs.renameSync(a, b); return true; } catch { return false; } };\n"),
+        ("exec(", "const exec = (cmd, argv) => { if (Array.isArray(argv)) { const r = _st_cp.spawnSync(String(cmd), argv.map(String), { encoding: 'utf8' }); return { code: r.status ?? -1, stdout: r.stdout || '', stderr: r.stderr || '' }; } return _st_cp.execSync(String(cmd), { encoding: 'utf8' }).trimEnd(); };\n"),
+        ("sha256(", "const sha256 = (s) => _st_crypto.createHash('sha256').update(String(s), 'utf8').digest('hex');\n"),
+        ("sha256_file(", "const sha256_file = (p) => { try { return _st_crypto.createHash('sha256').update(fs.readFileSync(p)).digest('hex'); } catch { return ''; } };\n"),
     ] {
         if body_out.contains(helper) {
             out.push_str(def);
@@ -687,6 +709,16 @@ fn emit_python(program: &Program) -> String {
         ("env(", "import os as _os_env\ndef env(k): return _os_env.environ.get(k, None)\n"),
         ("time_ms(", "import time as _time_ms\ndef time_ms(): return int(_time_ms.time() * 1000)\n"),
         ("clock(", "import time as _time_clk\ndef clock(): return _time_clk.time()\n"),
+        ("args(", "import sys as _sys_args\ndef args(): return list(_sys_args.argv[1:])\n"),
+        ("exit(", "import sys as _sys_exit\ndef exit(c=0): _sys_exit.exit(int(c))\n"),
+        ("mkdir(", "import os as _os_mk\ndef mkdir(p):\n    try: _os_mk.makedirs(p, exist_ok=True); return True\n    except Exception: return False\n"),
+        ("make_dir(", "import os as _os_mkd\ndef make_dir(p):\n    try: _os_mkd.makedirs(p, exist_ok=True); return True\n    except Exception: return False\n"),
+        ("list_dir(", "import os as _os_ld\ndef list_dir(p):\n    try: return sorted(_os_ld.listdir(p))\n    except Exception: return []\n"),
+        ("remove_dir(", "import shutil as _sh_rm\ndef remove_dir(p):\n    try: _sh_rm.rmtree(p); return True\n    except Exception: return False\n"),
+        ("rename(", "import os as _os_rn\ndef rename(a, b):\n    try: _os_rn.replace(a, b); return True\n    except Exception: return False\n"),
+        ("exec(", "import subprocess as _sp_ex\ndef exec(cmd, argv=None):\n    if isinstance(argv, list):\n        r = _sp_ex.run([str(cmd)] + [str(a) for a in argv], capture_output=True, text=True)\n        return __SteelObj({'code': r.returncode, 'stdout': r.stdout, 'stderr': r.stderr})\n    r = _sp_ex.run(str(cmd), shell=True, capture_output=True, text=True)\n    return r.stdout.rstrip()\n"),
+        ("sha256(", "import hashlib as _hl_s\ndef sha256(s): return _hl_s.sha256(__steel_str(s).encode('utf-8')).hexdigest()\n"),
+        ("sha256_file(", "import hashlib as _hl_f\ndef sha256_file(p):\n    try:\n        with open(p, 'rb') as f: return _hl_f.sha256(f.read()).hexdigest()\n    except Exception: return ''\n"),
         ("__steel_type", "def __steel_type(x):\n    if x is None: return 'null'\n    if isinstance(x, bool): return 'boolean'\n    if isinstance(x, (int, float)): return 'number'\n    if isinstance(x, str): return 'string'\n    if isinstance(x, list): return 'array'\n    if isinstance(x, dict): return 'map'\n    return 'function'\n"),
     ] {
         if body_out.contains(helper) {
@@ -1241,6 +1273,15 @@ fn emit_lua(program: &Program) -> String {
         ("env(", "local function env(k) return os.getenv(k) end\n"),
         ("time_ms(", "local function time_ms() return math.floor(os.time() * 1000) end\n"),
         ("clock(", "local function clock() return os.clock() end\n"),
+        ("args(", "local function args() local r = {}; if arg then for i = 1, #arg do r[i] = arg[i] end end return r end\n"),
+        ("exit(", "local function exit(c) os.exit(math.floor(c or 0)) end\n"),
+        ("mkdir(", "local function mkdir(p) local sep = package.config:sub(1,1); if sep == '\\\\' then os.execute('mkdir \"' .. p:gsub('/', '\\\\') .. '\" 2>NUL') else os.execute('mkdir -p \"' .. p .. '\" 2>/dev/null') end return true end\n"),
+        ("make_dir(", "local function make_dir(p) local sep = package.config:sub(1,1); if sep == '\\\\' then os.execute('mkdir \"' .. p:gsub('/', '\\\\') .. '\" 2>NUL') else os.execute('mkdir -p \"' .. p .. '\" 2>/dev/null') end return true end\n"),
+        ("list_dir(", "local function list_dir(p) local sep = package.config:sub(1,1); local cmd = sep == '\\\\' and ('dir /b \"' .. p:gsub('/', '\\\\') .. '\" 2>NUL') or ('ls -1 \"' .. p .. '\" 2>/dev/null'); local h = io.popen(cmd); local r = {}; if h then for l in h:lines() do l = l:gsub('\\r$', ''); if #l > 0 then table.insert(r, l) end end h:close() end table.sort(r); return r end\n"),
+        ("remove_dir(", "local function remove_dir(p) local sep = package.config:sub(1,1); if sep == '\\\\' then os.execute('rmdir /s /q \"' .. p:gsub('/', '\\\\') .. '\" 2>NUL') else os.execute('rm -rf \"' .. p .. '\" 2>/dev/null') end return true end\n"),
+        ("rename(", "local function rename(a, b) local ok = os.rename(a, b); return ok ~= nil end\n"),
+        ("exec(", "local function exec(cmd, argv) if type(argv) == 'table' then local q = {cmd}; for _, a in ipairs(argv) do table.insert(q, '\"' .. tostring(a):gsub('\"', '\\\\\"') .. '\"') end local h = io.popen(table.concat(q, ' ')); local o = h and h:read('*a') or ''; local ok, _, code = h:close(); return { code = ok and 0 or (code or 1), stdout = o, stderr = '' } end local h = io.popen(tostring(cmd)); local o = h and h:read('*a') or ''; if h then h:close() end return (o:gsub('[\\r\\n]+$', '')) end\n"),
+        ("sha256", "local function __st_sha256_bytes(msg)\n    local K = {0x428a2f98,0x71374491,0xb5c0fbcf,0xe9b5dba5,0x3956c25b,0x59f111f1,0x923f82a4,0xab1c5ed5,0xd807aa98,0x12835b01,0x243185be,0x550c7dc3,0x72be5d74,0x80deb1fe,0x9bdc06a7,0xc19bf174,0xe49b69c1,0xefbe4786,0x0fc19dc6,0x240ca1cc,0x2de92c6f,0x4a7484aa,0x5cb0a9dc,0x76f988da,0x983e5152,0xa831c66d,0xb00327c8,0xbf597fc7,0xc6e00bf3,0xd5a79147,0x06ca6351,0x14292967,0x27b70a85,0x2e1b2138,0x4d2c6dfc,0x53380d13,0x650a7354,0x766a0abb,0x81c2c92e,0x92722c85,0xa2bfe8a1,0xa81a664b,0xc24b8b70,0xc76c51a3,0xd192e819,0xd6990624,0xf40e3585,0x106aa070,0x19a4c116,0x1e376c08,0x2748774c,0x34b0bcb5,0x391c0cb3,0x4ed8aa4a,0x5b9cca4f,0x682e6ff3,0x748f82ee,0x78a5636f,0x84c87814,0x8cc70208,0x90befffa,0xa4506ceb,0xbef9a3f7,0xc67178f2}\n    local H = {0x6a09e667,0xbb67ae85,0x3c6ef372,0xa54ff53a,0x510e527f,0x9b05688c,0x1f83d9ab,0x5be0cd19}\n    local function rr(x, n) return ((x >> n) | (x << (32 - n))) & 0xffffffff end\n    local bitlen = #msg * 8\n    msg = msg .. '\\x80' .. string.rep('\\0', (55 - #msg) % 64) .. string.pack('>I8', bitlen)\n    for pos = 1, #msg, 64 do\n        local w = {}\n        for i = 1, 16 do w[i] = string.unpack('>I4', msg, pos + (i - 1) * 4) end\n        for i = 17, 64 do\n            local s0 = rr(w[i-15], 7) ~ rr(w[i-15], 18) ~ (w[i-15] >> 3)\n            local s1 = rr(w[i-2], 17) ~ rr(w[i-2], 19) ~ (w[i-2] >> 10)\n            w[i] = (w[i-16] + s0 + w[i-7] + s1) & 0xffffffff\n        end\n        local a,b,c,d,e,f,g,h = H[1],H[2],H[3],H[4],H[5],H[6],H[7],H[8]\n        for i = 1, 64 do\n            local s1 = rr(e, 6) ~ rr(e, 11) ~ rr(e, 25)\n            local ch = (e & f) ~ ((~e & 0xffffffff) & g)\n            local t1 = (h + s1 + ch + K[i] + w[i]) & 0xffffffff\n            local s0 = rr(a, 2) ~ rr(a, 13) ~ rr(a, 22)\n            local maj = (a & b) ~ (a & c) ~ (b & c)\n            local t2 = (s0 + maj) & 0xffffffff\n            h = g; g = f; f = e; e = (d + t1) & 0xffffffff; d = c; c = b; b = a; a = (t1 + t2) & 0xffffffff\n        end\n        H[1]=(H[1]+a)&0xffffffff; H[2]=(H[2]+b)&0xffffffff; H[3]=(H[3]+c)&0xffffffff; H[4]=(H[4]+d)&0xffffffff\n        H[5]=(H[5]+e)&0xffffffff; H[6]=(H[6]+f)&0xffffffff; H[7]=(H[7]+g)&0xffffffff; H[8]=(H[8]+h)&0xffffffff\n    end\n    return string.format('%08x%08x%08x%08x%08x%08x%08x%08x', H[1],H[2],H[3],H[4],H[5],H[6],H[7],H[8])\nend\nlocal function sha256(s) return __st_sha256_bytes(__steel_str(s)) end\nlocal function sha256_file(p) local f = io.open(p, 'rb'); if not f then return '' end local c = f:read('*a'); f:close(); return __st_sha256_bytes(c) end\n"),
     ] {
         if body_out.contains(helper) {
             out.push_str(def);
@@ -1855,6 +1896,14 @@ fn rs_direct_stdlib_helpers(code: &str) -> String {
         ("__st_str(", "#[inline] pub fn __st_str(v: &SVal) -> SVal { if let SVal::Str(_) = v { v.clone() } else { SVal::Str(Cow::Owned(v.to_string())) } }\n"),
         ("__st_json_stringify(", "fn __st_js_raw(v: &SVal) -> String { match v { SVal::Null => \"null\".into(), SVal::Bool(b) => b.to_string(), SVal::Num(n) => if n.fract() == 0.0 && n.abs() < 1e15 { format!(\"{}\", *n as i64) } else { format!(\"{}\", n) }, SVal::Str(s) => format!(\"\\\"{}\\\"\", s.replace('\\\\', \"\\\\\\\\\").replace('\"', \"\\\\\\\"\").replace('\\n', \"\\\\n\").replace('\\r', \"\\\\r\").replace('\\t', \"\\\\t\")), SVal::Arr(a) => format!(\"[{}]\", a.borrow().iter().map(__st_js_raw).collect::<Vec<_>>().join(\",\")), SVal::Map(m) => format!(\"{{{}}}\", m.borrow().iter().map(|(k, val)| format!(\"\\\"{}\\\": {}\", k.replace('\\\\', \"\\\\\\\\\").replace('\"', \"\\\\\\\"\"), __st_js_raw(val)).replace(\"\\\": \", \"\\\":\")).collect::<Vec<_>>().join(\",\")), SVal::Func(_) => \"null\".into() } }\n#[inline] pub fn __st_json_stringify(v: &SVal) -> SVal { SVal::Str(Cow::Owned(__st_js_raw(v))) }\n"),
         ("__st_json_parse(", "fn __st_jp(cs: &[char], i: &mut usize) -> SVal { while *i < cs.len() && cs[*i].is_whitespace() { *i += 1; } if *i >= cs.len() { return SVal::Null; } match cs[*i] { '\"' => { *i += 1; let mut s = String::new(); while *i < cs.len() { let c = cs[*i]; *i += 1; if c == '\"' { break; } if c == '\\\\' && *i < cs.len() { let e = cs[*i]; *i += 1; match e { 'n' => s.push('\\n'), 'r' => s.push('\\r'), 't' => s.push('\\t'), o => s.push(o) } } else { s.push(c); } } SVal::Str(Cow::Owned(s)) } '[' => { *i += 1; let mut a = Vec::new(); loop { while *i < cs.len() && cs[*i].is_whitespace() { *i += 1; } if *i >= cs.len() || cs[*i] == ']' { *i += 1; break; } a.push(__st_jp(cs, i)); while *i < cs.len() && cs[*i].is_whitespace() { *i += 1; } if *i < cs.len() && cs[*i] == ',' { *i += 1; } } SVal::Arr(Rc::new(RefCell::new(a))) } '{' => { *i += 1; let mut m = SMap::new(); loop { while *i < cs.len() && cs[*i].is_whitespace() { *i += 1; } if *i >= cs.len() || cs[*i] == '}' { *i += 1; break; } let k = __st_jp(cs, i).to_string(); while *i < cs.len() && (cs[*i].is_whitespace() || cs[*i] == ':') { *i += 1; } let v = __st_jp(cs, i); m.insert(Cow::Owned(k), v); while *i < cs.len() && cs[*i].is_whitespace() { *i += 1; } if *i < cs.len() && cs[*i] == ',' { *i += 1; } } SVal::Map(Rc::new(RefCell::new(m))) } 't' => { *i += 4; SVal::Bool(true) } 'f' => { *i += 5; SVal::Bool(false) } 'n' => { *i += 4; SVal::Null } _ => { let st = *i; while *i < cs.len() && (cs[*i].is_ascii_digit() || matches!(cs[*i], '-' | '+' | '.' | 'e' | 'E')) { *i += 1; } let ns: String = cs[st..*i].iter().collect(); SVal::Num(ns.parse().unwrap_or(0.0)) } } }\n#[inline] pub fn __st_json_parse(v: &SVal) -> SVal { let s = match v { SVal::Str(st) => st.as_ref(), _ => \"null\" }; let cs: Vec<char> = s.chars().collect(); let mut i = 0; __st_jp(&cs, &mut i) }\n"),
+        ("__st_args(", "#[inline] pub fn __st_args() -> SVal { let v: Vec<SVal> = std::env::args().skip(1).map(|a| SVal::Str(Cow::Owned(a))).collect(); SVal::Arr(Rc::new(RefCell::new(v))) }\n"),
+        ("__st_exit(", "#[inline] pub fn __st_exit(c: &SVal) -> SVal { std::process::exit(c.as_num() as i32); }\n"),
+        ("__st_mkdir(", "#[inline] pub fn __st_mkdir(p: &SVal) -> SVal { SVal::Bool(std::fs::create_dir_all(p.to_string()).is_ok()) }\n"),
+        ("__st_list_dir(", "#[inline] pub fn __st_list_dir(p: &SVal) -> SVal { let mut names: Vec<String> = std::fs::read_dir(p.to_string()).map(|rd| rd.flatten().map(|e| e.file_name().to_string_lossy().to_string()).collect()).unwrap_or_default(); names.sort(); SVal::Arr(Rc::new(RefCell::new(names.into_iter().map(|s| SVal::Str(Cow::Owned(s))).collect()))) }\n"),
+        ("__st_remove_dir(", "#[inline] pub fn __st_remove_dir(p: &SVal) -> SVal { SVal::Bool(std::fs::remove_dir_all(p.to_string()).is_ok()) }\n"),
+        ("__st_rename(", "#[inline] pub fn __st_rename(a: &SVal, b: &SVal) -> SVal { SVal::Bool(std::fs::rename(a.to_string(), b.to_string()).is_ok()) }\n"),
+        ("__st_exec(", "#[inline] pub fn __st_exec(cmd: &SVal, argv: Option<&SVal>) -> SVal { let c = cmd.to_string(); if let Some(SVal::Arr(a)) = argv { let as_: Vec<String> = a.borrow().iter().map(|x| x.to_string()).collect(); let out = std::process::Command::new(&c).args(&as_).output(); let mut m = SMap::new(); match out { Ok(o) => { m.insert(Cow::Borrowed(\"code\"), SVal::Num(o.status.code().unwrap_or(-1) as f64)); m.insert(Cow::Borrowed(\"stderr\"), SVal::Str(Cow::Owned(String::from_utf8_lossy(&o.stderr).to_string()))); m.insert(Cow::Borrowed(\"stdout\"), SVal::Str(Cow::Owned(String::from_utf8_lossy(&o.stdout).to_string()))); } Err(e) => { m.insert(Cow::Borrowed(\"code\"), SVal::Num(-1.0)); m.insert(Cow::Borrowed(\"stderr\"), SVal::Str(Cow::Owned(e.to_string()))); m.insert(Cow::Borrowed(\"stdout\"), SVal::Str(Cow::Borrowed(\"\"))); } } return SVal::Map(Rc::new(RefCell::new(m))); } let out = if cfg!(windows) { std::process::Command::new(\"cmd\").args([\"/C\", &c]).output() } else { std::process::Command::new(\"sh\").args([\"-c\", &c]).output() }; SVal::Str(Cow::Owned(out.map(|o| String::from_utf8_lossy(&o.stdout).trim_end().to_string()).unwrap_or_default())) }\n"),
+        ("__st_sha256", "fn __st_sha256_raw(data: &[u8]) -> String { const K: [u32; 64] = [0x428a2f98,0x71374491,0xb5c0fbcf,0xe9b5dba5,0x3956c25b,0x59f111f1,0x923f82a4,0xab1c5ed5,0xd807aa98,0x12835b01,0x243185be,0x550c7dc3,0x72be5d74,0x80deb1fe,0x9bdc06a7,0xc19bf174,0xe49b69c1,0xefbe4786,0x0fc19dc6,0x240ca1cc,0x2de92c6f,0x4a7484aa,0x5cb0a9dc,0x76f988da,0x983e5152,0xa831c66d,0xb00327c8,0xbf597fc7,0xc6e00bf3,0xd5a79147,0x06ca6351,0x14292967,0x27b70a85,0x2e1b2138,0x4d2c6dfc,0x53380d13,0x650a7354,0x766a0abb,0x81c2c92e,0x92722c85,0xa2bfe8a1,0xa81a664b,0xc24b8b70,0xc76c51a3,0xd192e819,0xd6990624,0xf40e3585,0x106aa070,0x19a4c116,0x1e376c08,0x2748774c,0x34b0bcb5,0x391c0cb3,0x4ed8aa4a,0x5b9cca4f,0x682e6ff3,0x748f82ee,0x78a5636f,0x84c87814,0x8cc70208,0x90befffa,0xa4506ceb,0xbef9a3f7,0xc67178f2]; let mut h: [u32; 8] = [0x6a09e667,0xbb67ae85,0x3c6ef372,0xa54ff53a,0x510e527f,0x9b05688c,0x1f83d9ab,0x5be0cd19]; let bl = (data.len() as u64) * 8; let mut msg = data.to_vec(); msg.push(0x80); while (msg.len() % 64) != 56 { msg.push(0); } msg.extend_from_slice(&bl.to_be_bytes()); for ch in msg.chunks_exact(64) { let mut w = [0u32; 64]; for i in 0..16 { w[i] = u32::from_be_bytes([ch[4*i],ch[4*i+1],ch[4*i+2],ch[4*i+3]]); } for i in 16..64 { let s0 = w[i-15].rotate_right(7)^w[i-15].rotate_right(18)^(w[i-15]>>3); let s1 = w[i-2].rotate_right(17)^w[i-2].rotate_right(19)^(w[i-2]>>10); w[i] = w[i-16].wrapping_add(s0).wrapping_add(w[i-7]).wrapping_add(s1); } let [mut a,mut b,mut c,mut d,mut e,mut f,mut g,mut hh] = h; for i in 0..64 { let s1 = e.rotate_right(6)^e.rotate_right(11)^e.rotate_right(25); let chv = (e&f)^((!e)&g); let t1 = hh.wrapping_add(s1).wrapping_add(chv).wrapping_add(K[i]).wrapping_add(w[i]); let s0 = a.rotate_right(2)^a.rotate_right(13)^a.rotate_right(22); let maj = (a&b)^(a&c)^(b&c); let t2 = s0.wrapping_add(maj); hh=g; g=f; f=e; e=d.wrapping_add(t1); d=c; c=b; b=a; a=t1.wrapping_add(t2); } h[0]=h[0].wrapping_add(a); h[1]=h[1].wrapping_add(b); h[2]=h[2].wrapping_add(c); h[3]=h[3].wrapping_add(d); h[4]=h[4].wrapping_add(e); h[5]=h[5].wrapping_add(f); h[6]=h[6].wrapping_add(g); h[7]=h[7].wrapping_add(hh); } format!(\"{:08x}{:08x}{:08x}{:08x}{:08x}{:08x}{:08x}{:08x}\",h[0],h[1],h[2],h[3],h[4],h[5],h[6],h[7]) }\n#[inline] pub fn __st_sha256(v: &SVal) -> SVal { SVal::Str(Cow::Owned(__st_sha256_raw(v.to_string().as_bytes()))) }\n#[inline] pub fn __st_sha256_file(p: &SVal) -> SVal { SVal::Str(Cow::Owned(std::fs::read(p.to_string()).map(|b| __st_sha256_raw(&b)).unwrap_or_default())) }\n"),
     ] {
         if code.contains(token) {
             out.push_str(def);
@@ -3064,6 +3113,17 @@ fn rs_expr(expr: &Expr, lvl: usize, top_fns: &std::collections::HashSet<String>)
                     "clamp" if args.len() == 3 => return format!("SVal::Num(({}).as_num().max(({}).as_num()).min(({}).as_num()))", rs_ref_expr(&args[0], lvl, top_fns), rs_ref_expr(&args[1], lvl, top_fns), rs_ref_expr(&args[2], lvl, top_fns)),
                     "json_stringify" if args.len() == 1 => return format!("__st_json_stringify({})", rs_ref_expr(&args[0], lvl, top_fns)),
                     "json_parse" if args.len() == 1 => return format!("__st_json_parse({})", rs_ref_expr(&args[0], lvl, top_fns)),
+                    "args" if args.is_empty() => return "__st_args()".to_string(),
+                    "exit" if args.is_empty() => return "__st_exit(&SVal::Num(0.0))".to_string(),
+                    "exit" if args.len() == 1 => return format!("__st_exit({})", rs_ref_expr(&args[0], lvl, top_fns)),
+                    "mkdir" | "make_dir" if args.len() == 1 => return format!("__st_mkdir({})", rs_ref_expr(&args[0], lvl, top_fns)),
+                    "list_dir" if args.len() == 1 => return format!("__st_list_dir({})", rs_ref_expr(&args[0], lvl, top_fns)),
+                    "remove_dir" if args.len() == 1 => return format!("__st_remove_dir({})", rs_ref_expr(&args[0], lvl, top_fns)),
+                    "rename" if args.len() == 2 => return format!("__st_rename({}, {})", rs_ref_expr(&args[0], lvl, top_fns), rs_ref_expr(&args[1], lvl, top_fns)),
+                    "exec" if args.len() == 1 => return format!("__st_exec({}, None)", rs_ref_expr(&args[0], lvl, top_fns)),
+                    "exec" if args.len() == 2 => return format!("__st_exec({}, Some({}))", rs_ref_expr(&args[0], lvl, top_fns), rs_ref_expr(&args[1], lvl, top_fns)),
+                    "sha256" if args.len() == 1 => return format!("__st_sha256({})", rs_ref_expr(&args[0], lvl, top_fns)),
+                    "sha256_file" if args.len() == 1 => return format!("__st_sha256_file({})", rs_ref_expr(&args[0], lvl, top_fns)),
                     "print" | "println" => {
                         let refs: Vec<String> = args.iter().map(|a| rs_ref_expr(a, lvl, top_fns)).collect();
                         return format!("{{ let __pa: [&SVal; {}] = [{}]; println!(\"{{}}\", __pa.iter().map(|a| a.to_string()).collect::<Vec<_>>().join(\" \")); SVal::Null }}", refs.len(), refs.join(", "));
@@ -3597,6 +3657,126 @@ fn c_extra_stdlib(code: &str) -> String {
             "static inline SVal sv_remove_file(SVal p) { return sv_bool(remove(p.type == ST_STR ? p.str : \"\") == 0); }\n",
         );
     }
+    if code.contains("sv_args(") {
+        s.push_str(
+            "static int __st_argc = 0; static char** __st_argv = NULL;\n\
+             static inline SVal sv_args(void) { SVal a = sv_arr_new(0, NULL); for (int i = 1; i < __st_argc; i++) sv_push(a, sv_str(__st_argv[i])); return a; }\n",
+        );
+    }
+    if code.contains("sv_exit(") {
+        s.push_str("static inline SVal sv_exit(SVal c) { exit((int)c.num); return sv_null(); }\n");
+    }
+    if code.contains("sv_mkdir(") {
+        s.push_str(
+            "static inline SVal sv_mkdir(SVal p) {\n\
+             \x20   const char* path = (p.type == ST_STR && p.str) ? p.str : \"\";\n\
+             \x20   char cmd[2048];\n\
+             #ifdef _WIN32\n\
+             \x20   char wp[1024]; size_t i = 0; for (; path[i] && i < 1023; i++) wp[i] = (path[i] == '/') ? '\\\\' : path[i]; wp[i] = '\\0';\n\
+             \x20   snprintf(cmd, sizeof(cmd), \"mkdir \\\"%s\\\" 2>NUL\", wp);\n\
+             #else\n\
+             \x20   snprintf(cmd, sizeof(cmd), \"mkdir -p \\\"%s\\\" 2>/dev/null\", path);\n\
+             #endif\n\
+             \x20   (void)system(cmd); return sv_bool(true);\n\
+             }\n",
+        );
+    }
+    if code.contains("sv_list_dir(") {
+        s.push_str(
+            "static int __st_cmp_str(const void* a, const void* b) { return strcmp(*(const char* const*)a, *(const char* const*)b); }\n\
+             static inline SVal sv_list_dir(SVal p) {\n\
+             \x20   const char* path = (p.type == ST_STR && p.str) ? p.str : \".\";\n\
+             \x20   char cmd[2048];\n\
+             #ifdef _WIN32\n\
+             \x20   char wp[1024]; size_t wi = 0; for (; path[wi] && wi < 1023; wi++) wp[wi] = (path[wi] == '/') ? '\\\\' : path[wi]; wp[wi] = '\\0';\n\
+             \x20   snprintf(cmd, sizeof(cmd), \"dir /b \\\"%s\\\" 2>NUL\", wp); FILE* fp = _popen(cmd, \"r\");\n\
+             #else\n\
+             \x20   snprintf(cmd, sizeof(cmd), \"ls -1 \\\"%s\\\" 2>/dev/null\", path); FILE* fp = popen(cmd, \"r\");\n\
+             #endif\n\
+             \x20   char* names[4096]; int n = 0; char line[1024];\n\
+             \x20   if (fp) { while (n < 4096 && fgets(line, sizeof(line), fp)) { size_t l = strlen(line); while (l > 0 && (line[l-1]=='\\n'||line[l-1]=='\\r')) line[--l] = '\\0'; if (l > 0) names[n++] = strdup(line); }\n\
+             #ifdef _WIN32\n\
+             \x20   _pclose(fp);\n\
+             #else\n\
+             \x20   pclose(fp);\n\
+             #endif\n\
+             \x20   }\n\
+             \x20   if (n > 1) qsort(names, (size_t)n, sizeof(char*), __st_cmp_str);\n\
+             \x20   SVal arr = sv_arr_new(0, NULL); for (int i = 0; i < n; i++) sv_push(arr, sv_str(names[i])); return arr;\n\
+             }\n",
+        );
+    }
+    if code.contains("sv_remove_dir(") {
+        s.push_str(
+            "static inline SVal sv_remove_dir(SVal p) {\n\
+             \x20   const char* path = (p.type == ST_STR && p.str) ? p.str : \"\";\n\
+             \x20   char cmd[2048];\n\
+             #ifdef _WIN32\n\
+             \x20   char wp[1024]; size_t i = 0; for (; path[i] && i < 1023; i++) wp[i] = (path[i] == '/') ? '\\\\' : path[i]; wp[i] = '\\0';\n\
+             \x20   snprintf(cmd, sizeof(cmd), \"rmdir /s /q \\\"%s\\\" 2>NUL\", wp);\n\
+             #else\n\
+             \x20   snprintf(cmd, sizeof(cmd), \"rm -rf \\\"%s\\\" 2>/dev/null\", path);\n\
+             #endif\n\
+             \x20   (void)system(cmd); return sv_bool(true);\n\
+             }\n",
+        );
+    }
+    if code.contains("sv_rename(") {
+        s.push_str(
+            "static inline SVal sv_rename(SVal a, SVal b) { return sv_bool(rename(a.type == ST_STR ? a.str : \"\", b.type == ST_STR ? b.str : \"\") == 0); }\n",
+        );
+    }
+    if code.contains("sv_exec(") {
+        s.push_str(
+            "static inline SVal sv_exec(SVal cmd, SVal argv, int has_argv) {\n\
+             \x20   char full[4096]; snprintf(full, sizeof(full), \"%s\", (cmd.type == ST_STR && cmd.str) ? cmd.str : \"\");\n\
+             \x20   if (has_argv && argv.type == ST_ARR && argv.arr) { for (int i = 0; i < argv.arr->len; i++) { strncat(full, \" \\\"\", sizeof(full)-strlen(full)-1); strncat(full, argv.arr->data[i].type == ST_STR ? argv.arr->data[i].str : \"\", sizeof(full)-strlen(full)-1); strncat(full, \"\\\"\", sizeof(full)-strlen(full)-1); } }\n\
+             #ifdef _WIN32\n\
+             \x20   FILE* fp = _popen(full, \"r\");\n\
+             #else\n\
+             \x20   FILE* fp = popen(full, \"r\");\n\
+             #endif\n\
+             \x20   size_t cap = 4096, len = 0; char* out = (char*)calloc(1, cap); int rc = -1;\n\
+             \x20   if (fp) { char buf[1024]; size_t r; while ((r = fread(buf, 1, sizeof(buf), fp)) > 0) { while (len + r + 1 >= cap) { cap *= 2; out = (char*)realloc(out, cap); } memcpy(out + len, buf, r); len += r; out[len] = '\\0'; }\n\
+             #ifdef _WIN32\n\
+             \x20   rc = _pclose(fp);\n\
+             #else\n\
+             \x20   rc = pclose(fp);\n\
+             #endif\n\
+             \x20   }\n\
+             \x20   if (has_argv) { SVal m = sv_map_new(); sv_map_set(m, \"code\", sv_num((double)rc)); sv_map_set(m, \"stdout\", sv_str(out)); sv_map_set(m, \"stderr\", sv_str(\"\")); return m; }\n\
+             \x20   while (len > 0 && (out[len-1]=='\\n'||out[len-1]=='\\r')) out[--len] = '\\0';\n\
+             \x20   return sv_str(out);\n\
+             }\n",
+        );
+    }
+    if code.contains("sv_sha256") {
+        s.push_str(
+            "#include <stdint.h>\n\
+             static char* __sv_sha256_raw(const unsigned char* data, size_t len) {\n\
+             \x20   static const uint32_t primes[64] = {2,3,5,7,11,13,17,19,23,29,31,37,41,43,47,53,59,61,67,71,73,79,83,89,97,101,103,107,109,113,127,131,137,139,149,151,157,163,167,173,179,181,191,193,197,199,211,223,227,229,233,239,241,251,257,263,269,271,277,281,283,293,307,311};\n\
+             \x20   uint32_t k[64], h[8];\n\
+             \x20   for (int i = 0; i < 64; i++) { double r = cbrt((double)primes[i]); k[i] = (uint32_t)((r - floor(r)) * 4294967296.0); }\n\
+             \x20   for (int i = 0; i < 8; i++) { double r = sqrt((double)primes[i]); h[i] = (uint32_t)((r - floor(r)) * 4294967296.0); }\n\
+             \x20   size_t pad_len = ((len + 9 + 63) / 64) * 64; unsigned char* msg = (unsigned char*)calloc(1, pad_len);\n\
+             \x20   memcpy(msg, data, len); msg[len] = 0x80; uint64_t bl = (uint64_t)len * 8ULL;\n\
+             \x20   for (int i = 0; i < 8; i++) msg[pad_len - 1 - i] = (unsigned char)((bl >> (i * 8)) & 0xff);\n\
+             \x20   for (size_t off = 0; off < pad_len; off += 64) {\n\
+             \x20       uint32_t w[64];\n\
+             \x20       for (int i = 0; i < 16; i++) w[i] = ((uint32_t)msg[off+4*i]<<24)|((uint32_t)msg[off+4*i+1]<<16)|((uint32_t)msg[off+4*i+2]<<8)|((uint32_t)msg[off+4*i+3]);\n\
+             \x20       for (int i = 16; i < 64; i++) { uint32_t s0 = ((w[i-15]>>7)|(w[i-15]<<25))^((w[i-15]>>18)|(w[i-15]<<14))^(w[i-15]>>3); uint32_t s1 = ((w[i-2]>>17)|(w[i-2]<<15))^((w[i-2]>>19)|(w[i-2]<<13))^(w[i-2]>>10); w[i] = w[i-16]+s0+w[i-7]+s1; }\n\
+             \x20       uint32_t a=h[0],b=h[1],c=h[2],d=h[3],e=h[4],f=h[5],g=h[6],hh=h[7];\n\
+             \x20       for (int i = 0; i < 64; i++) { uint32_t s1=((e>>6)|(e<<26))^((e>>11)|(e<<21))^((e>>25)|(e<<7)); uint32_t ch=(e&f)^((~e)&g); uint32_t t1=hh+s1+ch+k[i]+w[i]; uint32_t s0=((a>>2)|(a<<30))^((a>>13)|(a<<19))^((a>>22)|(a<<10)); uint32_t maj=(a&b)^(a&c)^(b&c); uint32_t t2=s0+maj; hh=g; g=f; f=e; e=d+t1; d=c; c=b; b=a; a=t1+t2; }\n\
+             \x20       h[0]+=a; h[1]+=b; h[2]+=c; h[3]+=d; h[4]+=e; h[5]+=f; h[6]+=g; h[7]+=hh;\n\
+             \x20   }\n\
+             \x20   free(msg); char* out = (char*)calloc(1, 65);\n\
+             \x20   snprintf(out, 65, \"%08x%08x%08x%08x%08x%08x%08x%08x\", h[0],h[1],h[2],h[3],h[4],h[5],h[6],h[7]);\n\
+             \x20   return out;\n\
+             }\n\
+             static inline SVal sv_sha256(SVal v) { const char* s = (v.type == ST_STR && v.str) ? v.str : \"\"; return sv_str(__sv_sha256_raw((const unsigned char*)s, strlen(s))); }\n\
+             static inline SVal sv_sha256_file(SVal p) { const char* path = (p.type == ST_STR && p.str) ? p.str : \"\"; FILE* f = fopen(path, \"rb\"); if (!f) return sv_str(\"\"); fseek(f, 0, SEEK_END); long sz = ftell(f); fseek(f, 0, SEEK_SET); unsigned char* b = (unsigned char*)malloc((size_t)(sz > 0 ? sz : 1)); size_t r = sz > 0 ? fread(b, 1, (size_t)sz, f) : 0; fclose(f); char* hx = __sv_sha256_raw(b, r); free(b); return sv_str(hx); }\n",
+        );
+    }
     if code.contains("sv_clock(") {
         s.push_str("#include <time.h>\nstatic inline SVal sv_clock(void) { struct timespec ts; timespec_get(&ts, TIME_UTC); return sv_num((double)ts.tv_sec + (double)ts.tv_nsec * 1e-9); }\n");
     }
@@ -3875,12 +4055,16 @@ fn emit_c(program: &Program) -> String {
         || user_code.contains("sv_set")
         || user_code.contains("sv_map_hof")
         || user_code.contains("sv_filter_hof")
-        || user_code.contains("sv_reduce_hof");
+        || user_code.contains("sv_reduce_hof")
+        || user_code.contains("sv_args(")
+        || user_code.contains("sv_list_dir(")
+        || user_code.contains("sv_exec(");
     let needs_map = user_code.contains("sv_map_new")
         || user_code.contains("sv_map_set")
         || user_code.contains("sv_map_get")
         || user_code.contains("sv_get")
-        || user_code.contains("sv_set");
+        || user_code.contains("sv_set")
+        || user_code.contains("sv_exec(");
     let needs_add = user_code.contains("sv_add(");
     let needs_eq = user_code.contains("sv_eq(");
     let needs_truthy = user_code.contains("sv_truthy(");
@@ -4121,7 +4305,11 @@ fn emit_c(program: &Program) -> String {
     out.push_str(&top_protos);
     out.push_str(&lambdas);
     out.push_str(&top_fns);
-    out.push_str("int main(void) {\n");
+    if user_code.contains("sv_args(") {
+        out.push_str("int main(int argc, char** argv) {\n    __st_argc = argc; __st_argv = argv;\n");
+    } else {
+        out.push_str("int main(void) {\n");
+    }
     out.push_str(&main_body);
     if needs_arena {
         out.push_str("    sv_cleanup();\n");
@@ -5697,6 +5885,43 @@ fn c_expr(expr: &Expr, lambdas: &mut String, lambda_id: &mut usize) -> String {
                     "remove_file" if args.len() == 1 => {
                         return format!("sv_remove_file({})", c_expr(&args[0], lambdas, lambda_id))
                     }
+                    "args" if args.is_empty() => return "sv_args()".to_string(),
+                    "exit" if args.is_empty() => return "sv_exit(sv_num(0))".to_string(),
+                    "exit" if args.len() == 1 => {
+                        return format!("sv_exit({})", c_expr(&args[0], lambdas, lambda_id))
+                    }
+                    "mkdir" | "make_dir" if args.len() == 1 => {
+                        return format!("sv_mkdir({})", c_expr(&args[0], lambdas, lambda_id))
+                    }
+                    "list_dir" if args.len() == 1 => {
+                        return format!("sv_list_dir({})", c_expr(&args[0], lambdas, lambda_id))
+                    }
+                    "remove_dir" if args.len() == 1 => {
+                        return format!("sv_remove_dir({})", c_expr(&args[0], lambdas, lambda_id))
+                    }
+                    "rename" if args.len() == 2 => {
+                        return format!(
+                            "sv_rename({}, {})",
+                            c_expr(&args[0], lambdas, lambda_id),
+                            c_expr(&args[1], lambdas, lambda_id)
+                        )
+                    }
+                    "exec" if args.len() == 1 => {
+                        return format!("sv_exec({}, sv_null(), 0)", c_expr(&args[0], lambdas, lambda_id))
+                    }
+                    "exec" if args.len() == 2 => {
+                        return format!(
+                            "sv_exec({}, {}, 1)",
+                            c_expr(&args[0], lambdas, lambda_id),
+                            c_expr(&args[1], lambdas, lambda_id)
+                        )
+                    }
+                    "sha256" if args.len() == 1 => {
+                        return format!("sv_sha256({})", c_expr(&args[0], lambdas, lambda_id))
+                    }
+                    "sha256_file" if args.len() == 1 => {
+                        return format!("sv_sha256_file({})", c_expr(&args[0], lambdas, lambda_id))
+                    }
                     "clock" if args.is_empty() => {
                         return "sv_clock()".to_string()
                     }
@@ -6114,7 +6339,10 @@ fn go_runtime_helpers(user_code: &str) -> (Vec<&'static str>, String) {
         || user_code.contains("__steel_sort")
         || user_code.contains("__steel_slice")
         || user_code.contains("__steel_contains")
-        || user_code.contains("__steel_join");
+        || user_code.contains("__steel_join")
+        || user_code.contains("__steel_args")
+        || user_code.contains("__steel_list_dir")
+        || user_code.contains("__steel_exec");
 
     if user_code.contains("__steel_print(") {
         rt.push_str("func __steel_print(args ...any) { parts := make([]string, len(args)); for i, a := range args { if a == nil { parts[i] = \"null\" } else if f, ok := a.(float64); ok && math.Trunc(f) == f && math.Abs(f) < 1e15 { parts[i] = strconv.FormatInt(int64(f), 10) } else { parts[i] = fmt.Sprint(a) } }; fmt.Println(strings.Join(parts, \" \")) }\n");
@@ -6130,6 +6358,31 @@ fn go_runtime_helpers(user_code: &str) -> (Vec<&'static str>, String) {
     }
     if user_code.contains("__steel_remove_file") {
         rt.push_str("func __steel_remove_file(p any) any { return os.Remove(fmt.Sprint(p)) == nil }\n");
+    }
+    if user_code.contains("__steel_args") {
+        rt.push_str("func __steel_args() *__SteelArr { out := make([]any, 0, len(os.Args)); for _, a := range os.Args[1:] { out = append(out, a) }; return &__SteelArr{items: out} }\n");
+    }
+    if user_code.contains("__steel_exit") {
+        rt.push_str("func __steel_exit(c any) any { os.Exit(int(__steel_num(c))); return nil }\n");
+    }
+    if user_code.contains("__steel_mkdir") {
+        rt.push_str("func __steel_mkdir(p any) any { return os.MkdirAll(fmt.Sprint(p), 0755) == nil }\n");
+    }
+    if user_code.contains("__steel_list_dir") {
+        rt.push_str("func __steel_list_dir(p any) *__SteelArr { ents, err := os.ReadDir(fmt.Sprint(p)); if err != nil { return &__SteelArr{} }; names := make([]string, 0, len(ents)); for _, e := range ents { names = append(names, e.Name()) }; sort.Strings(names); out := make([]any, len(names)); for i, n := range names { out[i] = n }; return &__SteelArr{items: out} }\n");
+    }
+    if user_code.contains("__steel_remove_dir") {
+        rt.push_str("func __steel_remove_dir(p any) any { return os.RemoveAll(fmt.Sprint(p)) == nil }\n");
+    }
+    if user_code.contains("__steel_rename") {
+        rt.push_str("func __steel_rename(a, b any) any { return os.Rename(fmt.Sprint(a), fmt.Sprint(b)) == nil }\n");
+    }
+    if user_code.contains("__steel_exec") {
+        rt.push_str("func __steel_exec(cmd any, argv any) any { if a, ok := argv.(*__SteelArr); ok { sargs := make([]string, len(a.items)); for i, x := range a.items { sargs[i] = fmt.Sprint(x) }; c := exec.Command(fmt.Sprint(cmd), sargs...); var outb, errb bytes.Buffer; c.Stdout = &outb; c.Stderr = &errb; err := c.Run(); code := 0; if err != nil { if ee, ok := err.(*exec.ExitError); ok { code = ee.ExitCode() } else { code = -1 } }; return map[string]any{\"code\": float64(code), \"stdout\": outb.String(), \"stderr\": errb.String()} }; sh, flag := \"sh\", \"-c\"; if runtime.GOOS == \"windows\" { sh, flag = \"cmd\", \"/C\" }; out, _ := exec.Command(sh, flag, fmt.Sprint(cmd)).Output(); return strings.TrimRight(string(out), \"\\r\\n\") }\n");
+    }
+    if user_code.contains("__steel_sha256") {
+        rt.push_str("func __steel_sha256(s any) string { sum := sha256.Sum256([]byte(fmt.Sprint(s))); return hex.EncodeToString(sum[:]) }\n");
+        rt.push_str("func __steel_sha256_file(p any) string { b, err := os.ReadFile(fmt.Sprint(p)); if err != nil { return \"\" }; sum := sha256.Sum256(b); return hex.EncodeToString(sum[:]) }\n");
     }
     if user_code.contains("__steel_file_exists") {
         rt.push_str("func __steel_file_exists(p any) any { _, err := os.Stat(fmt.Sprint(p)); return err == nil }\n");
@@ -6339,7 +6592,12 @@ fn go_runtime_helpers(user_code: &str) -> (Vec<&'static str>, String) {
     if combined.contains("sort.") { imports.push("\"sort\""); }
     if combined.contains("strconv.") { imports.push("\"strconv\""); }
     if combined.contains("json.") { imports.push("\"encoding/json\""); }
-    if combined.contains("time.") { imports.push("\"time\""); }
+    if combined.contains("time.Now") { imports.push("\"time\""); }
+    if combined.contains("sha256.") { imports.push("\"crypto/sha256\""); }
+    if combined.contains("hex.") { imports.push("\"encoding/hex\""); }
+    if combined.contains("exec.") { imports.push("\"os/exec\""); }
+    if combined.contains("bytes.") { imports.push("\"bytes\""); }
+    if combined.contains("runtime.") { imports.push("\"runtime\""); }
     (imports, rt)
 }
 
@@ -6844,6 +7102,39 @@ fn go_expr(expr: &Expr, lvl: usize) -> String {
                     }
                     "remove_file" if args.len() == 1 => {
                         return format!("__steel_remove_file({})", go_expr(&args[0], lvl));
+                    }
+                    "args" if args.is_empty() => {
+                        return "__steel_args()".to_string();
+                    }
+                    "exit" if args.is_empty() => {
+                        return "__steel_exit(0)".to_string();
+                    }
+                    "exit" if args.len() == 1 => {
+                        return format!("__steel_exit({})", go_expr(&args[0], lvl));
+                    }
+                    "mkdir" | "make_dir" if args.len() == 1 => {
+                        return format!("__steel_mkdir({})", go_expr(&args[0], lvl));
+                    }
+                    "list_dir" if args.len() == 1 => {
+                        return format!("__steel_list_dir({})", go_expr(&args[0], lvl));
+                    }
+                    "remove_dir" if args.len() == 1 => {
+                        return format!("__steel_remove_dir({})", go_expr(&args[0], lvl));
+                    }
+                    "rename" if args.len() == 2 => {
+                        return format!("__steel_rename({}, {})", go_expr(&args[0], lvl), go_expr(&args[1], lvl));
+                    }
+                    "exec" if args.len() == 1 => {
+                        return format!("__steel_exec({}, nil)", go_expr(&args[0], lvl));
+                    }
+                    "exec" if args.len() == 2 => {
+                        return format!("__steel_exec({}, {})", go_expr(&args[0], lvl), go_expr(&args[1], lvl));
+                    }
+                    "sha256" if args.len() == 1 => {
+                        return format!("__steel_sha256({})", go_expr(&args[0], lvl));
+                    }
+                    "sha256_file" if args.len() == 1 => {
+                        return format!("__steel_sha256_file({})", go_expr(&args[0], lvl));
                     }
                     "clock" if args.is_empty() => {
                         return "__steel_clock()".to_string();
