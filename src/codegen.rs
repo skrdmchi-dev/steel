@@ -559,6 +559,32 @@ fn js_expr(expr: &Expr, lvl: usize) -> String {
 }
 
 // 2. PYTHON TARGET (On-Demand Minimal Helpers)
+thread_local! {
+    static PURE_NUM_CTX: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+fn is_guaranteed_num_expr(expr: &Expr) -> bool {
+    match expr {
+        Expr::Number(_) => true,
+        Expr::Unary { op: UnaryOp::Neg | UnaryOp::BitNot, .. } => true,
+        Expr::Binary { left, op, right } => match op {
+            BinaryOp::Sub
+            | BinaryOp::Mul
+            | BinaryOp::Div
+            | BinaryOp::Mod
+            | BinaryOp::Pow
+            | BinaryOp::BitAnd
+            | BinaryOp::BitOr
+            | BinaryOp::BitXor
+            | BinaryOp::Shl
+            | BinaryOp::Shr => true,
+            BinaryOp::Add => is_guaranteed_num_expr(left) && is_guaranteed_num_expr(right),
+            _ => false,
+        },
+        _ => false,
+    }
+}
+
 fn emit_python(program: &Program) -> String {
     let mut fn_counter = 0;
     let mut body_out = String::new();
@@ -731,9 +757,12 @@ fn py_stmt(stmt: &Stmt, lvl: usize, fn_counter: &mut usize) -> String {
             if body.is_empty() {
                 s.push_str(&format!("{}    pass\n", pad));
             } else {
+                let is_pure_num = rs_is_pure_f64_fn(params, body, &std::collections::BTreeSet::new());
+                let prev_num = PURE_NUM_CTX.with(|c| c.replace(is_pure_num));
                 for st in body {
                     s.push_str(&py_stmt(st, lvl + 1, fn_counter));
                 }
+                PURE_NUM_CTX.with(|c| c.set(prev_num));
             }
             s
         }
@@ -1004,8 +1033,9 @@ fn py_expr(expr: &Expr, lvl: usize, fn_counter: &mut usize) -> (String, String) 
                 );
             }
             if matches!(op, BinaryOp::Add) {
-                let both_num_lit = matches!(**left, Expr::Number(_)) && matches!(**right, Expr::Number(_));
-                if !both_num_lit {
+                let both_num = PURE_NUM_CTX.with(|c| c.get())
+                    || (is_guaranteed_num_expr(left) && is_guaranteed_num_expr(right));
+                if !both_num {
                     return (pre, format!("__steel_add({}, {})", l, r));
                 }
             }
@@ -1210,7 +1240,7 @@ fn emit_lua(program: &Program) -> String {
         ("file_exists(", "local function file_exists(p) local f = io.open(p, 'r'); if f then f:close(); return true end return false end\n"),
         ("env(", "local function env(k) return os.getenv(k) end\n"),
         ("time_ms(", "local function time_ms() return math.floor(os.time() * 1000) end\n"),
-        ("clock(", "local function clock() return os.time() end\n"),
+        ("clock(", "local function clock() return os.clock() end\n"),
     ] {
         if body_out.contains(helper) {
             out.push_str(def);
@@ -1323,9 +1353,12 @@ fn lua_stmt(stmt: &Stmt, lvl: usize) -> String {
                     ));
                 }
             }
+            let is_pure_num = rs_is_pure_f64_fn(params, body, &std::collections::BTreeSet::new());
+            let prev_num = PURE_NUM_CTX.with(|c| c.replace(is_pure_num));
             for st in body {
                 s.push_str(&lua_stmt(st, lvl + 1));
             }
+            PURE_NUM_CTX.with(|c| c.set(prev_num));
             s.push_str(&format!("{}end\n", pad));
             s
         }
@@ -1483,8 +1516,9 @@ fn lua_expr(expr: &Expr, lvl: usize) -> String {
                 return format!("(({} ~= nil) and {} or {})", l, l, r);
             }
             if matches!(op, BinaryOp::Add) {
-                let both_num_lit = matches!(**left, Expr::Number(_)) && matches!(**right, Expr::Number(_));
-                if !both_num_lit {
+                let both_num = PURE_NUM_CTX.with(|c| c.get())
+                    || (is_guaranteed_num_expr(left) && is_guaranteed_num_expr(right));
+                if !both_num {
                     return format!("__steel_add({}, {})", l, r);
                 }
             }
@@ -1564,10 +1598,38 @@ fn emit_rust(program: &Program) -> String {
         "#![allow(unused_variables,unused_mut,dead_code,unreachable_code,unused_parens,non_snake_case)]\n\
          use std::borrow::Cow;\n\
          use std::cell::RefCell;\n\
-         use std::collections::BTreeMap;\n\
          use std::fmt;\n\
          use std::ops::{Add, Sub, Mul, Div, Rem, Neg, Not};\n\
          use std::rc::Rc;\n\n\
+         #[derive(Clone)]\n\
+         pub struct SMap(pub Vec<(Cow<'static, str>, SVal)>);\n\
+         impl SMap {\n\
+         \x20   #[inline] pub fn new() -> Self { SMap(Vec::new()) }\n\
+         \x20   #[inline] pub fn from_sorted(v: Vec<(Cow<'static, str>, SVal)>) -> Self { SMap(v) }\n\
+         \x20   #[inline] pub fn len(&self) -> usize { self.0.len() }\n\
+         \x20   #[inline] pub fn is_empty(&self) -> bool { self.0.is_empty() }\n\
+         \x20   #[inline] pub fn get(&self, k: &str) -> Option<&SVal> {\n\
+         \x20       if self.0.len() <= 16 {\n\
+         \x20           for (ek, ev) in &self.0 { if ek.as_ref() == k { return Some(ev); } }\n\
+         \x20           None\n\
+         \x20       } else {\n\
+         \x20           self.0.binary_search_by(|(ek, _)| ek.as_ref().cmp(k)).ok().map(|i| &self.0[i].1)\n\
+         \x20       }\n\
+         \x20   }\n\
+         \x20   #[inline] pub fn contains_key(&self, k: &str) -> bool { self.get(k).is_some() }\n\
+         \x20   #[inline] pub fn insert(&mut self, k: Cow<'static, str>, v: SVal) {\n\
+         \x20       match self.0.binary_search_by(|(ek, _)| ek.as_ref().cmp(k.as_ref())) {\n\
+         \x20           Ok(i) => self.0[i].1 = v,\n\
+         \x20           Err(i) => self.0.insert(i, (k, v)),\n\
+         \x20       }\n\
+         \x20   }\n\
+         \x20   #[inline] pub fn remove(&mut self, k: &str) -> Option<SVal> {\n\
+         \x20       self.0.binary_search_by(|(ek, _)| ek.as_ref().cmp(k)).ok().map(|i| self.0.remove(i).1)\n\
+         \x20   }\n\
+         \x20   #[inline] pub fn iter(&self) -> impl Iterator<Item = &(Cow<'static, str>, SVal)> { self.0.iter() }\n\
+         \x20   #[inline] pub fn keys(&self) -> impl Iterator<Item = &Cow<'static, str>> { self.0.iter().map(|(k, _)| k) }\n\
+         \x20   #[inline] pub fn values(&self) -> impl Iterator<Item = &SVal> { self.0.iter().map(|(_, v)| v) }\n\
+         }\n\n\
          #[derive(Clone)]\n\
          pub enum SVal {\n\
          \x20   Null,\n\
@@ -1575,7 +1637,7 @@ fn emit_rust(program: &Program) -> String {
          \x20   Num(f64),\n\
          \x20   Str(Cow<'static, str>),\n\
          \x20   Arr(Rc<RefCell<Vec<SVal>>>),\n\
-         \x20   Map(Rc<RefCell<BTreeMap<Cow<'static, str>, SVal>>>),\n\
+         \x20   Map(Rc<RefCell<SMap>>),\n\
          \x20   Func(Rc<dyn Fn(Vec<SVal>) -> SVal>),\n\
          }\n\n\
          impl SVal {\n\
@@ -1784,7 +1846,7 @@ fn rs_direct_stdlib_helpers(code: &str) -> String {
         ("__st_trim(", "#[inline] pub fn __st_trim(v: &SVal) -> SVal { if let SVal::Str(s) = v { let t = s.trim(); if t.len() == s.len() { return v.clone(); } return SVal::Str(Cow::Owned(t.to_string())); } SVal::Str(Cow::Owned(v.to_string().trim().to_string())) }\n"),
         ("__st_upper(", "#[inline] pub fn __st_upper(v: &SVal) -> SVal { if let SVal::Str(s) = v { SVal::Str(Cow::Owned(s.to_uppercase())) } else { SVal::Str(Cow::Owned(v.to_string().to_uppercase())) } }\n"),
         ("__st_lower(", "#[inline] pub fn __st_lower(v: &SVal) -> SVal { if let SVal::Str(s) = v { SVal::Str(Cow::Owned(s.to_lowercase())) } else { SVal::Str(Cow::Owned(v.to_string().to_lowercase())) } }\n"),
-        ("__st_split(", "#[inline] pub fn __st_split(s: &SVal, sep: &SVal) -> SVal { let ss = match s { SVal::Str(v) => v.as_ref(), _ => \"\" }; let sp = match sep { SVal::Str(v) => v.as_ref(), _ => \"\" }; let parts: Vec<SVal> = if sp.is_empty() { ss.chars().map(|c| SVal::Str(Cow::Owned(c.to_string()))).collect() } else { ss.split(sp).map(|p| SVal::Str(Cow::Owned(p.to_string()))).collect() }; SVal::Arr(Rc::new(RefCell::new(parts))) }\n"),
+        ("__st_split(", "#[inline] pub fn __st_split(s: &SVal, sep: &SVal) -> SVal { let sp = match sep { SVal::Str(v) => v.as_ref(), _ => \"\" }; let parts: Vec<SVal> = match s { SVal::Str(Cow::Borrowed(lit)) if !sp.is_empty() => lit.split(sp).map(|p| SVal::Str(Cow::Borrowed(p))).collect(), SVal::Str(v) => if sp.is_empty() { v.chars().map(|c| SVal::Str(Cow::Owned(c.to_string()))).collect() } else { v.split(sp).map(|p| SVal::Str(Cow::Owned(p.to_string()))).collect() }, _ => vec![] }; SVal::Arr(Rc::new(RefCell::new(parts))) }\n"),
         ("__st_join(", "#[inline] pub fn __st_join(a: &SVal, sep: &SVal) -> SVal { if let SVal::Arr(arr) = a { let sp = match sep { SVal::Str(v) => v.as_ref(), _ => \"\" }; return SVal::Str(Cow::Owned(arr.borrow().iter().map(|x| x.to_string()).collect::<Vec<_>>().join(sp))); } SVal::Str(Cow::Borrowed(\"\")) }\n"),
         ("__st_replace(", "#[inline] pub fn __st_replace(s: &SVal, a: &SVal, b: &SVal) -> SVal { let ss = s.to_string(); let sa = a.to_string(); let sb = b.to_string(); SVal::Str(Cow::Owned(ss.replace(&sa, &sb))) }\n"),
         ("__st_slice(", "#[inline] pub fn __st_slice(v: &SVal, s: &SVal, e: Option<&SVal>) -> SVal { let si = (s.as_num() as isize).max(0) as usize; match v { SVal::Arr(a) => { let b = a.borrow(); let ei = e.map(|x| (x.as_num() as isize).max(0) as usize).unwrap_or(b.len()).min(b.len()); let si = si.min(ei); SVal::Arr(Rc::new(RefCell::new(b[si..ei].to_vec()))) } SVal::Str(st) => { let cs: Vec<char> = st.chars().collect(); let ei = e.map(|x| (x.as_num() as isize).max(0) as usize).unwrap_or(cs.len()).min(cs.len()); let si = si.min(ei); SVal::Str(Cow::Owned(cs[si..ei].iter().collect())) } _ => SVal::Null } }\n"),
@@ -1792,7 +1854,7 @@ fn rs_direct_stdlib_helpers(code: &str) -> String {
         ("__st_sort(", "#[inline] pub fn __st_sort(v: &SVal) -> SVal { if let SVal::Arr(a) = v { let mut out = a.borrow().clone(); out.sort_by(|x, y| x.to_string().cmp(&y.to_string())); return SVal::Arr(Rc::new(RefCell::new(out))); } SVal::Null }\n"),
         ("__st_str(", "#[inline] pub fn __st_str(v: &SVal) -> SVal { if let SVal::Str(_) = v { v.clone() } else { SVal::Str(Cow::Owned(v.to_string())) } }\n"),
         ("__st_json_stringify(", "fn __st_js_raw(v: &SVal) -> String { match v { SVal::Null => \"null\".into(), SVal::Bool(b) => b.to_string(), SVal::Num(n) => if n.fract() == 0.0 && n.abs() < 1e15 { format!(\"{}\", *n as i64) } else { format!(\"{}\", n) }, SVal::Str(s) => format!(\"\\\"{}\\\"\", s.replace('\\\\', \"\\\\\\\\\").replace('\"', \"\\\\\\\"\").replace('\\n', \"\\\\n\").replace('\\r', \"\\\\r\").replace('\\t', \"\\\\t\")), SVal::Arr(a) => format!(\"[{}]\", a.borrow().iter().map(__st_js_raw).collect::<Vec<_>>().join(\",\")), SVal::Map(m) => format!(\"{{{}}}\", m.borrow().iter().map(|(k, val)| format!(\"\\\"{}\\\": {}\", k.replace('\\\\', \"\\\\\\\\\").replace('\"', \"\\\\\\\"\"), __st_js_raw(val)).replace(\"\\\": \", \"\\\":\")).collect::<Vec<_>>().join(\",\")), SVal::Func(_) => \"null\".into() } }\n#[inline] pub fn __st_json_stringify(v: &SVal) -> SVal { SVal::Str(Cow::Owned(__st_js_raw(v))) }\n"),
-        ("__st_json_parse(", "fn __st_jp(cs: &[char], i: &mut usize) -> SVal { while *i < cs.len() && cs[*i].is_whitespace() { *i += 1; } if *i >= cs.len() { return SVal::Null; } match cs[*i] { '\"' => { *i += 1; let mut s = String::new(); while *i < cs.len() { let c = cs[*i]; *i += 1; if c == '\"' { break; } if c == '\\\\' && *i < cs.len() { let e = cs[*i]; *i += 1; match e { 'n' => s.push('\\n'), 'r' => s.push('\\r'), 't' => s.push('\\t'), o => s.push(o) } } else { s.push(c); } } SVal::Str(Cow::Owned(s)) } '[' => { *i += 1; let mut a = Vec::new(); loop { while *i < cs.len() && cs[*i].is_whitespace() { *i += 1; } if *i >= cs.len() || cs[*i] == ']' { *i += 1; break; } a.push(__st_jp(cs, i)); while *i < cs.len() && cs[*i].is_whitespace() { *i += 1; } if *i < cs.len() && cs[*i] == ',' { *i += 1; } } SVal::Arr(Rc::new(RefCell::new(a))) } '{' => { *i += 1; let mut m = BTreeMap::new(); loop { while *i < cs.len() && cs[*i].is_whitespace() { *i += 1; } if *i >= cs.len() || cs[*i] == '}' { *i += 1; break; } let k = __st_jp(cs, i).to_string(); while *i < cs.len() && (cs[*i].is_whitespace() || cs[*i] == ':') { *i += 1; } let v = __st_jp(cs, i); m.insert(Cow::Owned(k), v); while *i < cs.len() && cs[*i].is_whitespace() { *i += 1; } if *i < cs.len() && cs[*i] == ',' { *i += 1; } } SVal::Map(Rc::new(RefCell::new(m))) } 't' => { *i += 4; SVal::Bool(true) } 'f' => { *i += 5; SVal::Bool(false) } 'n' => { *i += 4; SVal::Null } _ => { let st = *i; while *i < cs.len() && (cs[*i].is_ascii_digit() || matches!(cs[*i], '-' | '+' | '.' | 'e' | 'E')) { *i += 1; } let ns: String = cs[st..*i].iter().collect(); SVal::Num(ns.parse().unwrap_or(0.0)) } } }\n#[inline] pub fn __st_json_parse(v: &SVal) -> SVal { let s = match v { SVal::Str(st) => st.as_ref(), _ => \"null\" }; let cs: Vec<char> = s.chars().collect(); let mut i = 0; __st_jp(&cs, &mut i) }\n"),
+        ("__st_json_parse(", "fn __st_jp(cs: &[char], i: &mut usize) -> SVal { while *i < cs.len() && cs[*i].is_whitespace() { *i += 1; } if *i >= cs.len() { return SVal::Null; } match cs[*i] { '\"' => { *i += 1; let mut s = String::new(); while *i < cs.len() { let c = cs[*i]; *i += 1; if c == '\"' { break; } if c == '\\\\' && *i < cs.len() { let e = cs[*i]; *i += 1; match e { 'n' => s.push('\\n'), 'r' => s.push('\\r'), 't' => s.push('\\t'), o => s.push(o) } } else { s.push(c); } } SVal::Str(Cow::Owned(s)) } '[' => { *i += 1; let mut a = Vec::new(); loop { while *i < cs.len() && cs[*i].is_whitespace() { *i += 1; } if *i >= cs.len() || cs[*i] == ']' { *i += 1; break; } a.push(__st_jp(cs, i)); while *i < cs.len() && cs[*i].is_whitespace() { *i += 1; } if *i < cs.len() && cs[*i] == ',' { *i += 1; } } SVal::Arr(Rc::new(RefCell::new(a))) } '{' => { *i += 1; let mut m = SMap::new(); loop { while *i < cs.len() && cs[*i].is_whitespace() { *i += 1; } if *i >= cs.len() || cs[*i] == '}' { *i += 1; break; } let k = __st_jp(cs, i).to_string(); while *i < cs.len() && (cs[*i].is_whitespace() || cs[*i] == ':') { *i += 1; } let v = __st_jp(cs, i); m.insert(Cow::Owned(k), v); while *i < cs.len() && cs[*i].is_whitespace() { *i += 1; } if *i < cs.len() && cs[*i] == ',' { *i += 1; } } SVal::Map(Rc::new(RefCell::new(m))) } 't' => { *i += 4; SVal::Bool(true) } 'f' => { *i += 5; SVal::Bool(false) } 'n' => { *i += 4; SVal::Null } _ => { let st = *i; while *i < cs.len() && (cs[*i].is_ascii_digit() || matches!(cs[*i], '-' | '+' | '.' | 'e' | 'E')) { *i += 1; } let ns: String = cs[st..*i].iter().collect(); SVal::Num(ns.parse().unwrap_or(0.0)) } } }\n#[inline] pub fn __st_json_parse(v: &SVal) -> SVal { let s = match v { SVal::Str(st) => st.as_ref(), _ => \"null\" }; let cs: Vec<char> = s.chars().collect(); let mut i = 0; __st_jp(&cs, &mut i) }\n"),
     ] {
         if code.contains(token) {
             out.push_str(def);
@@ -1876,7 +1938,7 @@ fn rs_is_pure_f64_stmts(stmts: &[Stmt], globals: &std::collections::BTreeSet<Str
     true
 }
 
-fn rs_is_pure_f64_fn(
+pub(crate) fn rs_is_pure_f64_fn(
     params: &[(String, Option<Expr>)],
     body: &[Stmt],
     globals: &std::collections::BTreeSet<String>,
@@ -1904,7 +1966,7 @@ fn rs_native_f64_expr(expr: &Expr) -> String {
                 BinaryOp::Sub => format!("({} - {})", l, r),
                 BinaryOp::Mul => format!("({} * {})", l, r),
                 BinaryOp::Div => format!("({} / {})", l, r),
-                BinaryOp::Mod => format!("({} % {})", l, r),
+                BinaryOp::Mod => format!("({l} - ({l} / {r}).trunc() * {r})"),
                 BinaryOp::Pow => format!("({}).powf({})", l, r),
                 _ => "0.0".to_string(),
             }
@@ -2504,7 +2566,7 @@ fn rs_builtins_preamble(body_code: &str) -> String {
         ("clock.clone()", "    let clock = SVal::Func(Rc::new(|_args: Vec<SVal>| { let s = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs_f64()).unwrap_or(0.0); SVal::Num(s) }));\n"),
         ("hash.clone()", "    let hash = SVal::Func(Rc::new(|args: Vec<SVal>| { let s = args.first().map(|a| a.to_string()).unwrap_or_default(); let mut h: u64 = 0xcbf29ce484222325; for b in s.as_bytes() { h ^= *b as u64; h = h.wrapping_mul(0x0100000001b3); } SVal::Str(Cow::Owned(format!(\"{:016x}\", h))) }));\n"),
         ("json_stringify.clone()", "    fn __rs_json_str(v: &SVal) -> String { match v { SVal::Null => \"null\".into(), SVal::Bool(b) => b.to_string(), SVal::Num(n) => if n.fract() == 0.0 && n.abs() < 1e15 { format!(\"{}\", *n as i64) } else { format!(\"{}\", n) }, SVal::Str(s) => format!(\"\\\"{}\\\"\", s.replace('\\\\', \"\\\\\\\\\").replace('\"', \"\\\\\\\"\").replace('\\n', \"\\\\n\").replace('\\r', \"\\\\r\").replace('\\t', \"\\\\t\")), SVal::Arr(a) => format!(\"[{}]\", a.borrow().iter().map(__rs_json_str).collect::<Vec<_>>().join(\",\")), SVal::Map(m) => format!(\"{{{}}}\", m.borrow().iter().map(|(k, val)| format!(\"\\\"{}\\\": {}\", k.replace('\\\\', \"\\\\\\\\\").replace('\"', \"\\\\\\\"\"), __rs_json_str(val)).replace(\"\\\": \", \"\\\":\")).collect::<Vec<_>>().join(\",\")), SVal::Func(_) => \"null\".into() } }\n    let json_stringify = SVal::Func(Rc::new(|args: Vec<SVal>| SVal::Str(Cow::Owned(__rs_json_str(args.first().unwrap_or(&SVal::Null))))));\n"),
-        ("json_parse.clone()", "    fn __rs_jp(cs: &[char], i: &mut usize) -> SVal { while *i < cs.len() && cs[*i].is_whitespace() { *i += 1; } if *i >= cs.len() { return SVal::Null; } match cs[*i] { '\"' => { *i += 1; let mut s = String::new(); while *i < cs.len() { let c = cs[*i]; *i += 1; if c == '\"' { break; } if c == '\\\\' && *i < cs.len() { let e = cs[*i]; *i += 1; match e { 'n' => s.push('\\n'), 'r' => s.push('\\r'), 't' => s.push('\\t'), o => s.push(o) } } else { s.push(c); } } SVal::Str(Cow::Owned(s)) } '[' => { *i += 1; let mut a = Vec::new(); loop { while *i < cs.len() && cs[*i].is_whitespace() { *i += 1; } if *i >= cs.len() || cs[*i] == ']' { *i += 1; break; } a.push(__rs_jp(cs, i)); while *i < cs.len() && cs[*i].is_whitespace() { *i += 1; } if *i < cs.len() && cs[*i] == ',' { *i += 1; } } SVal::Arr(Rc::new(RefCell::new(a))) } '{' => { *i += 1; let mut m = BTreeMap::new(); loop { while *i < cs.len() && cs[*i].is_whitespace() { *i += 1; } if *i >= cs.len() || cs[*i] == '}' { *i += 1; break; } let k = __rs_jp(cs, i).to_string(); while *i < cs.len() && (cs[*i].is_whitespace() || cs[*i] == ':') { *i += 1; } let v = __rs_jp(cs, i); m.insert(Cow::Owned(k), v); while *i < cs.len() && cs[*i].is_whitespace() { *i += 1; } if *i < cs.len() && cs[*i] == ',' { *i += 1; } } SVal::Map(Rc::new(RefCell::new(m))) } 't' => { *i += 4; SVal::Bool(true) } 'f' => { *i += 5; SVal::Bool(false) } 'n' => { *i += 4; SVal::Null } _ => { let st = *i; while *i < cs.len() && (cs[*i].is_ascii_digit() || matches!(cs[*i], '-' | '+' | '.' | 'e' | 'E')) { *i += 1; } let ns: String = cs[st..*i].iter().collect(); SVal::Num(ns.parse().unwrap_or(0.0)) } } }\n    let json_parse = SVal::Func(Rc::new(|args: Vec<SVal>| { let s = args.first().map(|a| a.to_string()).unwrap_or_default(); let cs: Vec<char> = s.chars().collect(); let mut i = 0; __rs_jp(&cs, &mut i) }));\n"),
+        ("json_parse.clone()", "    fn __rs_jp(cs: &[char], i: &mut usize) -> SVal { while *i < cs.len() && cs[*i].is_whitespace() { *i += 1; } if *i >= cs.len() { return SVal::Null; } match cs[*i] { '\"' => { *i += 1; let mut s = String::new(); while *i < cs.len() { let c = cs[*i]; *i += 1; if c == '\"' { break; } if c == '\\\\' && *i < cs.len() { let e = cs[*i]; *i += 1; match e { 'n' => s.push('\\n'), 'r' => s.push('\\r'), 't' => s.push('\\t'), o => s.push(o) } } else { s.push(c); } } SVal::Str(Cow::Owned(s)) } '[' => { *i += 1; let mut a = Vec::new(); loop { while *i < cs.len() && cs[*i].is_whitespace() { *i += 1; } if *i >= cs.len() || cs[*i] == ']' { *i += 1; break; } a.push(__rs_jp(cs, i)); while *i < cs.len() && cs[*i].is_whitespace() { *i += 1; } if *i < cs.len() && cs[*i] == ',' { *i += 1; } } SVal::Arr(Rc::new(RefCell::new(a))) } '{' => { *i += 1; let mut m = SMap::new(); loop { while *i < cs.len() && cs[*i].is_whitespace() { *i += 1; } if *i >= cs.len() || cs[*i] == '}' { *i += 1; break; } let k = __rs_jp(cs, i).to_string(); while *i < cs.len() && (cs[*i].is_whitespace() || cs[*i] == ':') { *i += 1; } let v = __rs_jp(cs, i); m.insert(Cow::Owned(k), v); while *i < cs.len() && cs[*i].is_whitespace() { *i += 1; } if *i < cs.len() && cs[*i] == ',' { *i += 1; } } SVal::Map(Rc::new(RefCell::new(m))) } 't' => { *i += 4; SVal::Bool(true) } 'f' => { *i += 5; SVal::Bool(false) } 'n' => { *i += 4; SVal::Null } _ => { let st = *i; while *i < cs.len() && (cs[*i].is_ascii_digit() || matches!(cs[*i], '-' | '+' | '.' | 'e' | 'E')) { *i += 1; } let ns: String = cs[st..*i].iter().collect(); SVal::Num(ns.parse().unwrap_or(0.0)) } } }\n    let json_parse = SVal::Func(Rc::new(|args: Vec<SVal>| { let s = args.first().map(|a| a.to_string()).unwrap_or_default(); let cs: Vec<char> = s.chars().collect(); let mut i = 0; __rs_jp(&cs, &mut i) }));\n"),
         ("split.clone()", "    let split = SVal::Func(Rc::new(|args: Vec<SVal>| { let s = args.get(0).map(|a| a.to_string()).unwrap_or_default(); let sep = args.get(1).map(|a| a.to_string()).unwrap_or_default(); let parts: Vec<SVal> = if sep.is_empty() { s.chars().map(|c| SVal::Str(Cow::Owned(c.to_string()))).collect() } else { s.split(&sep).map(|p| SVal::Str(Cow::Owned(p.to_string()))).collect() }; SVal::Arr(Rc::new(RefCell::new(parts))) }));\n"),
         ("join.clone()", "    let join = SVal::Func(Rc::new(|args: Vec<SVal>| { if let Some(SVal::Arr(a)) = args.get(0) { let sep = args.get(1).map(|s| s.to_string()).unwrap_or_default(); return SVal::Str(Cow::Owned(a.borrow().iter().map(|x| x.to_string()).collect::<Vec<_>>().join(&sep))); } SVal::Str(Cow::Borrowed(\"\")) }));\n"),
         ("abs.clone()", "    let abs = SVal::Func(Rc::new(|args: Vec<SVal>| SVal::Num(args.first().map(|a| a.as_num().abs()).unwrap_or(0.0))));\n"),
@@ -2863,16 +2925,28 @@ fn rs_expr(expr: &Expr, lvl: usize, top_fns: &std::collections::HashSet<String>)
             )
         }
         Expr::Map(entries) => {
-            let mut s = String::from("{ let mut __m = BTreeMap::new(); ");
-            for (k, v) in entries {
-                s.push_str(&format!(
-                    "__m.insert(Cow::Borrowed(\"{}\"), {}); ",
-                    escape_str(k),
-                    rs_expr(v, lvl, top_fns)
-                ));
+            if entries.is_empty() {
+                return "SVal::Map(Rc::new(RefCell::new(SMap::new())))".to_string();
             }
-            s.push_str("SVal::Map(Rc::new(RefCell::new(__m))) }");
-            s
+            let already_sorted_unique = entries.windows(2).all(|w| w[0].0 < w[1].0);
+            if already_sorted_unique {
+                let items: Vec<String> = entries
+                    .iter()
+                    .map(|(k, v)| format!("(Cow::Borrowed(\"{}\"), {})", escape_str(k), rs_expr(v, lvl, top_fns)))
+                    .collect();
+                format!("SVal::Map(Rc::new(RefCell::new(SMap::from_sorted(vec![{}]))))", items.join(", "))
+            } else {
+                let mut s = String::from("{ let mut __m = SMap::new(); ");
+                for (k, v) in entries {
+                    s.push_str(&format!(
+                        "__m.insert(Cow::Borrowed(\"{}\"), {}); ",
+                        escape_str(k),
+                        rs_expr(v, lvl, top_fns)
+                    ));
+                }
+                s.push_str("SVal::Map(Rc::new(RefCell::new(__m))) }");
+                s
+            }
         }
         Expr::New { class_name, args } => {
             let arg_strs: Vec<String> = args.iter().map(|a| rs_expr(a, lvl, top_fns)).collect();
@@ -3524,7 +3598,7 @@ fn c_extra_stdlib(code: &str) -> String {
         );
     }
     if code.contains("sv_clock(") {
-        s.push_str("#include <time.h>\nstatic inline SVal sv_clock(void) { return sv_num((double)time(NULL)); }\n");
+        s.push_str("#include <time.h>\nstatic inline SVal sv_clock(void) { struct timespec ts; timespec_get(&ts, TIME_UTC); return sv_num((double)ts.tv_sec + (double)ts.tv_nsec * 1e-9); }\n");
     }
     if code.contains("sv_hash(") {
         s.push_str(
@@ -3584,6 +3658,142 @@ fn c_extra_stdlib(code: &str) -> String {
     s
 }
 
+fn c_native_f64_expr(expr: &Expr) -> String {
+    match expr {
+        Expr::Number(n) => fmt_num(*n),
+        Expr::Ident(n) => match n.as_str() {
+            "PI" => "3.14159265358979323846".to_string(),
+            "E" => "2.71828182845904523536".to_string(),
+            _ => c_safe_ident(n),
+        },
+        Expr::Unary { op: UnaryOp::Neg, expr } => format!("(-{})", c_native_f64_expr(expr)),
+        Expr::Binary { left, op, right } => {
+            let l = c_native_f64_expr(left);
+            let r = c_native_f64_expr(right);
+            match op {
+                BinaryOp::Add => format!("({} + {})", l, r),
+                BinaryOp::Sub => format!("({} - {})", l, r),
+                BinaryOp::Mul => format!("({} * {})", l, r),
+                BinaryOp::Div => format!("({} / {})", l, r),
+                BinaryOp::Mod => format!("({l} - trunc({l} / {r}) * {r})"),
+                BinaryOp::Pow => format!("pow({}, {})", l, r),
+                _ => "0.0".to_string(),
+            }
+        }
+        Expr::Ternary { cond, then_expr, else_expr } => format!(
+            "({} ? {} : {})",
+            c_native_bool_expr(cond),
+            c_native_f64_expr(then_expr),
+            c_native_f64_expr(else_expr)
+        ),
+        Expr::Call { callee, args } => {
+            if let Expr::Ident(n) = &**callee {
+                match (n.as_str(), args.len()) {
+                    ("abs", 1) => format!("fabs({})", c_native_f64_expr(&args[0])),
+                    ("floor" | "ceil" | "round" | "sqrt" | "sin" | "cos" | "tan" | "log" | "exp", 1) => {
+                        format!("{}({})", n, c_native_f64_expr(&args[0]))
+                    }
+                    ("pow" | "atan2", 2) => format!("{}({}, {})", n, c_native_f64_expr(&args[0]), c_native_f64_expr(&args[1])),
+                    ("min", 2) => format!("fmin({}, {})", c_native_f64_expr(&args[0]), c_native_f64_expr(&args[1])),
+                    ("max", 2) => format!("fmax({}, {})", c_native_f64_expr(&args[0]), c_native_f64_expr(&args[1])),
+                    _ => "0.0".to_string(),
+                }
+            } else {
+                "0.0".to_string()
+            }
+        }
+        _ => "0.0".to_string(),
+    }
+}
+
+fn c_native_bool_expr(expr: &Expr) -> String {
+    match expr {
+        Expr::Bool(b) => if *b { "true".into() } else { "false".into() },
+        Expr::Unary { op: UnaryOp::Not, expr } => format!("(!{})", c_native_bool_expr(expr)),
+        Expr::Binary { left, op, right } => match op {
+            BinaryOp::And => format!("({} && {})", c_native_bool_expr(left), c_native_bool_expr(right)),
+            BinaryOp::Or => format!("({} || {})", c_native_bool_expr(left), c_native_bool_expr(right)),
+            BinaryOp::Eq => format!("({} == {})", c_native_f64_expr(left), c_native_f64_expr(right)),
+            BinaryOp::Neq => format!("({} != {})", c_native_f64_expr(left), c_native_f64_expr(right)),
+            BinaryOp::Lt => format!("({} < {})", c_native_f64_expr(left), c_native_f64_expr(right)),
+            BinaryOp::Gt => format!("({} > {})", c_native_f64_expr(left), c_native_f64_expr(right)),
+            BinaryOp::Lte => format!("({} <= {})", c_native_f64_expr(left), c_native_f64_expr(right)),
+            BinaryOp::Gte => format!("({} >= {})", c_native_f64_expr(left), c_native_f64_expr(right)),
+            _ => "false".to_string(),
+        },
+        _ => "false".to_string(),
+    }
+}
+
+fn c_native_f64_stmt(stmt: &Stmt, lvl: usize, decls: &mut std::collections::HashSet<String>) -> String {
+    let pad = indent(lvl);
+    match stmt {
+        Stmt::Let { name, value, .. } => {
+            let sn = c_safe_ident(name);
+            decls.insert(sn.clone());
+            format!("{}double {} = {};\n", pad, sn, c_native_f64_expr(value))
+        }
+        Stmt::Assign { target: AssignTarget::Ident(n), value } => {
+            let sn = c_safe_ident(n);
+            if decls.insert(sn.clone()) {
+                format!("{}double {} = {};\n", pad, sn, c_native_f64_expr(value))
+            } else {
+                format!("{}{} = {};\n", pad, sn, c_native_f64_expr(value))
+            }
+        }
+        Stmt::Return(Some(e)) => format!("{}return {};\n", pad, c_native_f64_expr(e)),
+        Stmt::If { cond, then_branch, else_branch } => {
+            let mut s = format!("{}if ({}) {{\n", pad, c_native_bool_expr(cond));
+            for st in then_branch { s.push_str(&c_native_f64_stmt(st, lvl + 1, decls)); }
+            if let Some(eb) = else_branch {
+                s.push_str(&format!("{}}} else {{\n", pad));
+                for st in eb { s.push_str(&c_native_f64_stmt(st, lvl + 1, decls)); }
+            }
+            s.push_str(&format!("{}}}\n", pad));
+            s
+        }
+        Stmt::While { cond, body } => {
+            let mut s = format!("{}while ({}) {{\n", pad, c_native_bool_expr(cond));
+            for st in body { s.push_str(&c_native_f64_stmt(st, lvl + 1, decls)); }
+            s.push_str(&format!("{}}}\n", pad));
+            s
+        }
+        Stmt::Break => format!("{}break;\n", pad),
+        Stmt::Continue => format!("{}continue;\n", pad),
+        _ => String::new(),
+    }
+}
+
+fn c_emit_native_f64_fn(name: &str, params: &[(String, Option<Expr>)], body: &[Stmt]) -> String {
+    let sn = c_safe_ident(name);
+    let mut decls: std::collections::HashSet<String> = params.iter().map(|(p, _)| c_safe_ident(p)).collect();
+    let p_native = if params.is_empty() {
+        "void".to_string()
+    } else {
+        params.iter().map(|(p, _)| format!("double {}", c_safe_ident(p))).collect::<Vec<_>>().join(", ")
+    };
+    let p_sval = if params.is_empty() {
+        "void".to_string()
+    } else {
+        params.iter().map(|(p, _)| format!("SVal {}", c_safe_ident(p))).collect::<Vec<_>>().join(", ")
+    };
+    let p_call: Vec<String> = params.iter().map(|(p, _)| format!("{}.num", c_safe_ident(p))).collect();
+    let wrap_args: Vec<String> = (0..params.len())
+        .map(|i| format!("(_st_argc > {} ? _st_argv[{}] : sv_null())", i, i))
+        .collect();
+    let mut s = format!("static inline double __native_{}({}) {{\n", sn, p_native);
+    for st in body {
+        s.push_str(&c_native_f64_stmt(st, 1, &mut decls));
+    }
+    s.push_str("    return 0.0;\n}\n");
+    s.push_str(&format!("SVal {}({}) {{ return sv_num(__native_{}({})); }}\n", sn, p_sval, sn, p_call.join(", ")));
+    s.push_str(&format!(
+        "SVal __st_fn_{}(SVal __st_this, int _st_argc, SVal* _st_argv) {{ (void)__st_this; (void)_st_argc; (void)_st_argv; return {}({}); }}\n\n",
+        sn, sn, wrap_args.join(", ")
+    ));
+    s
+}
+
 fn emit_c(program: &Program) -> String {
     if let Some(pure_c) = try_emit_human_c(program) {
         return pure_c;
@@ -3610,6 +3820,7 @@ fn emit_c(program: &Program) -> String {
     });
     C_CUR_LOCALS.with(|l| l.borrow_mut().clear());
 
+    let empty_globals = std::collections::BTreeSet::new();
     for stmt in &program.statements {
         match stmt {
             Stmt::FnDecl { name, params, body } => {
@@ -3617,7 +3828,11 @@ fn emit_c(program: &Program) -> String {
                 let sig = if p_sig.is_empty() { "void".to_string() } else { p_sig.join(", ") };
                 top_protos.push_str(&format!("SVal {}({});\n", c_safe_ident(name), sig));
                 top_protos.push_str(&format!("SVal __st_fn_{}(SVal, int, SVal*);\n", c_safe_ident(name)));
-                top_fns.push_str(&c_top_fn(name, params, body, &mut lambdas, &mut lambda_id));
+                if rs_is_pure_f64_fn(params, body, &empty_globals) {
+                    top_fns.push_str(&c_emit_native_f64_fn(name, params, body));
+                } else {
+                    top_fns.push_str(&c_top_fn(name, params, body, &mut lambdas, &mut lambda_id));
+                }
             }
             Stmt::ClassDecl {
                 name,
@@ -4730,7 +4945,7 @@ fn c_raw_num_expr(expr: &Expr, fn_name: &str) -> String {
                 BinaryOp::Sub => format!("({} - {})", l, r),
                 BinaryOp::Mul => format!("({} * {})", l, r),
                 BinaryOp::Div => format!("({} / {})", l, r),
-                BinaryOp::Mod => format!("fmod({}, {})", l, r),
+                BinaryOp::Mod => format!("({l} - trunc({l} / {r}) * {r})"),
                 BinaryOp::Pow => format!("pow({}, {})", l, r),
                 BinaryOp::Lt => format!("({} < {})", l, r),
                 BinaryOp::Gt => format!("({} > {})", l, r),
@@ -5628,17 +5843,162 @@ fn c_expr(expr: &Expr, lambdas: &mut String, lambda_id: &mut usize) -> String {
 }
 
 // 6. GO TARGET (On-Demand Minimal Runtime + Unboxed Math & Range Loops)
+thread_local! {
+    static GO_TOP_FNS: std::cell::RefCell<std::collections::HashMap<String, usize>> =
+        std::cell::RefCell::new(std::collections::HashMap::new());
+}
+
+fn go_native_f64_expr(expr: &Expr) -> String {
+    match expr {
+        Expr::Number(n) => format!("float64({})", fmt_num(*n)),
+        Expr::Ident(n) => match n.as_str() {
+            "PI" => "math.Pi".to_string(),
+            "E" => "math.E".to_string(),
+            _ => go_safe_ident(n),
+        },
+        Expr::Unary { op: UnaryOp::Neg, expr } => format!("(-{})", go_native_f64_expr(expr)),
+        Expr::Binary { left, op, right } => {
+            let l = go_native_f64_expr(left);
+            let r = go_native_f64_expr(right);
+            match op {
+                BinaryOp::Add => format!("({} + {})", l, r),
+                BinaryOp::Sub => format!("({} - {})", l, r),
+                BinaryOp::Mul => format!("({} * {})", l, r),
+                BinaryOp::Div => format!("({} / {})", l, r),
+                BinaryOp::Mod => format!("({l} - math.Trunc({l} / {r}) * {r})"),
+                BinaryOp::Pow => format!("math.Pow({}, {})", l, r),
+                _ => "0.0".to_string(),
+            }
+        }
+        Expr::Ternary { cond, then_expr, else_expr } => format!(
+            "func() float64 {{ if {} {{ return {} }}; return {} }}()",
+            go_native_bool_expr(cond),
+            go_native_f64_expr(then_expr),
+            go_native_f64_expr(else_expr)
+        ),
+        Expr::Call { callee, args } => {
+            if let Expr::Ident(n) = &**callee {
+                match (n.as_str(), args.len()) {
+                    ("abs", 1) => format!("math.Abs({})", go_native_f64_expr(&args[0])),
+                    ("floor", 1) => format!("math.Floor({})", go_native_f64_expr(&args[0])),
+                    ("ceil", 1) => format!("math.Ceil({})", go_native_f64_expr(&args[0])),
+                    ("round", 1) => format!("math.Round({})", go_native_f64_expr(&args[0])),
+                    ("sqrt", 1) => format!("math.Sqrt({})", go_native_f64_expr(&args[0])),
+                    ("sin", 1) => format!("math.Sin({})", go_native_f64_expr(&args[0])),
+                    ("cos", 1) => format!("math.Cos({})", go_native_f64_expr(&args[0])),
+                    ("tan", 1) => format!("math.Tan({})", go_native_f64_expr(&args[0])),
+                    ("log", 1) => format!("math.Log({})", go_native_f64_expr(&args[0])),
+                    ("exp", 1) => format!("math.Exp({})", go_native_f64_expr(&args[0])),
+                    ("pow", 2) => format!("math.Pow({}, {})", go_native_f64_expr(&args[0]), go_native_f64_expr(&args[1])),
+                    ("min", 2) => format!("math.Min({}, {})", go_native_f64_expr(&args[0]), go_native_f64_expr(&args[1])),
+                    ("max", 2) => format!("math.Max({}, {})", go_native_f64_expr(&args[0]), go_native_f64_expr(&args[1])),
+                    ("atan2", 2) => format!("math.Atan2({}, {})", go_native_f64_expr(&args[0]), go_native_f64_expr(&args[1])),
+                    _ => "0.0".to_string(),
+                }
+            } else {
+                "0.0".to_string()
+            }
+        }
+        _ => "0.0".to_string(),
+    }
+}
+
+fn go_native_bool_expr(expr: &Expr) -> String {
+    match expr {
+        Expr::Bool(b) => b.to_string(),
+        Expr::Unary { op: UnaryOp::Not, expr } => format!("(!{})", go_native_bool_expr(expr)),
+        Expr::Binary { left, op, right } => match op {
+            BinaryOp::And => format!("({} && {})", go_native_bool_expr(left), go_native_bool_expr(right)),
+            BinaryOp::Or => format!("({} || {})", go_native_bool_expr(left), go_native_bool_expr(right)),
+            BinaryOp::Eq => format!("({} == {})", go_native_f64_expr(left), go_native_f64_expr(right)),
+            BinaryOp::Neq => format!("({} != {})", go_native_f64_expr(left), go_native_f64_expr(right)),
+            BinaryOp::Lt => format!("({} < {})", go_native_f64_expr(left), go_native_f64_expr(right)),
+            BinaryOp::Gt => format!("({} > {})", go_native_f64_expr(left), go_native_f64_expr(right)),
+            BinaryOp::Lte => format!("({} <= {})", go_native_f64_expr(left), go_native_f64_expr(right)),
+            BinaryOp::Gte => format!("({} >= {})", go_native_f64_expr(left), go_native_f64_expr(right)),
+            _ => "false".to_string(),
+        },
+        _ => "false".to_string(),
+    }
+}
+
+fn go_native_f64_stmt(stmt: &Stmt, lvl: usize, decls: &mut std::collections::HashSet<String>) -> String {
+    let pad = indent(lvl);
+    match stmt {
+        Stmt::Let { name, value, .. } => {
+            let sn = go_safe_ident(name);
+            decls.insert(sn.clone());
+            format!("{}var {} float64 = {}\n{}_ = {}\n", pad, sn, go_native_f64_expr(value), pad, sn)
+        }
+        Stmt::Assign { target: AssignTarget::Ident(n), value } => {
+            let sn = go_safe_ident(n);
+            if decls.insert(sn.clone()) {
+                format!("{}var {} float64 = {}\n{}_ = {}\n", pad, sn, go_native_f64_expr(value), pad, sn)
+            } else {
+                format!("{}{} = {}\n", pad, sn, go_native_f64_expr(value))
+            }
+        }
+        Stmt::Return(Some(e)) => format!("{}return {}\n", pad, go_native_f64_expr(e)),
+        Stmt::If { cond, then_branch, else_branch } => {
+            let mut s = format!("{}if {} {{\n", pad, go_native_bool_expr(cond));
+            for st in then_branch { s.push_str(&go_native_f64_stmt(st, lvl + 1, decls)); }
+            if let Some(eb) = else_branch {
+                s.push_str(&format!("{}}} else {{\n", pad));
+                for st in eb { s.push_str(&go_native_f64_stmt(st, lvl + 1, decls)); }
+            }
+            s.push_str(&format!("{}}}\n", pad));
+            s
+        }
+        Stmt::While { cond, body } => {
+            let mut s = format!("{}for {} {{\n", pad, go_native_bool_expr(cond));
+            for st in body { s.push_str(&go_native_f64_stmt(st, lvl + 1, decls)); }
+            s.push_str(&format!("{}}}\n", pad));
+            s
+        }
+        Stmt::Break => format!("{}break\n", pad),
+        Stmt::Continue => format!("{}continue\n", pad),
+        _ => String::new(),
+    }
+}
+
+fn go_emit_native_f64_fn(name: &str, params: &[(String, Option<Expr>)], body: &[Stmt]) -> String {
+    let sn = go_safe_ident(name);
+    let mut decls: std::collections::HashSet<String> = params.iter().map(|(p, _)| go_safe_ident(p)).collect();
+    let p_native: Vec<String> = params.iter().map(|(p, _)| format!("{} float64", go_safe_ident(p))).collect();
+    let p_any: Vec<String> = params.iter().map(|(p, _)| format!("{} any", go_safe_ident(p))).collect();
+    let p_call: Vec<String> = params.iter().map(|(p, _)| format!("__steel_num({})", go_safe_ident(p))).collect();
+    let mut s = format!("func __native_{}({}) float64 {{\n", sn, p_native.join(", "));
+    for st in body {
+        s.push_str(&go_native_f64_stmt(st, 1, &mut decls));
+    }
+    if !matches!(body.last(), Some(Stmt::Return(_))) {
+        s.push_str("    return 0\n");
+    }
+    s.push_str("}\n");
+    s.push_str(&format!(
+        "func {}({}) any {{ return __native_{}({}) }}\n\n",
+        sn, p_any.join(", "), sn, p_call.join(", ")
+    ));
+    s
+}
+
 fn emit_go(program: &Program) -> String {
     let mut go_top_vars = std::collections::HashSet::new();
     let mut go_top_fns = std::collections::HashSet::new();
+    let mut go_top_fn_arities = std::collections::HashMap::new();
     for stmt in &program.statements {
         match stmt {
-            Stmt::FnDecl { name, .. } | Stmt::ClassDecl { name, .. } => { go_top_fns.insert(name.clone()); }
+            Stmt::FnDecl { name, params, .. } => {
+                go_top_fns.insert(name.clone());
+                go_top_fn_arities.insert(name.clone(), params.len());
+            }
+            Stmt::ClassDecl { name, .. } => { go_top_fns.insert(name.clone()); }
             Stmt::Let { name, .. } => { go_top_vars.insert(name.clone()); }
             Stmt::Assign { target: AssignTarget::Ident(name), .. } => { go_top_vars.insert(name.clone()); }
             _ => {}
         }
     }
+    GO_TOP_FNS.with(|f| *f.borrow_mut() = go_top_fn_arities);
     let mut go_pkg_globals = std::collections::BTreeSet::new();
     for stmt in &program.statements {
         if let Stmt::FnDecl { params, body, .. } = stmt {
@@ -5664,15 +6024,19 @@ fn emit_go(program: &Program) -> String {
     for stmt in &program.statements {
         match stmt {
             Stmt::FnDecl { name, params, body } => {
-                let p_sig: Vec<String> = params.iter().map(|(p, _)| format!("{} any", go_safe_ident(p))).collect();
-                top_fns.push_str(&format!("func {}({}) any {{\n", go_safe_ident(name), p_sig.join(", ")));
-                for st in body {
-                    top_fns.push_str(&go_stmt(st, 1));
+                if !go_pkg_globals.contains(name) && rs_is_pure_f64_fn(params, body, &go_pkg_globals) {
+                    top_fns.push_str(&go_emit_native_f64_fn(name, params, body));
+                } else {
+                    let p_sig: Vec<String> = params.iter().map(|(p, _)| format!("{} any", go_safe_ident(p))).collect();
+                    top_fns.push_str(&format!("func {}({}) any {{\n", go_safe_ident(name), p_sig.join(", ")));
+                    for st in body {
+                        top_fns.push_str(&go_stmt(st, 1));
+                    }
+                    if !matches!(body.last(), Some(Stmt::Return(_))) {
+                        top_fns.push_str("    return nil\n");
+                    }
+                    top_fns.push_str("}\n\n");
                 }
-                if !matches!(body.last(), Some(Stmt::Return(_))) {
-                    top_fns.push_str("    return nil\n");
-                }
-                top_fns.push_str("}\n\n");
             }
             Stmt::ClassDecl {
                 name,
@@ -5700,6 +6064,7 @@ fn emit_go(program: &Program) -> String {
             }
         }
     }
+    GO_TOP_FNS.with(|f| f.borrow_mut().clear());
 
     let user_code = format!("{}{}", top_fns, main_body);
     let (go_imports, rt) = go_runtime_helpers(&user_code);
@@ -5752,7 +6117,7 @@ fn go_runtime_helpers(user_code: &str) -> (Vec<&'static str>, String) {
         || user_code.contains("__steel_join");
 
     if user_code.contains("__steel_print(") {
-        rt.push_str("func __steel_print(args ...any) { parts := make([]string, len(args)); for i, a := range args { if a == nil { parts[i] = \"null\" } else { parts[i] = fmt.Sprint(a) } }; fmt.Println(strings.Join(parts, \" \")) }\n");
+        rt.push_str("func __steel_print(args ...any) { parts := make([]string, len(args)); for i, a := range args { if a == nil { parts[i] = \"null\" } else if f, ok := a.(float64); ok && math.Trunc(f) == f && math.Abs(f) < 1e15 { parts[i] = strconv.FormatInt(int64(f), 10) } else { parts[i] = fmt.Sprint(a) } }; fmt.Println(strings.Join(parts, \" \")) }\n");
     }
     if user_code.contains("__steel_read_file") {
         rt.push_str("func __steel_read_file(p any) any { b, err := os.ReadFile(fmt.Sprint(p)); if err != nil { return \"\" }; return string(b) }\n");
@@ -6571,7 +6936,12 @@ fn go_expr(expr: &Expr, lvl: usize) -> String {
                     "sort" if args.len() == 1 => {
                         return format!("__steel_sort({})", go_expr(&args[0], lvl));
                     }
-                    _ => {}
+                    _ => {
+                        if GO_TOP_FNS.with(|f| f.borrow().get(name).copied() == Some(args.len())) {
+                            let arg_strs: Vec<String> = args.iter().map(|a| go_expr(a, lvl)).collect();
+                            return format!("{}({})", go_safe_ident(name), arg_strs.join(", "));
+                        }
+                    }
                 }
             }
             let arg_strs: Vec<String> = args.iter().map(|a| go_expr(a, lvl)).collect();
@@ -7065,10 +7435,38 @@ fn emit_rust_project(modules: &[ModuleUnit]) -> Vec<(String, String)> {
          #![allow(unused_variables,unused_mut,dead_code,unreachable_code,unused_parens,non_snake_case)]\n\
          use std::borrow::Cow;\n\
          use std::cell::RefCell;\n\
-         use std::collections::BTreeMap;\n\
          use std::fmt;\n\
          use std::ops::{Add, Sub, Mul, Div, Rem, Neg, Not};\n\
          use std::rc::Rc;\n\n\
+         #[derive(Clone)]\n\
+         pub struct SMap(pub Vec<(Cow<'static, str>, SVal)>);\n\
+         impl SMap {\n\
+         \x20   #[inline] pub fn new() -> Self { SMap(Vec::new()) }\n\
+         \x20   #[inline] pub fn from_sorted(v: Vec<(Cow<'static, str>, SVal)>) -> Self { SMap(v) }\n\
+         \x20   #[inline] pub fn len(&self) -> usize { self.0.len() }\n\
+         \x20   #[inline] pub fn is_empty(&self) -> bool { self.0.is_empty() }\n\
+         \x20   #[inline] pub fn get(&self, k: &str) -> Option<&SVal> {\n\
+         \x20       if self.0.len() <= 16 {\n\
+         \x20           for (ek, ev) in &self.0 { if ek.as_ref() == k { return Some(ev); } }\n\
+         \x20           None\n\
+         \x20       } else {\n\
+         \x20           self.0.binary_search_by(|(ek, _)| ek.as_ref().cmp(k)).ok().map(|i| &self.0[i].1)\n\
+         \x20       }\n\
+         \x20   }\n\
+         \x20   #[inline] pub fn contains_key(&self, k: &str) -> bool { self.get(k).is_some() }\n\
+         \x20   #[inline] pub fn insert(&mut self, k: Cow<'static, str>, v: SVal) {\n\
+         \x20       match self.0.binary_search_by(|(ek, _)| ek.as_ref().cmp(k.as_ref())) {\n\
+         \x20           Ok(i) => self.0[i].1 = v,\n\
+         \x20           Err(i) => self.0.insert(i, (k, v)),\n\
+         \x20       }\n\
+         \x20   }\n\
+         \x20   #[inline] pub fn remove(&mut self, k: &str) -> Option<SVal> {\n\
+         \x20       self.0.binary_search_by(|(ek, _)| ek.as_ref().cmp(k)).ok().map(|i| self.0.remove(i).1)\n\
+         \x20   }\n\
+         \x20   #[inline] pub fn iter(&self) -> impl Iterator<Item = &(Cow<'static, str>, SVal)> { self.0.iter() }\n\
+         \x20   #[inline] pub fn keys(&self) -> impl Iterator<Item = &Cow<'static, str>> { self.0.iter().map(|(k, _)| k) }\n\
+         \x20   #[inline] pub fn values(&self) -> impl Iterator<Item = &SVal> { self.0.iter().map(|(_, v)| v) }\n\
+         }\n\n\
          #[derive(Clone)]\n\
          pub enum SVal {\n\
          \x20   Null,\n\
@@ -7076,7 +7474,7 @@ fn emit_rust_project(modules: &[ModuleUnit]) -> Vec<(String, String)> {
          \x20   Num(f64),\n\
          \x20   Str(Cow<'static, str>),\n\
          \x20   Arr(Rc<RefCell<Vec<SVal>>>),\n\
-         \x20   Map(Rc<RefCell<BTreeMap<Cow<'static, str>, SVal>>>),\n\
+         \x20   Map(Rc<RefCell<SMap>>),\n\
          \x20   Func(Rc<dyn Fn(Vec<SVal>) -> SVal>),\n\
          }\n\n\
          impl SVal {\n\
@@ -7191,7 +7589,6 @@ fn emit_rust_project(modules: &[ModuleUnit]) -> Vec<(String, String)> {
              #![allow(unused_variables,unused_mut,dead_code,unreachable_code,unused_parens,non_snake_case,unused_imports)]\n\
              use std::borrow::Cow;\n\
              use std::cell::RefCell;\n\
-             use std::collections::BTreeMap;\n\
              use std::rc::Rc;\n",
             m.name
         );

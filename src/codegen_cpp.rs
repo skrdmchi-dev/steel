@@ -503,7 +503,7 @@ inline std::string json_escape(const std::string& s) {
 inline std::string json_stringify_raw(const Val& v) {
     if (std::holds_alternative<std::monostate>(v.data)) return "null";
     if (auto* b = std::get_if<bool>(&v.data)) return *b ? "true" : "false";
-    if (auto* d = std::get_if<double>(&v.data)) return v.to_string();
+    if (std::holds_alternative<double>(v.data)) return v.to_string();
     if (auto* s = std::get_if<std::string>(&v.data)) return json_escape(*s);
     if (auto* a = std::get_if<ArrPtr>(&v.data)) {
         std::string out = "[";
@@ -1347,6 +1347,137 @@ fn cpp_top_fn(
     s
 }
 
+fn cpp_native_f64_expr(expr: &Expr) -> String {
+    match expr {
+        Expr::Number(n) => fmt_num(*n),
+        Expr::Ident(n) => match n.as_str() {
+            "PI" => "3.14159265358979323846".to_string(),
+            "E" => "2.71828182845904523536".to_string(),
+            _ => cpp_safe_ident(n),
+        },
+        Expr::Unary { op: UnaryOp::Neg, expr } => format!("(-{})", cpp_native_f64_expr(expr)),
+        Expr::Binary { left, op, right } => {
+            let l = cpp_native_f64_expr(left);
+            let r = cpp_native_f64_expr(right);
+            match op {
+                BinaryOp::Add => format!("({} + {})", l, r),
+                BinaryOp::Sub => format!("({} - {})", l, r),
+                BinaryOp::Mul => format!("({} * {})", l, r),
+                BinaryOp::Div => format!("({} / {})", l, r),
+                BinaryOp::Mod => format!("({l} - std::trunc({l} / {r}) * {r})"),
+                BinaryOp::Pow => format!("std::pow({}, {})", l, r),
+                _ => "0.0".to_string(),
+            }
+        }
+        Expr::Ternary { cond, then_expr, else_expr } => format!(
+            "({} ? {} : {})",
+            cpp_native_bool_expr(cond),
+            cpp_native_f64_expr(then_expr),
+            cpp_native_f64_expr(else_expr)
+        ),
+        Expr::Call { callee, args } => {
+            if let Expr::Ident(n) = &**callee {
+                match (n.as_str(), args.len()) {
+                    ("abs", 1) => format!("std::fabs({})", cpp_native_f64_expr(&args[0])),
+                    ("floor" | "ceil" | "round" | "sqrt" | "sin" | "cos" | "tan" | "log" | "exp", 1) => {
+                        format!("std::{}({})", n, cpp_native_f64_expr(&args[0]))
+                    }
+                    ("pow" | "atan2", 2) => format!("std::{}({}, {})", n, cpp_native_f64_expr(&args[0]), cpp_native_f64_expr(&args[1])),
+                    ("min", 2) => format!("std::fmin({}, {})", cpp_native_f64_expr(&args[0]), cpp_native_f64_expr(&args[1])),
+                    ("max", 2) => format!("std::fmax({}, {})", cpp_native_f64_expr(&args[0]), cpp_native_f64_expr(&args[1])),
+                    _ => "0.0".to_string(),
+                }
+            } else {
+                "0.0".to_string()
+            }
+        }
+        _ => "0.0".to_string(),
+    }
+}
+
+fn cpp_native_bool_expr(expr: &Expr) -> String {
+    match expr {
+        Expr::Bool(b) => if *b { "true".into() } else { "false".into() },
+        Expr::Unary { op: UnaryOp::Not, expr } => format!("(!{})", cpp_native_bool_expr(expr)),
+        Expr::Binary { left, op, right } => match op {
+            BinaryOp::And => format!("({} && {})", cpp_native_bool_expr(left), cpp_native_bool_expr(right)),
+            BinaryOp::Or => format!("({} || {})", cpp_native_bool_expr(left), cpp_native_bool_expr(right)),
+            BinaryOp::Eq => format!("({} == {})", cpp_native_f64_expr(left), cpp_native_f64_expr(right)),
+            BinaryOp::Neq => format!("({} != {})", cpp_native_f64_expr(left), cpp_native_f64_expr(right)),
+            BinaryOp::Lt => format!("({} < {})", cpp_native_f64_expr(left), cpp_native_f64_expr(right)),
+            BinaryOp::Gt => format!("({} > {})", cpp_native_f64_expr(left), cpp_native_f64_expr(right)),
+            BinaryOp::Lte => format!("({} <= {})", cpp_native_f64_expr(left), cpp_native_f64_expr(right)),
+            BinaryOp::Gte => format!("({} >= {})", cpp_native_f64_expr(left), cpp_native_f64_expr(right)),
+            _ => "false".to_string(),
+        },
+        _ => "false".to_string(),
+    }
+}
+
+fn cpp_native_f64_stmt(stmt: &Stmt, lvl: usize, decls: &mut HashSet<String>) -> String {
+    let pad = indent(lvl);
+    match stmt {
+        Stmt::Let { name, value, .. } => {
+            let sn = cpp_safe_ident(name);
+            decls.insert(sn.clone());
+            format!("{}double {} = {};\n", pad, sn, cpp_native_f64_expr(value))
+        }
+        Stmt::Assign { target: AssignTarget::Ident(n), value } => {
+            let sn = cpp_safe_ident(n);
+            if decls.insert(sn.clone()) {
+                format!("{}double {} = {};\n", pad, sn, cpp_native_f64_expr(value))
+            } else {
+                format!("{}{} = {};\n", pad, sn, cpp_native_f64_expr(value))
+            }
+        }
+        Stmt::Return(Some(e)) => format!("{}return {};\n", pad, cpp_native_f64_expr(e)),
+        Stmt::If { cond, then_branch, else_branch } => {
+            let mut s = format!("{}if ({}) {{\n", pad, cpp_native_bool_expr(cond));
+            for st in then_branch { s.push_str(&cpp_native_f64_stmt(st, lvl + 1, decls)); }
+            if let Some(eb) = else_branch {
+                s.push_str(&format!("{}}} else {{\n", pad));
+                for st in eb { s.push_str(&cpp_native_f64_stmt(st, lvl + 1, decls)); }
+            }
+            s.push_str(&format!("{}}}\n", pad));
+            s
+        }
+        Stmt::While { cond, body } => {
+            let mut s = format!("{}while ({}) {{\n", pad, cpp_native_bool_expr(cond));
+            for st in body { s.push_str(&cpp_native_f64_stmt(st, lvl + 1, decls)); }
+            s.push_str(&format!("{}}}\n", pad));
+            s
+        }
+        Stmt::Break => format!("{}break;\n", pad),
+        Stmt::Continue => format!("{}continue;\n", pad),
+        _ => String::new(),
+    }
+}
+
+fn cpp_emit_native_f64_fn(name: &str, params: &[(String, Option<Expr>)], body: &[Stmt]) -> String {
+    let sn = cpp_safe_ident(name);
+    let mut decls: HashSet<String> = params.iter().map(|(p, _)| cpp_safe_ident(p)).collect();
+    let p_native: Vec<String> = params.iter().map(|(p, _)| format!("double {}", cpp_safe_ident(p))).collect();
+    let p_sval: Vec<String> = params.iter().map(|(p, _)| format!("steel::Val {}", cpp_safe_ident(p))).collect();
+    let p_call: Vec<String> = params.iter().map(|(p, _)| format!("{}.as_num()", cpp_safe_ident(p))).collect();
+    let wrap_args: Vec<String> = (0..params.len())
+        .map(|i| format!("(st_args.size() > {} ? st_args[{}] : steel::Val())", i, i))
+        .collect();
+    let mut s = format!("static inline double st_native_{}({}) {{\n", sn, p_native.join(", "));
+    for st in body {
+        s.push_str(&cpp_native_f64_stmt(st, 1, &mut decls));
+    }
+    s.push_str("    return 0.0;\n}\n");
+    s.push_str(&format!(
+        "steel::Val {}({}) {{ return steel::Val(st_native_{}({})); }}\n",
+        sn, p_sval.join(", "), sn, p_call.join(", ")
+    ));
+    s.push_str(&format!(
+        "steel::Val st_fn_{}(steel::Val, const std::vector<steel::Val>& st_args) {{ (void)st_args; return {}({}); }}\n\n",
+        sn, sn, wrap_args.join(", ")
+    ));
+    s
+}
+
 pub fn emit_cpp_single(program: &Program) -> String {
     let mut top_fns = HashSet::new();
     let mut protos = String::new();
@@ -1382,6 +1513,7 @@ pub fn emit_cpp_single(program: &Program) -> String {
         }
     }
 
+    let empty_globals = std::collections::BTreeSet::new();
     let mut fns_out = String::new();
     let mut main_out = String::new();
     let mut declared = HashSet::new();
@@ -1389,7 +1521,11 @@ pub fn emit_cpp_single(program: &Program) -> String {
         match stmt {
             Stmt::Import(_) => {}
             Stmt::FnDecl { name, params, body } => {
-                fns_out.push_str(&cpp_top_fn(name, params, body, &top_fns));
+                if crate::codegen::rs_is_pure_f64_fn(params, body, &empty_globals) {
+                    fns_out.push_str(&cpp_emit_native_f64_fn(name, params, body));
+                } else {
+                    fns_out.push_str(&cpp_top_fn(name, params, body, &top_fns));
+                }
             }
             Stmt::ClassDecl {
                 name,
@@ -1404,7 +1540,7 @@ pub fn emit_cpp_single(program: &Program) -> String {
         }
     }
 
-    let mut out = String::from(CPP_RUNTIME_HEADER);
+    let mut out = String::from(CPP_RUNTIME_HEADER.trim_start_matches("#pragma once\n"));
     out.push('\n');
     if !protos.is_empty() {
         out.push_str(&protos);

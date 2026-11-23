@@ -485,3 +485,48 @@ print("W_CLS:", lf.run(10))
 
     run_all_9_runtimes("weird_inputs", src);
 }
+
+#[test]
+fn native_specialization_and_large_int_parity_across_all_9_runtimes() {
+    let src = r#"
+fn sum_loop(n) {
+    let acc = 0
+    let i = 0
+    while i < n {
+        acc = acc + (i * 3 + 1) % 97
+        i = i + 1
+    }
+    return acc
+}
+
+fn parse_semver(raw) {
+    let s = trim(raw)
+    let parts = split(s, ".")
+    let maj = num(parts[0])
+    let min = num(parts[1])
+    let pat = num(parts[2])
+    return { "major": maj, "minor": min, "patch": pat }
+}
+
+fn semver_acc(n) {
+    let total = 0
+    let i = 0
+    while i < n {
+        let v = parse_semver("2.14.9")
+        total = total + v["major"] * 10000 + v["minor"] * 100 + v["patch"]
+        i = i + 1
+    }
+    return total
+}
+
+let t0 = clock()
+let r1 = sum_loop(50000)
+let r2 = semver_acc(100)
+let t1 = clock()
+assert(t1 >= t0, "clock must be monotonic")
+print("SPEC_NUM:", r1)
+print("SPEC_SEM:", r2)
+"#;
+
+    run_all_9_runtimes("native_spec_parity", src);
+}
