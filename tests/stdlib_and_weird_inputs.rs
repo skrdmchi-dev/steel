@@ -66,7 +66,7 @@ fn run_all_9_runtimes(test_name: &str, src: &str) {
     .unwrap();
     fs::write(
         ts_dir.join("env.d.ts"),
-        "declare module \"node:fs\" { export function readFileSync(p: string, e: string): string; export function writeFileSync(p: string, d: string): void; export function appendFileSync(p: string, d: string): void; export function unlinkSync(p: string): void; export function existsSync(p: string): boolean; }\ndeclare const process: { env: Record<string, string | undefined> };\n",
+        "declare module \"node:fs\" { export function readFileSync(p: string, e?: string): any; export function writeFileSync(p: string, d: string): void; export function appendFileSync(p: string, d: string): void; export function unlinkSync(p: string): void; export function existsSync(p: string): boolean; export function mkdirSync(p: string, o?: any): void; export function readdirSync(p: string): string[]; export function rmSync(p: string, o?: any): void; export function renameSync(a: string, b: string): void; }\ndeclare module \"node:crypto\" { export function createHash(a: string): { update(d: any, e?: string): { digest(f: string): string } }; }\ndeclare module \"node:child_process\" { export function execSync(c: string, o?: any): string; export function spawnSync(c: string, a: string[], o?: any): { status: number | null; stdout: string; stderr: string }; }\ndeclare const process: { env: Record<string, string | undefined>; argv: string[]; exit(c?: number): never };\n",
     )
     .unwrap();
     if has_cmd("tsc.cmd") {
@@ -529,4 +529,40 @@ print("SPEC_SEM:", r2)
 "#;
 
     run_all_9_runtimes("native_spec_parity", src);
+}
+
+#[test]
+fn os_fs_and_sha256_parity_across_all_9_runtimes() {
+    let base_dir = std::env::temp_dir()
+        .join("steel_os_fs_sha256_probe")
+        .to_string_lossy()
+        .replace('\\', "/");
+
+    let src = format!(
+        r#"
+// NIST FIPS 180-4 test vectors
+assert(sha256("") == "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855", "sha256 empty")
+assert(sha256("abc") == "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad", "sha256 abc")
+print("SHA_INF:", sha256("infinityos"))
+
+d = "{base_dir}"
+remove_dir(d)
+assert(mkdir(d + "/sub"), "mkdir failed")
+write_file(d + "/b.txt", "abc")
+write_file(d + "/a.txt", "hello")
+print("SHA_FILE:", sha256_file(d + "/b.txt"))
+print("LIST1:", join(list_dir(d), ","))
+assert(rename(d + "/a.txt", d + "/c.txt"), "rename failed")
+print("LIST2:", join(list_dir(d), ","))
+assert(remove_dir(d), "remove_dir failed")
+print("ARGS_TYPE:", type(args()))
+print("EXEC1:", trim(exec("echo steel_ok")))
+if false {{
+    exit(0)
+}}
+"#,
+        base_dir = base_dir
+    );
+
+    run_all_9_runtimes("os_fs_sha256", &src);
 }
